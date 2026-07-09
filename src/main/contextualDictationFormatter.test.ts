@@ -119,6 +119,21 @@ describe("main/contextualDictationFormatter", () => {
     expect(format("Inside", "Look (")).toBe("inside ");
   });
 
+  it("does not lowercase a dictionary word mid-sentence", () => {
+    expect(
+      formatDictationForInsertion("Sandheep agrees", {
+        autoSpace: true,
+        selection: snapshot("and"),
+        contextChars: CONTEXT_CHARS,
+        dictionary: ["Sandheep"],
+      }),
+    ).toBe(" Sandheep agrees ");
+  });
+
+  it("lowercases that same word mid-sentence when no dictionary is passed", () => {
+    expect(format("Sandheep agrees", "and")).toBe(" sandheep agrees ");
+  });
+
   it("pastes verbatim without trailing auto-space when disabled", () => {
     expect(
       formatDictationForInsertion("Hello", {

@@ -33,6 +33,7 @@ const INSERTION_CONTEXT_CHARS = 96;
 
 async function buildInsertionPayload(text: string): Promise<string> {
   const autoSpace = state.appPreferences.autoSpace ?? true;
+  const dictionary = state.appPreferences.vocabularyDictionary ?? [];
 
   try {
     const selection = await inspectFocusedSelection({
@@ -40,12 +41,13 @@ async function buildInsertionPayload(text: string): Promise<string> {
     });
     return formatDictationForInsertion(text, {
       autoSpace,
+      dictionary,
       selection,
       contextChars: INSERTION_CONTEXT_CHARS,
     });
   } catch (error) {
     console.warn("[PasteHelper] Context inspection failed:", error);
-    return formatDictationForInsertion(text, { autoSpace });
+    return formatDictationForInsertion(text, { autoSpace, dictionary });
   }
 }
 
