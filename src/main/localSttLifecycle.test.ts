@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getActiveModelId: vi.fn(),
@@ -210,5 +210,95 @@ describe("localSttLifecycle", () => {
     expect(mocks.killSidecar.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.removeModel.mock.invocationCallOrder[0],
     );
+  });
+
+  describe("idle watchdog", () => {
+    beforeEach(() => {
+      // The idle timer only arms while a sidecar is actually running.
+      mocks.isSidecarRunning.mockReturnValue(true);
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("stops the sidecar after the idle timeout with no activity", async () => {
+      const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
+        await importLifecycle();
+
+      await transcribeWithLocalSidecar(Buffer.from([1]));
+      expect(mocks.killSidecar).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(SIDECAR_IDLE_TIMEOUT_MS);
+
+      expect(mocks.setAutoRestart).toHaveBeenLastCalledWith(false);
+      expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
+    });
+
+    it("resets the idle timer when new activity arrives", async () => {
+      const {
+        transcribeWithLocalSidecar,
+        prewarmLocalSidecar,
+        SIDECAR_IDLE_TIMEOUT_MS,
+      } = await importLifecycle();
+
+      await transcribeWithLocalSidecar(Buffer.from([1]));
+      vi.advanceTimersByTime(SIDECAR_IDLE_TIMEOUT_MS - 1000);
+      expect(mocks.killSidecar).not.toHaveBeenCalled();
+
+      // A dictation intent (PTT prewarm) resets the countdown.
+      prewarmLocalSidecar("ptt-down");
+      vi.advanceTimersByTime(SIDECAR_IDLE_TIMEOUT_MS - 1000);
+      expect(mocks.killSidecar).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(1000);
+      expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
+    });
+
+    it("never stops while a transcription is in flight", async () => {
+      let resolveTranscribe: (value: {
+        text: string;
+        metrics: Record<string, never>;
+      }) => void = () => {};
+      mocks.transcribeLocal.mockReturnValue(
+        new Promise((resolve) => {
+          resolveTranscribe = resolve;
+        }),
+      );
+      const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
+        await importLifecycle();
+
+      const inflight = transcribeWithLocalSidecar(Buffer.from([1]));
+      // Let ensureLocalSidecarRunning settle so the request is registered.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // The timer elapses mid-transcription but must not stop the sidecar.
+      vi.advanceTimersByTime(SIDECAR_IDLE_TIMEOUT_MS);
+      expect(mocks.killSidecar).not.toHaveBeenCalled();
+
+      resolveTranscribe({ text: "ok", metrics: {} });
+      await inflight;
+
+      // Completion re-arms the timer; now the idle timeout stops it.
+      vi.advanceTimersByTime(SIDECAR_IDLE_TIMEOUT_MS);
+      expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
+    });
+
+    it("treats an idle stop as intentional so auto-restart does not respawn", async () => {
+      const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
+        await importLifecycle();
+
+      await transcribeWithLocalSidecar(Buffer.from([1]));
+      vi.advanceTimersByTime(SIDECAR_IDLE_TIMEOUT_MS);
+
+      // Auto-restart is disabled before the kill, so the engine's exit handler
+      // will not respawn on the idle-driven shutdown.
+      const disableOrder = mocks.setAutoRestart.mock.invocationCallOrder.at(-1);
+      const killOrder = mocks.killSidecar.mock.invocationCallOrder[0];
+      expect(mocks.setAutoRestart).toHaveBeenLastCalledWith(false);
+      expect(disableOrder).toBeLessThan(killOrder);
+    });
   });
 });

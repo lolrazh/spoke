@@ -19,7 +19,45 @@ import { bootTimeline } from "./bootTimeline";
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
 
+// The sidecar holds hundreds of MB resident for a menu-bar app that is idle
+// most of the time. Stop it after a stretch of no dictation activity; a PTT
+// key-down re-warms it so the user rarely feels the cold start.
+export const SIDECAR_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+
 let prewarmInFlight: Promise<void> | null = null;
+let idleTimer: NodeJS.Timeout | null = null;
+let transcriptionsInFlight = 0;
+
+function clearIdleTimer(): void {
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+}
+
+/**
+ * (Re)arm the idle watchdog. Called on every real user-driven sidecar use
+ * (prewarm on dictation intent, transcription request and completion) so the
+ * countdown restarts on activity and only elapses during genuine idleness.
+ */
+function armIdleTimer(): void {
+  clearIdleTimer();
+  // Nothing to reclaim unless a sidecar is actually running.
+  if (!isSidecarRunning()) return;
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    // Belt-and-suspenders: never stop mid-transcription. The completion path
+    // re-arms the timer, so a request in flight is not orphaned.
+    if (transcriptionsInFlight > 0) return;
+    if (!isSidecarRunning()) return;
+    console.log("[STT] Stopping idle local sidecar after inactivity");
+    // stopLocalSidecar disables auto-restart before killing, so the engine's
+    // exit handler treats this as intentional and does not respawn.
+    stopLocalSidecar();
+  }, SIDECAR_IDLE_TIMEOUT_MS);
+  // Must not keep the process alive at quit.
+  idleTimer.unref?.();
+}
 
 export async function ensureLocalSidecarRunning(): Promise<void> {
   if (getModelInstallState() !== "ready") {
@@ -31,6 +69,7 @@ export async function ensureLocalSidecarRunning(): Promise<void> {
   }
 
   setAutoRestart(true);
+  armIdleTimer();
 }
 
 export function prewarmLocalSidecar(reason: string): void {
@@ -40,6 +79,8 @@ export function prewarmLocalSidecar(reason: string): void {
 
   if (isSidecarRunning()) {
     setAutoRestart(true);
+    // A fresh dictation intent resets the idle countdown.
+    armIdleTimer();
     return;
   }
 
@@ -65,6 +106,7 @@ export function prewarmLocalSidecar(reason: string): void {
 }
 
 export function stopLocalSidecar(): void {
+  clearIdleTimer();
   setAutoRestart(false);
   killSidecar();
 }
@@ -132,5 +174,15 @@ export async function transcribeWithLocalSidecar(
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
   await ensureLocalSidecarRunning();
-  return transcribeLocal(pcmBuffer, prompt);
+  transcriptionsInFlight++;
+  // Reset on request; if the timer somehow elapses mid-flight the in-flight
+  // guard blocks the stop.
+  armIdleTimer();
+  try {
+    return await transcribeLocal(pcmBuffer, prompt);
+  } finally {
+    transcriptionsInFlight--;
+    // Reset on completion so idle time is measured from the last activity.
+    armIdleTimer();
+  }
 }
