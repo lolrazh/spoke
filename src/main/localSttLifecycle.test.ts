@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  getActiveModelId: vi.fn(),
   getModelInstallState: vi.fn(),
   installModel: vi.fn(),
   removeModel: vi.fn(),
+  setActiveModelId: vi.fn(),
   isPreferredProviderLocal: vi.fn(),
   isSidecarRunning: vi.fn(),
   killSidecar: vi.fn(),
@@ -13,9 +15,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("./modelManager", () => ({
+  getActiveModelId: mocks.getActiveModelId,
   getModelInstallState: mocks.getModelInstallState,
   installModel: mocks.installModel,
   removeModel: mocks.removeModel,
+  setActiveModelId: mocks.setActiveModelId,
 }));
 
 vi.mock("./providerStore", () => ({
@@ -134,6 +138,36 @@ describe("localSttLifecycle", () => {
     expect(mocks.installModel).toHaveBeenCalledTimes(1);
     expect(mocks.spawnSidecar).not.toHaveBeenCalled();
     expect(mocks.setAutoRestart).not.toHaveBeenCalled();
+  });
+
+  it("auto-activates the installed model when the active model is not ready", async () => {
+    // Active model starts out uninstalled (e.g. removed earlier, fallback
+    // landed on a not-installed default); the newly installed model is ready.
+    let active = "ghost-model";
+    mocks.getModelInstallState.mockImplementation((modelId?: string) =>
+      (modelId ?? active) === "new-model" ? "ready" : "not_installed",
+    );
+    mocks.setActiveModelId.mockImplementation((modelId: string) => {
+      active = modelId;
+    });
+    const { installLocalModelAndSyncSidecar } = await importLifecycle();
+
+    await installLocalModelAndSyncSidecar("new-model");
+
+    expect(mocks.setActiveModelId).toHaveBeenCalledWith("new-model");
+    // Activation goes through the resync path: stop any stale sidecar and
+    // leave the spawn to the install handler's scheduled prewarm.
+    expect(mocks.killSidecar).toHaveBeenCalled();
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+  });
+
+  it("does not steal activation when the active model is ready", async () => {
+    const { installLocalModelAndSyncSidecar } = await importLifecycle();
+
+    await installLocalModelAndSyncSidecar("secondary-model");
+
+    expect(mocks.setActiveModelId).not.toHaveBeenCalled();
+    expect(mocks.killSidecar).not.toHaveBeenCalled();
   });
 
   it("prewarms the sidecar when local model is ready", async () => {
