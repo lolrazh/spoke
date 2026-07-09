@@ -9,6 +9,7 @@ import {
 } from "./ui/select";
 import SettingsCard from "./SettingsCard";
 import ModelsList from "./ModelsList";
+import VocabularySettings from "./VocabularySettings";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
 import ProgressRing from "./ui/ProgressRing";
@@ -1025,6 +1026,19 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     </motion.div>
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <ModelsList enabled={activeTab === "models"} />
+                    </div>
+                  </motion.section>
+
+                  <motion.section
+                    variants={panelCascadeContainer}
+                    className="space-y-4"
+                    style={{ marginTop: "var(--panel-section-offset)" }}
+                  >
+                    <motion.div variants={panelCascadeItem}>
+                      <SectionSeparator title="Vocabulary" />
+                    </motion.div>
+                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
+                      <VocabularySettings />
                     </div>
                   </motion.section>
                 </motion.div>
