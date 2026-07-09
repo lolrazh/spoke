@@ -156,8 +156,8 @@ const COHERE_MANIFEST: ModelManifest = {
 
 // ── Parakeet TDT 0.6B v2 (8-bit) ──────────────────────────────────────
 
-const PARAKEET_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-8bit";
-const PARAKEET_VERSION = "29c2904d71424486b18b0325ef888b334f6a5983";
+const PARAKEET_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit";
+const PARAKEET_VERSION = "bb14d7a6da6b61e83eb4c20e8c27005d2484f5c7";
 const PARAKEET_BASE = hfResolveBase(PARAKEET_ID, PARAKEET_VERSION);
 
 // Parakeet's tokenizer vocabulary lives inside config.json (NeMo-style
@@ -183,8 +183,8 @@ const PARAKEET_MANIFEST: ModelManifest = {
       path: "model.safetensors",
       url: `${PARAKEET_BASE}/model.safetensors`,
       sha256:
-        "70b58526218a9666fca7523612e5c7c34e3c52ae44d47c83afb619ceaeddfe72",
-      size: 734255954,
+        "e2437f570fd539c244ec954f26db140199492454c7a97dcab7c7885f0acdd14d",
+      size: 600491607,
     },
     {
       role: "aux",
@@ -236,7 +236,7 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
     info: makeInfo(PARAKEET_MANIFEST, {
       tagline: "English-only speech recognition built for speed.",
       languageCount: 1,
-      quantization: "8-bit",
+      quantization: "6-bit",
       isDefault: true,
     }),
     requiredFilePaths: [

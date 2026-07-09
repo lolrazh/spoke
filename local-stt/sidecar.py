@@ -63,8 +63,8 @@ COHERE_REQUIRED_MODEL_FILES = (
 )
 
 # Parakeet model identity / files.
-PARAKEET_MODEL_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-8bit"
-PARAKEET_MODEL_DISPLAY_NAME = "Parakeet TDT 0.6B v2 8-bit"
+PARAKEET_MODEL_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit"
+PARAKEET_MODEL_DISPLAY_NAME = "Parakeet TDT 0.6B v2 6-bit"
 # Keep in sync with the `requiredFilePaths` for Parakeet in
 # src/main/localModelContract.ts (the install-completeness gate).
 PARAKEET_REQUIRED_MODEL_FILES = (
@@ -75,7 +75,7 @@ PARAKEET_REQUIRED_MODEL_FILES = (
 # The checkpoint is quantized with mlx.nn.quantize using these settings; the
 # module tree must be quantized identically before load_weights() can accept
 # the packed weights (parakeet-mlx's from_pretrained has no quantized path).
-PARAKEET_QUANT_BITS = 8
+PARAKEET_QUANT_BITS = 6
 PARAKEET_QUANT_GROUP_SIZE = 64
 
 # All engine families consume 16 kHz mono PCM. Keep a single shared constant;
