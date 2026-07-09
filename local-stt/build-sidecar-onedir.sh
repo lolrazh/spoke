@@ -39,6 +39,7 @@ pyinstaller \
   --collect-all mlx \
   --collect-all mlx_speech \
   --collect-all tokenizers \
+  --collect-all parakeet_mlx \
   --collect-data mlx_whisper \
   --collect-submodules tiktoken_ext \
   --exclude-module torch \
@@ -48,6 +49,7 @@ pyinstaller \
   --exclude-module scipy \
   --exclude-module numba \
   --exclude-module llvmlite \
+  --exclude-module librosa \
   --hidden-import mlx \
   --hidden-import mlx.core \
   --hidden-import mlx.nn \

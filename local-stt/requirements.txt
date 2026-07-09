@@ -2,3 +2,4 @@ mlx==0.31.2
 mlx-whisper==0.4.3
 numpy==2.4.4
 mlx-speech @ git+https://github.com/appautomaton/mlx-speech@9fc5e4d59ed9decca7f5ec319ba0d9952b897d08
+parakeet-mlx==0.5.1
