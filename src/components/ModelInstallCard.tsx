@@ -30,9 +30,11 @@ function describe(info: LocalModelInfo, status: ModelStatus): string {
   // Keep this short so the size never gets truncated behind an ellipsis; the
   // full tagline lives in onboarding where there's room.
   const size = status.totalBytes > 0 ? formatBytes(status.totalBytes) : null;
-  return [`${info.languageCount} languages`, info.quantization, size]
-    .filter(Boolean)
-    .join(" · ");
+  const languages =
+    info.languageCount === 1
+      ? "English only"
+      : `${info.languageCount} languages`;
+  return [languages, info.quantization, size].filter(Boolean).join(" · ");
 }
 
 const RecommendedBadge: React.FC = () => (
