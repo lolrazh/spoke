@@ -207,7 +207,7 @@ export type LocalModelEntry = {
 };
 
 /** The model pre-selected in onboarding and used for fresh installs. */
-export const DEFAULT_MODEL_ID = COHERE_ID;
+export const DEFAULT_MODEL_ID = PARAKEET_ID;
 
 function makeInfo(
   manifest: ModelManifest,
@@ -231,13 +231,27 @@ function makeInfo(
 }
 
 export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
+  [PARAKEET_ID]: {
+    manifest: PARAKEET_MANIFEST,
+    info: makeInfo(PARAKEET_MANIFEST, {
+      tagline: "English-only speech recognition built for speed.",
+      languageCount: 1,
+      quantization: "8-bit",
+      isDefault: true,
+    }),
+    requiredFilePaths: [
+      "config.json",
+      "model.safetensors",
+      "mel_filters.npy",
+    ],
+  },
   [COHERE_ID]: {
     manifest: COHERE_MANIFEST,
     info: makeInfo(COHERE_MANIFEST, {
       tagline: "Multilingual speech recognition tuned for accuracy.",
       languageCount: 14,
       quantization: "4-bit",
-      isDefault: true,
+      isDefault: false,
     }),
     requiredFilePaths: [
       "config.json",
@@ -260,24 +274,10 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
       "multilingual.tiktoken",
     ],
   },
-  [PARAKEET_ID]: {
-    manifest: PARAKEET_MANIFEST,
-    info: makeInfo(PARAKEET_MANIFEST, {
-      tagline: "English-only speech recognition built for speed.",
-      languageCount: 1,
-      quantization: "8-bit",
-      isDefault: false,
-    }),
-    requiredFilePaths: [
-      "config.json",
-      "model.safetensors",
-      "mel_filters.npy",
-    ],
-  },
 };
 
 /** Ordered list of model ids (default first), for stable UI rendering. */
-export const LOCAL_MODEL_IDS: string[] = [COHERE_ID, WHISPER_ID, PARAKEET_ID];
+export const LOCAL_MODEL_IDS: string[] = [PARAKEET_ID, COHERE_ID, WHISPER_ID];
 
 export function getModelEntry(modelId: string): LocalModelEntry | undefined {
   return LOCAL_MODELS[modelId];
