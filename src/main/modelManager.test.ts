@@ -675,15 +675,21 @@ describe("modelManager", () => {
         [...LOCAL_MODEL_IDS].sort(),
       );
 
-      // Each known model has a fully-formed per-model entry.
+      // Each known model has a fully-formed per-model entry: ready for the
+      // two mocked-installed models, not_installed placeholders for the rest.
+      const readyIds = new Set([DEFAULT_MODEL_ID, OTHER_MODEL_ID]);
       for (const modelId of LOCAL_MODEL_IDS) {
         const entry = parsed.models[modelId];
         expect(entry).toBeDefined();
         expect(entry.modelId).toBe(modelId);
-        expect(entry.state).toBe("ready");
         expect(entry.family).toBe(getModelEntry(modelId)!.manifest.family);
-        expect(Array.isArray(entry.files)).toBe(true);
-        expect(entry.files.length).toBeGreaterThan(0);
+        if (readyIds.has(modelId)) {
+          expect(entry.state).toBe("ready");
+          expect(Array.isArray(entry.files)).toBe(true);
+          expect(entry.files.length).toBeGreaterThan(0);
+        } else {
+          expect(entry.state).toBe("not_installed");
+        }
       }
     });
   });

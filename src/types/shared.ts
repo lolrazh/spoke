@@ -110,7 +110,7 @@ export type ModelInstallState =
   | "ready"
   | "broken";
 
-export type LocalModelFamily = "whisper" | "cohere";
+export type LocalModelFamily = "whisper" | "cohere" | "parakeet";
 
 export type ModelStatus = {
   state: ModelInstallState;

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Spoke MLX STT sidecar supporting two ASR engine families: Whisper and Cohere.
+Spoke MLX STT sidecar supporting three ASR engine families: Whisper, Cohere,
+and Parakeet.
 
-The engine family is selected with --family {whisper,cohere} (default whisper
-for back-compat). Whisper uses mlx_whisper (large-v3 turbo 4-bit); Cohere uses
-mlx-speech (CohereAsrModel). Heavy per-family imports are loaded lazily so that
-selecting one family never imports the other.
+The engine family is selected with --family {whisper,cohere,parakeet} (default
+whisper for back-compat). Whisper uses mlx_whisper (large-v3 turbo 4-bit);
+Cohere uses mlx-speech (CohereAsrModel); Parakeet uses parakeet-mlx (TDT 0.6b
+v2, 8-bit). Heavy per-family imports are loaded lazily so that selecting one
+family never imports the others.
 
 Daemon mode loads the model once, emits {"type":"ready"}, then reads requests
 as two length-prefixed frames on stdin:
@@ -60,8 +62,24 @@ COHERE_REQUIRED_MODEL_FILES = (
     "tokenizer.model",
 )
 
-# Whisper consumes 16 kHz mono PCM, and so does Cohere. Keep a single shared
-# constant; the Whisper engine asserts it matches mlx_whisper's SAMPLE_RATE.
+# Parakeet model identity / files.
+PARAKEET_MODEL_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit"
+PARAKEET_MODEL_DISPLAY_NAME = "Parakeet TDT 0.6B v2 6-bit"
+# Keep in sync with the `requiredFilePaths` for Parakeet in
+# src/main/localModelContract.ts (the install-completeness gate).
+PARAKEET_REQUIRED_MODEL_FILES = (
+    "config.json",
+    "model.safetensors",
+    "mel_filters.npy",
+)
+# The checkpoint is quantized with mlx.nn.quantize using these settings; the
+# module tree must be quantized identically before load_weights() can accept
+# the packed weights (parakeet-mlx's from_pretrained has no quantized path).
+PARAKEET_QUANT_BITS = 6
+PARAKEET_QUANT_GROUP_SIZE = 64
+
+# All engine families consume 16 kHz mono PCM. Keep a single shared constant;
+# the Whisper and Parakeet engines assert it matches their model's rate.
 SAMPLE_RATE = 16000
 
 NO_SPEECH_THRESHOLD = 0.6
@@ -931,6 +949,259 @@ class CohereEngine(Engine):
 
 
 # ---------------------------------------------------------------------------
+# Parakeet engine (parakeet-mlx). Heavy imports happen lazily in load().
+# ---------------------------------------------------------------------------
+
+
+# Module-level holders for the parakeet helpers, populated by _import_parakeet().
+_parakeet_imported = False
+_p: dict[str, Any] = {}
+
+# librosa.filters.mel arguments parakeet-mlx derives from this model's
+# preprocessor config (sr, n_fft=512, n_mels=features=128, fmax=sr/2). The
+# stub below asserts against these so a config change can never silently pair
+# with a stale filterbank.
+PARAKEET_MEL_ARGS = {
+    "sr": SAMPLE_RATE,
+    "n_fft": 512,
+    "n_mels": 128,
+    "fmin": 0.0,
+    "fmax": SAMPLE_RATE / 2,
+    "norm": "slaney",
+}
+
+
+def _install_librosa_stub(mel_filters_path: Path) -> None:
+    """Install a minimal librosa stand-in before parakeet_mlx is imported.
+
+    parakeet-mlx imports librosa solely for filters.mel(), a deterministic
+    filterbank matrix, but calling it drags scipy and numba in at runtime,
+    which the PyInstaller bundle excludes. The exact matrix ships alongside
+    the weights as mel_filters.npy instead. Installed unconditionally (even
+    when real librosa is importable) so dev and the bundle run the same path.
+    """
+
+    def stub_mel(
+        *,
+        sr,
+        n_fft,
+        n_mels=128,
+        fmin=0.0,
+        fmax=None,
+        htk=False,
+        norm="slaney",
+        dtype=None,
+    ):
+        del dtype
+        got = {
+            "sr": sr,
+            "n_fft": n_fft,
+            "n_mels": n_mels,
+            "fmin": float(fmin),
+            "fmax": float(fmax) if fmax is not None else None,
+            "norm": norm,
+        }
+        if htk or got != PARAKEET_MEL_ARGS:
+            raise ValueError(
+                f"mel filterbank args {got} (htk={htk}) do not match the "
+                f"precomputed {mel_filters_path.name} ({PARAKEET_MEL_ARGS}); "
+                "the model's preprocessor config has changed."
+            )
+        return np.load(mel_filters_path)
+
+    librosa_stub = types.ModuleType("librosa")
+    filters_stub = types.ModuleType("librosa.filters")
+    filters_stub.mel = stub_mel
+    librosa_stub.filters = filters_stub
+    sys.modules["librosa"] = librosa_stub
+    sys.modules["librosa.filters"] = filters_stub
+
+
+def _import_parakeet(mel_filters_path: Path) -> None:
+    """Lazily import parakeet_mlx. Only the parakeet path triggers this."""
+    global _parakeet_imported
+    if _parakeet_imported:
+        return
+
+    _install_librosa_stub(mel_filters_path)
+
+    import mlx.nn as nn
+    import mlx.utils
+    from parakeet_mlx.audio import get_logmel
+    from parakeet_mlx.utils import from_config
+
+    _p.update(
+        nn=nn,
+        tree_flatten=mlx.utils.tree_flatten,
+        tree_unflatten=mlx.utils.tree_unflatten,
+        get_logmel=get_logmel,
+        from_config=from_config,
+    )
+    _parakeet_imported = True
+
+
+class ParakeetEngine(Engine):
+    def __init__(self, weights_dir: Path, language: str | None) -> None:
+        self.weights_dir = weights_dir
+        # Parakeet TDT v2 is English-only; any requested language is ignored.
+        del language
+        self.language = "en"
+        self.model = None
+        self.load_ms: int | None = None
+        self.load_peak_memory_bytes = 0
+
+    def load(self) -> None:
+        _import_parakeet(self.weights_dir / "mel_filters.npy")
+        validate_weights_dir(self.weights_dir, PARAKEET_REQUIRED_MODEL_FILES)
+
+        log(f"sidecar: loading {PARAKEET_MODEL_DISPLAY_NAME} from {self.weights_dir}")
+        reset_peak_memory()
+        start = time.perf_counter()
+
+        with open(self.weights_dir / "config.json", encoding="utf-8") as f:
+            config = json.load(f)
+        model = _p["from_config"](config)
+        _p["nn"].quantize(
+            model,
+            group_size=PARAKEET_QUANT_GROUP_SIZE,
+            bits=PARAKEET_QUANT_BITS,
+        )
+        model.load_weights(str(self.weights_dir / "model.safetensors"))
+        # Cast the layers nn.quantize skips (Conv1d, BatchNorm, the TDT
+        # prediction LSTM) from fp32 init to bf16, mirroring from_pretrained's
+        # post-load dtype cast. Packed quantized weights load as-is.
+        model.update(
+            _p["tree_unflatten"](
+                [
+                    (k, v.astype(mx.bfloat16) if v.dtype == mx.float32 else v)
+                    for k, v in _p["tree_flatten"](model.parameters())
+                ]
+            )
+        )
+        mx.eval(model.parameters())
+
+        if model.preprocessor_config.sample_rate != SAMPLE_RATE:
+            raise RuntimeError(
+                f"Parakeet sample rate {model.preprocessor_config.sample_rate} "
+                f"!= expected {SAMPLE_RATE}"
+            )
+
+        self.model = model
+        self.load_ms = round((time.perf_counter() - start) * 1000)
+        self.load_peak_memory_bytes = memory_snapshot()["peak_memory_bytes"]
+        log(f"sidecar: model loaded in {self.load_ms} ms")
+
+    def warmup(self) -> None:
+        if not is_enabled(WARMUP_MODE):
+            log("sidecar: warmup disabled")
+            return
+        if self.model is None:
+            raise RuntimeError("Parakeet model has not been loaded.")
+
+        try:
+            log("sidecar: warming MLX decode path")
+            start = time.perf_counter()
+            reset_peak_memory()
+            self._generate(synthetic_warmup_audio())
+            clear_cache_if_enabled()
+            warmup_ms = round((time.perf_counter() - start) * 1000)
+            log(f"sidecar: warmup complete in {warmup_ms} ms")
+        except Exception as exc:
+            log(f"sidecar: warmup failed; continuing cold: {exc}")
+
+    def _generate(self, audio: np.ndarray) -> str:
+        mel = _p["get_logmel"](
+            mx.array(np.asarray(audio, dtype=np.float32)),
+            self.model.preprocessor_config,
+        )
+        result = self.model.generate(mel)[0]
+        return "".join(token.text for token in result.tokens).strip()
+
+    def transcribe(self, audio: np.ndarray, prompt: str | None = None) -> None:
+        # Parakeet's TDT transducer decodes audio frames directly; there is no
+        # text-conditioning input (no initial_prompt equivalent) to seed with a
+        # vocabulary hint. The request-level prompt is accepted for API
+        # symmetry with WhisperEngine but intentionally ignored here.
+        del prompt
+
+        request_start = time.perf_counter()
+        stats = audio_stats(audio)
+        audio_analysis_ms = round((time.perf_counter() - request_start) * 1000)
+        log(
+            "sidecar: received "
+            f"{len(audio)} samples ({stats['audio_duration_ms']} ms)"
+        )
+
+        if stats["is_no_speech"]:
+            metrics = self._metrics(
+                stats=stats,
+                inference_ms=0,
+                transcript="",
+                language=None,
+                segment_count=0,
+                memory=memory_snapshot(),
+                timings={"audio_analysis_ms": audio_analysis_ms},
+            )
+            emit({"type": "done", "transcript": "", "metrics": metrics})
+            log("sidecar: skipped non-speech audio")
+            return
+
+        reset_peak_memory()
+        start = time.perf_counter()
+
+        if self.model is None:
+            raise RuntimeError("Parakeet model has not been loaded.")
+
+        transcript = self._generate(audio)
+        inference_ms = round((time.perf_counter() - start) * 1000)
+        memory = memory_snapshot()
+        clear_cache_if_enabled()
+
+        metrics = self._metrics(
+            stats=stats,
+            inference_ms=inference_ms,
+            transcript=transcript,
+            language=self.language,
+            segment_count=1 if transcript else 0,
+            memory=memory,
+            timings={"audio_analysis_ms": audio_analysis_ms},
+        )
+
+        emit({"type": "done", "transcript": transcript, "metrics": metrics})
+        log(
+            "sidecar: done - "
+            f"{metrics['word_count']} words, "
+            f"{metrics['inference_ms']} ms inference, "
+            f"{metrics['audio_duration_ms']} ms audio"
+        )
+
+    def _metrics(
+        self,
+        *,
+        stats: dict[str, float | int | bool],
+        inference_ms: int,
+        transcript: str,
+        language: str | None,
+        segment_count: int,
+        memory: dict[str, int],
+        timings: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return build_metrics(
+            model_id=PARAKEET_MODEL_ID,
+            stats=stats,
+            inference_ms=inference_ms,
+            transcript=transcript,
+            language=language,
+            segment_count=segment_count,
+            memory=memory,
+            model_load_ms=self.load_ms or 0,
+            model_load_peak_memory_bytes=self.load_peak_memory_bytes,
+            sample_len=None,
+            timings=timings,
+        )
+
+
+# ---------------------------------------------------------------------------
 # IPC / daemon driver (engine-agnostic).
 # ---------------------------------------------------------------------------
 
@@ -940,6 +1211,8 @@ def build_engine(family: str, weights_dir: Path, language: str | None) -> Engine
         return WhisperEngine(weights_dir=weights_dir, language=language)
     if family == "cohere":
         return CohereEngine(weights_dir=weights_dir, language=language)
+    if family == "parakeet":
+        return ParakeetEngine(weights_dir=weights_dir, language=language)
     raise ValueError(f"Unknown engine family: {family}")
 
 
@@ -1027,7 +1300,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Spoke MLX STT sidecar")
     parser.add_argument(
         "--family",
-        choices=("whisper", "cohere"),
+        choices=("whisper", "cohere", "parakeet"),
         default="whisper",
         help="ASR engine family to run (default: whisper).",
     )

@@ -154,6 +154,49 @@ const COHERE_MANIFEST: ModelManifest = {
   ],
 };
 
+// ── Parakeet TDT 0.6B v2 (8-bit) ──────────────────────────────────────
+
+const PARAKEET_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit";
+const PARAKEET_VERSION = "bb14d7a6da6b61e83eb4c20e8c27005d2484f5c7";
+const PARAKEET_BASE = hfResolveBase(PARAKEET_ID, PARAKEET_VERSION);
+
+// Parakeet's tokenizer vocabulary lives inside config.json (NeMo-style
+// config), so there is no separate tokenizer file. mel_filters.npy is the
+// precomputed mel filterbank the sidecar uses in place of librosa.
+const PARAKEET_MANIFEST: ModelManifest = {
+  manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
+  family: "parakeet",
+  modelId: PARAKEET_ID,
+  displayName: "Parakeet TDT 0.6B v2",
+  version: PARAKEET_VERSION,
+  files: [
+    {
+      role: "config",
+      path: "config.json",
+      url: `${PARAKEET_BASE}/config.json`,
+      sha256:
+        "9bd323e60afe2615c983a5d9fc3a2c0470df2a03edf90c0f861bd59509d07264",
+      size: 36176,
+    },
+    {
+      role: "weights",
+      path: "model.safetensors",
+      url: `${PARAKEET_BASE}/model.safetensors`,
+      sha256:
+        "e2437f570fd539c244ec954f26db140199492454c7a97dcab7c7885f0acdd14d",
+      size: 600491607,
+    },
+    {
+      role: "aux",
+      path: "mel_filters.npy",
+      url: `${PARAKEET_BASE}/mel_filters.npy`,
+      sha256:
+        "63d8ddc9c24726f43b867a48037f9ccf9607e0ed59a1cd3e899c678a4f693f80",
+      size: 131712,
+    },
+  ],
+};
+
 // ── Registry ──────────────────────────────────────────────────────────
 
 export type LocalModelEntry = {
@@ -164,7 +207,7 @@ export type LocalModelEntry = {
 };
 
 /** The model pre-selected in onboarding and used for fresh installs. */
-export const DEFAULT_MODEL_ID = COHERE_ID;
+export const DEFAULT_MODEL_ID = PARAKEET_ID;
 
 function makeInfo(
   manifest: ModelManifest,
@@ -188,13 +231,27 @@ function makeInfo(
 }
 
 export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
+  [PARAKEET_ID]: {
+    manifest: PARAKEET_MANIFEST,
+    info: makeInfo(PARAKEET_MANIFEST, {
+      tagline: "English-only speech recognition built for speed.",
+      languageCount: 1,
+      quantization: "6-bit",
+      isDefault: true,
+    }),
+    requiredFilePaths: [
+      "config.json",
+      "model.safetensors",
+      "mel_filters.npy",
+    ],
+  },
   [COHERE_ID]: {
     manifest: COHERE_MANIFEST,
     info: makeInfo(COHERE_MANIFEST, {
       tagline: "Multilingual speech recognition tuned for accuracy.",
       languageCount: 14,
       quantization: "4-bit",
-      isDefault: true,
+      isDefault: false,
     }),
     requiredFilePaths: [
       "config.json",
@@ -220,7 +277,7 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
 };
 
 /** Ordered list of model ids (default first), for stable UI rendering. */
-export const LOCAL_MODEL_IDS: string[] = [COHERE_ID, WHISPER_ID];
+export const LOCAL_MODEL_IDS: string[] = [PARAKEET_ID, COHERE_ID, WHISPER_ID];
 
 export function getModelEntry(modelId: string): LocalModelEntry | undefined {
   return LOCAL_MODELS[modelId];
