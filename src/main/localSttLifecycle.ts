@@ -79,6 +79,18 @@ export async function installLocalModelAndSyncSidecar(
   modelId?: string,
 ): Promise<void> {
   await installModel(modelId);
+  // Installing never activates by itself, but if the active model is unusable
+  // (e.g. it was removed and the fallback landed on something not installed),
+  // dictation would stay broken with a freshly ready model one click away.
+  // Promote the just-installed model in that case; the stt:install-model
+  // handler's scheduled prewarm then spawns the right family.
+  if (
+    modelId &&
+    getModelInstallState() !== "ready" &&
+    getModelInstallState(modelId) === "ready"
+  ) {
+    await setActiveModelAndResync(modelId);
+  }
   await syncLocalSidecarForCurrentProvider();
 }
 
