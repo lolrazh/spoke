@@ -60,6 +60,21 @@ function buildIndex(dictionary: readonly string[]): Index {
   return { canonical, phonetic, words: [...canonical.values()] };
 }
 
+// The dictionary array is replaced wholesale on every edit (the IPC handler
+// sanitizes into a fresh array; the prefs loader parses a fresh one) and never
+// mutated in place, so reference identity is a correct invalidation signal:
+// one slot, rebuilt only when the dictionary actually changes.
+let cachedDictionary: readonly string[] | null = null;
+let cachedIndex: Index | null = null;
+
+function getIndex(dictionary: readonly string[]): Index {
+  if (dictionary !== cachedDictionary || cachedIndex === null) {
+    cachedIndex = buildIndex(dictionary);
+    cachedDictionary = dictionary;
+  }
+  return cachedIndex;
+}
+
 function similarity(a: string, b: string): number {
   const max = Math.max(a.length, b.length);
   if (max === 0) return 1;
@@ -125,7 +140,7 @@ export function correctTranscript(
   dictionary: readonly string[],
 ): string {
   if (dictionary.length === 0) return text;
-  const index = buildIndex(dictionary);
+  const index = getIndex(dictionary);
 
   return text.replace(WORD_SPAN, (token) => {
     // Strip a trailing possessive before matching so "Sandheap's" is compared
@@ -167,6 +182,8 @@ export function isDictionaryWord(
   word: string,
   dictionary: readonly string[],
 ): boolean {
-  const target = word.toLowerCase();
-  return expandEntries(dictionary).some((part) => part.toLowerCase() === target);
+  // Short-circuit before touching the cache so a transient empty array (the
+  // formatter's `?? []` default) can't evict a warm index.
+  if (!Array.isArray(dictionary) || dictionary.length === 0) return false;
+  return getIndex(dictionary).canonical.has(word.toLowerCase());
 }

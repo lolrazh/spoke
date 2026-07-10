@@ -82,6 +82,20 @@ describe("main/dictionaryCorrection", () => {
     );
   });
 
+  it("never serves a stale cached index after the dictionary changes", () => {
+    // Same input, three dictionaries: the cached index must follow the
+    // reference passed in, not the first one it ever saw.
+    expect(correctTranscript("I met Sandheap", ["Sandheep"])).toBe(
+      "I met Sandheep",
+    );
+    expect(correctTranscript("I met Sandheap", ["Rajkumar"])).toBe(
+      "I met Sandheap",
+    );
+    expect(correctTranscript("I met Sandheap", ["Sandheep"])).toBe(
+      "I met Sandheep",
+    );
+  });
+
   it("survives a malformed dictionary from a corrupt prefs file", () => {
     // Transcription must never fail because prefs JSON has the wrong shape.
     const junk = [42, null, "Sandheep"] as unknown as string[];

@@ -58,23 +58,32 @@ function genTokens(count: number, seed: number, min: number, max: number): strin
 }
 
 // Case 1: single 3-char common word falls below MIN_TOKEN_LENGTH and returns
-// immediately, so ~all cost is buildIndex — the per-call rebuild floor.
+// immediately, so ~all cost is buildIndex — the cost paid once per dictionary
+// edit. The index is cached on the array's reference identity, so each cold
+// bench passes a fresh copy to force a rebuild; the warm bench reuses the same
+// reference, which is the steady state every dictation after the first hits.
 const MINIMAL_TRANSCRIPT = "the";
 const dict10 = genDictionary(10, 1);
 const dict100 = genDictionary(100, 2);
 const dict1000 = genDictionary(1000, 3);
 const dict10000 = genDictionary(10000, 4);
 
-describe("index-rebuild floor (minimal transcript)", () => {
+describe("index build (cold cache, minimal transcript)", () => {
   bench("dictionary 10", () => {
-    correctTranscript(MINIMAL_TRANSCRIPT, dict10);
+    correctTranscript(MINIMAL_TRANSCRIPT, dict10.slice());
   });
   bench("dictionary 100", () => {
-    correctTranscript(MINIMAL_TRANSCRIPT, dict100);
+    correctTranscript(MINIMAL_TRANSCRIPT, dict100.slice());
   });
   bench("dictionary 1,000", () => {
-    correctTranscript(MINIMAL_TRANSCRIPT, dict1000);
+    correctTranscript(MINIMAL_TRANSCRIPT, dict1000.slice());
   });
+  bench("dictionary 10,000", () => {
+    correctTranscript(MINIMAL_TRANSCRIPT, dict10000.slice());
+  });
+});
+
+describe("index reuse (warm cache, minimal transcript)", () => {
   bench("dictionary 10,000", () => {
     correctTranscript(MINIMAL_TRANSCRIPT, dict10000);
   });
