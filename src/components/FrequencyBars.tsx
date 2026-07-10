@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useAudioLevel } from "../state/audioLevel";
 
@@ -25,6 +25,9 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 
   // Transition blend: 0 = listening, 1 = processing
   const [transitionBlend, setTransitionBlend] = useState(isProcessing ? 1 : 0);
+  // Mirrors transitionBlend so the rAF loop can read the latest value without
+  // re-subscribing the effect on every frame.
+  const transitionBlendRef = useRef(transitionBlend);
 
   // Animate the wave continuously when processing
   useEffect(() => {
@@ -37,23 +40,39 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
     return () => clearInterval(interval);
   }, [isProcessing]);
 
-  // Smooth transition between listening and processing states
+  // Smooth transition between listening and processing states. The loop stops
+  // itself once the blend converges and only restarts when the target changes
+  // (isProcessing/isListening), rather than re-scheduling forever at 60Hz.
   useEffect(() => {
-    const targetBlend = isProcessing ? 1 : isListening ? 0 : transitionBlend;
+    const targetBlend = isProcessing
+      ? 1
+      : isListening
+        ? 0
+        : transitionBlendRef.current;
 
-    let rafId: number;
+    let rafId: number | null = null;
     const animate = () => {
-      setTransitionBlend((prev) => {
-        const diff = targetBlend - prev;
-        if (Math.abs(diff) < 0.01) return targetBlend;
-        // Smooth spring-like interpolation
-        return prev + diff * 0.18;
-      });
+      const prev = transitionBlendRef.current;
+      const diff = targetBlend - prev;
+      if (Math.abs(diff) < 0.01) {
+        // Converged: snap to the target and do NOT schedule another frame.
+        if (prev !== targetBlend) {
+          transitionBlendRef.current = targetBlend;
+          setTransitionBlend(targetBlend);
+        }
+        return;
+      }
+      // Smooth spring-like interpolation
+      const next = prev + diff * 0.18;
+      transitionBlendRef.current = next;
+      setTransitionBlend(next);
       rafId = requestAnimationFrame(animate);
     };
 
     rafId = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, [isProcessing, isListening]);
 
   // Generate symmetric height pattern for base heights
