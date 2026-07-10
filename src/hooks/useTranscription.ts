@@ -142,14 +142,12 @@ export function useTranscription(
       window.electron?.bootMark?.("transcription-hook:get-provider:done");
     });
 
-    const vadPrewarmTimer = window.setTimeout(() => {
-      prewarmVad()
-        .then(() => vadLog.info("Prewarm ready"))
-        .catch((err) => vadLog.warn("Prewarm failed:", err));
-    }, 750);
-
+    // No boot-time VAD prewarm: the model is warmed on dictation intent
+    // (start(), the PTT key-down) instead, so its onnxruntime-web WASM heap
+    // never goes resident in the always-open pill window if the user never
+    // dictates. After a stretch of inactivity it's released again (see
+    // VAD_IDLE_RELEASE_MS / resolveVadModel's idle watchdog).
     return () => {
-      window.clearTimeout(vadPrewarmTimer);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
