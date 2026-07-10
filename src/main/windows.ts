@@ -374,19 +374,34 @@ export function coalescedSetBounds(bounds: Rectangle): void {
   }, 16);
 }
 
+// refreshNotchInfo spawns a native binary each time, and display-metrics-changed
+// fires in bursts (e.g. resolution/arrangement changes). Debounce the refresh so
+// a burst spawns the helper once, on the trailing edge; the emit still runs after
+// that final refresh completes.
+const NOTCH_REFRESH_DEBOUNCE_MS = 300;
+let notchRefreshTimer: NodeJS.Timeout | null = null;
+
+function debouncedRefreshNotchInfoAndEmit(reason: string): void {
+  if (notchRefreshTimer) clearTimeout(notchRefreshTimer);
+  notchRefreshTimer = setTimeout(() => {
+    notchRefreshTimer = null;
+    void refreshNotchInfoAndEmit(reason);
+  }, NOTCH_REFRESH_DEBOUNCE_MS);
+}
+
 // React to OS display changes to keep the pill consistent
 export function registerDisplayChangeListeners(): void {
   screen.on("display-added", () => {
     syncToCurrentDisplay("display-added");
-    void refreshNotchInfoAndEmit("display-added");
+    debouncedRefreshNotchInfoAndEmit("display-added");
   });
   screen.on("display-removed", () => {
     syncToCurrentDisplay("display-removed");
-    void refreshNotchInfoAndEmit("display-removed");
+    debouncedRefreshNotchInfoAndEmit("display-removed");
   });
   screen.on("display-metrics-changed", () => {
     syncToCurrentDisplay("display-metrics-changed");
-    void refreshNotchInfoAndEmit("display-metrics-changed");
+    debouncedRefreshNotchInfoAndEmit("display-metrics-changed");
   });
 }
 
