@@ -10,7 +10,7 @@ vi.mock("./icons/SfIcon", () => ({
   ),
 }));
 
-const historyItems: TranscriptionItem[] = [
+const singleItem: TranscriptionItem[] = [
   {
     id: "history-1",
     text: "Copied transcript text",
@@ -19,12 +19,16 @@ const historyItems: TranscriptionItem[] = [
   },
 ];
 
+const mockState = vi.hoisted(() => ({
+  items: [] as unknown[],
+}));
+
 vi.mock("../state/transcriptionHistory", () => ({
-  getTranscriptionHistory: () => historyItems,
+  getTranscriptionHistory: () => mockState.items,
   subscribeTranscriptionHistory: (
     listener: (items: TranscriptionItem[]) => void,
   ) => {
-    listener(historyItems);
+    listener(mockState.items as TranscriptionItem[]);
     return () => {};
   },
 }));
@@ -36,6 +40,7 @@ describe("TranscriptionHistoryView", () => {
   );
 
   beforeEach(() => {
+    mockState.items = singleItem;
     vi.spyOn(console, "warn").mockImplementation(() => {});
     (window as any).clipboard = {
       writeText: vi.fn(async () => ({ ok: true })),
@@ -84,5 +89,24 @@ describe("TranscriptionHistoryView", () => {
         "Copied transcript text",
       ),
     );
+  });
+
+  it("renders only the first page and offers to load more when the list is large", () => {
+    const now = Date.now();
+    mockState.items = Array.from({ length: 120 }, (_, i) => ({
+      id: `bulk-${i}`,
+      text: `Bulk transcript ${i}`,
+      timestamp: now - i * 60_000,
+      mode: "dictation" as const,
+    }));
+
+    render(<TranscriptionHistoryView />);
+
+    // Only the first page (PAGE_SIZE = 50) of items is rendered, not all 120,
+    // so the view maps and groups just the visible window.
+    expect(
+      screen.getAllByRole("button", { name: "Copy to clipboard" }),
+    ).toHaveLength(50);
+    expect(screen.getByText("Loading more...")).toBeTruthy();
   });
 });
