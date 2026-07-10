@@ -77,6 +77,18 @@ function bestFrom(candidates: string[], lower: string, threshold: number): Score
   return scored;
 }
 
+// An entry with intentional casing (Sandheep, iPhone) always wins. An
+// all-lowercase entry carries no casing signal, so inherit the token's leading
+// capital rather than downcasing a sentence start or a proper noun the model
+// already got right.
+function matchCasing(entry: string, stem: string): string {
+  if (entry !== entry.toLowerCase()) return entry;
+  if (/^\p{Lu}/u.test(stem)) {
+    return entry.charAt(0).toUpperCase() + entry.slice(1);
+  }
+  return entry;
+}
+
 type Match = { word: string; sim: number; path: "phonetic" | "fuzzy" };
 
 function findMatch(stem: string, lower: string, index: Index): Match | null {
@@ -129,18 +141,20 @@ export function correctTranscript(
 
     const exact = index.canonical.get(lower);
     if (exact !== undefined) {
-      if (exact !== stem) {
-        log.info(`"${stem}" -> "${exact}" (exact)`);
+      const cased = matchCasing(exact, stem);
+      if (cased !== stem) {
+        log.info(`"${stem}" -> "${cased}" (exact)`);
       }
-      return `${exact}${possessive}`;
+      return `${cased}${possessive}`;
     }
 
     const match = findMatch(stem, lower, index);
     if (!match) return token;
+    const cased = matchCasing(match.word, stem);
     log.info(
-      `"${stem}" -> "${match.word}" (${match.path}, similarity=${match.sim.toFixed(2)})`,
+      `"${stem}" -> "${cased}" (${match.path}, similarity=${match.sim.toFixed(2)})`,
     );
-    return `${match.word}${possessive}`;
+    return `${cased}${possessive}`;
   });
 }
 

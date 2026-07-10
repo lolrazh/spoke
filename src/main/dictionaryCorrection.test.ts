@@ -64,6 +64,24 @@ describe("main/dictionaryCorrection", () => {
     ).toBe("I saw Sandheep and later Rajkumar");
   });
 
+  it("keeps a capitalized token capitalized when the entry is lowercase", () => {
+    expect(correctTranscript("I met Sandheep today", ["sandheep"])).toBe(
+      "I met Sandheep today",
+    );
+  });
+
+  it("inherits the token's leading capital on a phonetic correction", () => {
+    expect(correctTranscript("I met Sandheap today", ["sandheep"])).toBe(
+      "I met Sandheep today",
+    );
+  });
+
+  it("enforces an entry's intentional casing on a lowercase token", () => {
+    expect(correctTranscript("we use rapidfuzz here", ["RapidFuzz"])).toBe(
+      "we use RapidFuzz here",
+    );
+  });
+
   it("does not correct when two candidates are a near-tie", () => {
     // "Karan" is equidistant from both entries (similarity 0.8 each), so there
     // is no clear winner and it must be left unchanged.
