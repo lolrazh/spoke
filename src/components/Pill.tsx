@@ -8,7 +8,7 @@ import React, {
 import { motion, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
-import FrequencyBars from "./FrequencyBars";
+import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -49,7 +49,6 @@ interface PillProps {
   };
   notifWidth: number | null;
   isTextTruncated: boolean;
-  audioLevel: number;
   dims: {
     baseW: number;
     baseH: number;
@@ -76,7 +75,6 @@ interface PillProps {
 const Pill: React.FC<PillProps> = ({
   pillState,
   pillContext,
-  audioLevel,
   onHoverChange,
   onMetrics,
   onAnimDone,
@@ -383,8 +381,7 @@ const Pill: React.FC<PillProps> = ({
               >
                 {/* Visuals for non-notification states */}
                 {pillState === "LISTENING" && (
-                  <FrequencyBars
-                    audioLevel={audioLevel}
+                  <ListeningFrequencyBars
                     isListening={true}
                     isIdle={false}
                     isHovered={false}

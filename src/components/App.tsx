@@ -610,7 +610,6 @@ const AppInner: React.FC = () => {
         pillContext={pillContext}
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
-        audioLevel={trans.audioLevel}
         dims={{
           baseW: BASE_W,
           baseH: BASE_H,

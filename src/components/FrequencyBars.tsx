@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { useAudioLevel } from "../state/audioLevel";
 
 interface FrequencyBarsProps {
   audioLevel: number; // 0-1 range
@@ -151,3 +152,15 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 };
 
 export default FrequencyBars;
+
+/**
+ * Listening visualizer that subscribes to the live audio level store directly.
+ * Isolating the subscription here means an audio frame (~33x/sec) re-renders
+ * only this leaf, not the pill or the app tree.
+ */
+export const ListeningFrequencyBars: React.FC<
+  Omit<FrequencyBarsProps, "audioLevel">
+> = (props) => {
+  const audioLevel = useAudioLevel();
+  return <FrequencyBars audioLevel={audioLevel} {...props} />;
+};

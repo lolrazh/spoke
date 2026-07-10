@@ -33,6 +33,7 @@ import {
 } from "../utils/streamingVad";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
+import { setAudioLevel } from "../state/audioLevel";
 import { POST_ROLL_MS } from "../config/audio";
 import {
   ENABLE_SCREEN_CONTEXT,
@@ -58,7 +59,6 @@ export interface UseTranscriptionReturn {
   error: string | null;
   errorId: number;
   mode: TranscriptionMode;
-  audioLevel: number;
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -80,7 +80,6 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
-  const [audioLevel, setAudioLevel] = useState(0);
 
   const recorderRef = useRef<PcmCaptureSession | null>(null);
   const recorderStartPromiseRef = useRef<Promise<PcmCaptureSession> | null>(
@@ -420,6 +419,8 @@ export function useTranscription(
     try {
       setProcessing(true);
       setRecording(false);
+      // Recording ended — drop the live level so the visualizer settles to idle.
+      setAudioLevel(0);
       playToggleOff();
 
       // Post-roll: capture any tail audio the user spoke right up to
@@ -612,7 +613,6 @@ export function useTranscription(
     error,
     errorId,
     mode: DICTATION_MODE,
-    audioLevel,
     start,
     stop,
     cancel,
