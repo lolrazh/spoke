@@ -103,10 +103,7 @@ const DictionaryRowInner: React.FC<DictionaryRowProps> = ({
   );
 };
 
-const DictionaryRow = React.memo(
-  DictionaryRowInner,
-  (prev, next) => prev.word === next.word,
-);
+const DictionaryRow = React.memo(DictionaryRowInner);
 
 const DictionaryView: React.FC = () => {
   const { dictionary, addWord, removeWord, editWord } = useVocabulary();

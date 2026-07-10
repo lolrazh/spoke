@@ -49,6 +49,81 @@ describe("DictionaryView", () => {
     expect((input as HTMLInputElement).value).toBe("");
   });
 
+  it("title-cases an all-lowercase word on add", async () => {
+    const { setVocabularyDictionary } = mockElectron([]);
+    render(<DictionaryView />);
+
+    const input = screen.getByLabelText("Add a word");
+    fireEvent.change(input, { target: { value: "parakeet holdings" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(setVocabularyDictionary).toHaveBeenCalledWith([
+        "Parakeet Holdings",
+      ]),
+    );
+  });
+
+  it("keeps intentional casing on add", async () => {
+    const { setVocabularyDictionary } = mockElectron([]);
+    render(<DictionaryView />);
+
+    const input = screen.getByLabelText("Add a word");
+    fireEvent.change(input, { target: { value: "iPhone" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(setVocabularyDictionary).toHaveBeenCalledWith(["iPhone"]),
+    );
+  });
+
+  it("stores an edit verbatim, so editing can force a lowercase entry", async () => {
+    const { setVocabularyDictionary } = mockElectron(["Kubectl"]);
+    render(<DictionaryView />);
+    await screen.findByText("Kubectl");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Kubectl" }));
+    const input = screen.getByLabelText("Edit Kubectl");
+    fireEvent.change(input, { target: { value: "kubectl" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(setVocabularyDictionary).toHaveBeenCalledWith(["kubectl"]),
+    );
+  });
+
+  it("removes against the latest list after an add (memoized rows must not act on a stale list)", async () => {
+    const { setVocabularyDictionary } = mockElectron(["Anthropic"]);
+    render(<DictionaryView />);
+    await screen.findByText("Anthropic");
+
+    const input = screen.getByLabelText("Add a word");
+    fireEvent.change(input, { target: { value: "Parakeet" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByText("Parakeet");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Anthropic" }));
+
+    await waitFor(() =>
+      expect(setVocabularyDictionary).toHaveBeenLastCalledWith(["Parakeet"]),
+    );
+  });
+
+  it("rolls back the optimistic update when the write is rejected", async () => {
+    mockElectron(["Anthropic"]);
+    (window as any).electron.setVocabularyDictionary = vi.fn(async () => ({
+      ok: false,
+      error: "disk full",
+    }));
+    render(<DictionaryView />);
+    await screen.findByText("Anthropic");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Anthropic" }));
+
+    // The word must come back once the failed write reports { ok: false }.
+    expect(await screen.findByText("Anthropic")).toBeTruthy();
+  });
+
   it("ignores an empty submit and a case-insensitive duplicate", async () => {
     const { setVocabularyDictionary } = mockElectron(["Anthropic"]);
     render(<DictionaryView />);
