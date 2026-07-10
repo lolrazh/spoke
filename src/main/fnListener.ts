@@ -19,6 +19,11 @@ import { preSpawnPasteHelper, killPasteDaemon } from "./pasteDaemon";
 import { prewarmLocalSidecar } from "./localSttLifecycle";
 import { state } from "./windowState";
 
+// Per-key-event tracing is noisy (one line per PTT press/release); gate it
+// behind an env flag so it stays off the hot path in normal runs.
+const DEBUG_PTT =
+  process.env.SF_DEBUG_PTT === "1" || process.env.SF_DEBUG_PTT === "true";
+
 // ── Internal state ─────────────────────────────────────────────────────
 
 let fnProc: import("child_process").ChildProcessWithoutNullStreams | null =
@@ -153,7 +158,8 @@ export function startFnListener() {
         const trimmedLine = line.trim();
         if (!trimmedLine) return; // Skip empty lines
 
-        console.log(`[FnListener] Received command: "${trimmedLine}"`);
+        if (DEBUG_PTT)
+          console.log(`[FnListener] Received command: "${trimmedLine}"`);
         if (trimmedLine === "ready") {
           bootTimeline.mark("helper:ready");
         }
