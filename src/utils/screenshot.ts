@@ -69,12 +69,26 @@ export async function captureScreenshot(
   // Step 1: Determine target display
   const targetDisplay = getTargetDisplay(display);
 
-  // Step 2: Capture screenshot using desktopCapturer
+  // Step 2: Capture screenshot using desktopCapturer.
+  // Request the thumbnail already scaled to the target dimensions (preserving
+  // aspect ratio) rather than capturing at full native resolution and
+  // downscaling afterwards — this avoids allocating/encoding the full-res
+  // bitmap for a frame we only ever use at <= maxDimension.
+  const nativeWidth = targetDisplay.bounds.width * targetDisplay.scaleFactor;
+  const nativeHeight = targetDisplay.bounds.height * targetDisplay.scaleFactor;
+  let thumbnailWidth = nativeWidth;
+  let thumbnailHeight = nativeHeight;
+  if (maxDimension && Math.max(nativeWidth, nativeHeight) > maxDimension) {
+    const scale = maxDimension / Math.max(nativeWidth, nativeHeight);
+    thumbnailWidth = Math.floor(nativeWidth * scale);
+    thumbnailHeight = Math.floor(nativeHeight * scale);
+  }
+
   const sources = await desktopCapturer.getSources({
     types: ["screen"],
     thumbnailSize: {
-      width: targetDisplay.bounds.width * targetDisplay.scaleFactor,
-      height: targetDisplay.bounds.height * targetDisplay.scaleFactor,
+      width: thumbnailWidth,
+      height: thumbnailHeight,
     },
   });
 
@@ -96,7 +110,8 @@ export async function captureScreenshot(
   // Step 3: Get the thumbnail (this is our screenshot)
   let thumbnail = source.thumbnail;
 
-  // Step 4: Optional scaling (for future optimization)
+  // Step 4: Defensive clamp — the thumbnail is already requested at the target
+  // size, but some capture backends may return a slightly larger frame.
   if (maxDimension) {
     const size = thumbnail.getSize();
     if (size.width > maxDimension || size.height > maxDimension) {

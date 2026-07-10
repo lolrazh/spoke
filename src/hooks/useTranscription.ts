@@ -33,6 +33,7 @@ import {
 } from "../utils/streamingVad";
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
+import { setAudioLevel } from "../state/audioLevel";
 import { POST_ROLL_MS } from "../config/audio";
 import {
   ENABLE_SCREEN_CONTEXT,
@@ -58,7 +59,6 @@ export interface UseTranscriptionReturn {
   error: string | null;
   errorId: number;
   mode: TranscriptionMode;
-  audioLevel: number;
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -80,7 +80,6 @@ export function useTranscription(
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
-  const [audioLevel, setAudioLevel] = useState(0);
 
   const recorderRef = useRef<PcmCaptureSession | null>(null);
   const recorderStartPromiseRef = useRef<Promise<PcmCaptureSession> | null>(
@@ -143,14 +142,12 @@ export function useTranscription(
       window.electron?.bootMark?.("transcription-hook:get-provider:done");
     });
 
-    const vadPrewarmTimer = window.setTimeout(() => {
-      prewarmVad()
-        .then(() => vadLog.info("Prewarm ready"))
-        .catch((err) => vadLog.warn("Prewarm failed:", err));
-    }, 750);
-
+    // No boot-time VAD prewarm: the model is warmed on dictation intent
+    // (start(), the PTT key-down) instead, so its onnxruntime-web WASM heap
+    // never goes resident in the always-open pill window if the user never
+    // dictates. After a stretch of inactivity it's released again (see
+    // VAD_IDLE_RELEASE_MS / resolveVadModel's idle watchdog).
     return () => {
-      window.clearTimeout(vadPrewarmTimer);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -307,14 +304,14 @@ export function useTranscription(
       result,
       timing,
       providerKind,
-      capturedAudio,
+      capturedAudioMs,
       vadResult,
       isCancelled,
     }: {
       result: TranscriptionResult;
       timing: TranscriptionLatencyTiming;
       providerKind: TranscriptionProviderKind;
-      capturedAudio: CapturedAudio;
+      capturedAudioMs: number;
       vadResult: VadAudioResult;
       isCancelled: () => boolean;
     }) => {
@@ -369,7 +366,7 @@ export function useTranscription(
         providerKind,
         status: "done",
         timing,
-        capturedAudio,
+        capturedAudioMs,
         vadResult,
         metrics: result.metrics,
       });
@@ -420,6 +417,8 @@ export function useTranscription(
     try {
       setProcessing(true);
       setRecording(false);
+      // Recording ended — drop the live level so the visualizer settles to idle.
+      setAudioLevel(0);
       playToggleOff();
 
       // Post-roll: capture any tail audio the user spoke right up to
@@ -450,17 +449,16 @@ export function useTranscription(
       recorderRef.current = null;
       recorderStartPromiseRef.current = null;
       timing.pcmStopStartedAt = performance.now();
-      const capturedAudio = await recorder.stop();
+      let capturedAudio: CapturedAudio | null = await recorder.stop();
       timing.pcmReadyAt = performance.now();
       if (isCancelled()) return;
+      const capturedAudioMs = Math.round(capturedAudio.durationMs);
       log.info(
-        `PCM captured: ${capturedAudio.pcm16.length} samples, ${Math.round(capturedAudio.durationMs)}ms`,
+        `PCM captured: ${capturedAudio.pcm16.length} samples, ${capturedAudioMs}ms`,
       );
 
       timing.vadStartedAt = performance.now();
-      vadLog.info(
-        `Starting trim for ${Math.round(capturedAudio.durationMs)}ms audio`,
-      );
+      vadLog.info(`Starting trim for ${capturedAudioMs}ms audio`);
       let vadResult: VadAudioResult | null = null;
       if (streamingVadSession && streamingVadSession.isUsable()) {
         vadResult = await streamingVadSession.finish(capturedAudio);
@@ -477,13 +475,18 @@ export function useTranscription(
         `speech=${vadResult.speechDetected} segments=${vadResult.segments.length} leading=${Math.round(vadResult.leadingTrimmedMs)}ms trailing=${Math.round(vadResult.trailingTrimmedMs)}ms vad=${vadResult.vadMs}ms`,
       );
 
+      // The trimmed clip (vadResult.audio) is all that feeds STT from here on;
+      // drop the reference to the full untrimmed capture so its PCM can be
+      // reclaimed while transcription/enhancement/paste run.
+      capturedAudio = null;
+
       if (!vadResult.speechDetected) {
         log.info("No speech detected; skipping STT");
         logTranscriptionLatency({
           providerKind: provider.descriptor.kind,
           status: "no_speech",
           timing,
-          capturedAudio,
+          capturedAudioMs,
           vadResult,
         });
         setText("");
@@ -527,7 +530,7 @@ export function useTranscription(
         result,
         timing,
         providerKind,
-        capturedAudio,
+        capturedAudioMs,
         vadResult,
         isCancelled,
       });
@@ -612,7 +615,6 @@ export function useTranscription(
     error,
     errorId,
     mode: DICTATION_MODE,
-    audioLevel,
     start,
     stop,
     cancel,
@@ -660,14 +662,14 @@ function logTranscriptionLatency({
   providerKind,
   status,
   timing,
-  capturedAudio,
+  capturedAudioMs,
   vadResult,
   metrics,
 }: {
   providerKind: TranscriptionProviderKind;
   status: "done" | "no_speech";
   timing: TranscriptionLatencyTiming;
-  capturedAudio: CapturedAudio;
+  capturedAudioMs: number;
   vadResult: VadAudioResult;
   metrics?: Record<string, unknown>;
 }) {
@@ -685,7 +687,7 @@ function logTranscriptionLatency({
     stt_wall_ms: elapsedMs(timing.sttStartedAt, timing.sttDoneAt),
     sidecar_inference_ms: numberMetric(metrics, "inference_ms"),
     paste_ms: elapsedMs(timing.pasteStartedAt, timing.pasteDoneAt),
-    captured_audio_ms: Math.round(capturedAudio.durationMs),
+    captured_audio_ms: capturedAudioMs,
     transcribed_audio_ms: Math.round(vadResult.audio.durationMs),
     trimmed_audio_ms: Math.round(trimmedMs),
   });

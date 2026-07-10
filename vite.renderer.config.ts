@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
 // https://vitejs.dev/config/
-export default defineConfig({
+// The Forge Vite plugin passes mode "production" on package/make and
+// "development" on dev start, so gate sourcemaps to keep them out of releases.
+export default defineConfig(({ mode }) => ({
   base: "./",
   plugins: [
     react(),
@@ -33,8 +35,13 @@ export default defineConfig({
           dest: "vad",
         },
         {
-          // Copy ORT Web WASM binaries for VAD
-          src: [join(__dirname, "public/vad/ort-wasm/*")],
+          // Copy the ORT Web WASM binary for VAD. NonRealTimeVAD (the only
+          // vad-web API we use) resolves onnxruntime-web to its `ort.min`
+          // build, which loads the jsep pair; the non-jsep CPU pair is only
+          // reachable via MicVAD, which we never touch, so it isn't vendored.
+          src: [
+            join(__dirname, "public/vad/ort-wasm/ort-wasm-simd-threaded.jsep.*"),
+          ],
           dest: "vad/ort-wasm",
         },
       ],
@@ -52,6 +59,6 @@ export default defineConfig({
     // Don't override rollupOptions.input - let Forge control it
     target: "esnext",
 
-    sourcemap: true,
+    sourcemap: mode !== "production",
   },
-});
+}));

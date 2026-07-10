@@ -108,7 +108,11 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private frameProcessor: FrameProcessor | null = null;
   private disposed = false;
 
-  private carry = new Float32Array(0);
+  // Persistent scratch for samples that don't yet fill a model window. Sized
+  // for a full window (leftover is always < MODEL_FRAME_SAMPLES), so it's
+  // allocated once and reused rather than re-sliced every 30ms frame.
+  private readonly carryBuf = new Float32Array(MODEL_FRAME_SAMPLES);
+  private carryLen = 0;
   private pendingWindows: Float32Array[] = [];
   private queueDepth = 0;
 
@@ -182,16 +186,33 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   }
 
   private appendSamples(float32: Float32Array): void {
-    const combined = new Float32Array(this.carry.length + float32.length);
-    combined.set(this.carry, 0);
-    combined.set(float32, this.carry.length);
-
-    let offset = 0;
-    while (combined.length - offset >= MODEL_FRAME_SAMPLES) {
-      this.enqueueWindow(combined.slice(offset, offset + MODEL_FRAME_SAMPLES));
-      offset += MODEL_FRAME_SAMPLES;
+    // Emit as many full MODEL_FRAME_SAMPLES windows as carry + this frame can
+    // fill, without materializing a `combined` buffer per frame. Each window is
+    // still its own Float32Array because the frame processor retains it (it
+    // buffers frames to build the eventual speech segment), so those copies are
+    // load-bearing; only the transient per-frame `combined`/carry slices are gone.
+    let inputOffset = 0;
+    while (this.carryLen + (float32.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
+      const window = new Float32Array(MODEL_FRAME_SAMPLES);
+      if (this.carryLen > 0) {
+        window.set(this.carryBuf.subarray(0, this.carryLen), 0);
+      }
+      const needed = MODEL_FRAME_SAMPLES - this.carryLen;
+      window.set(float32.subarray(inputOffset, inputOffset + needed), this.carryLen);
+      inputOffset += needed;
+      this.carryLen = 0;
+      this.enqueueWindow(window);
     }
-    this.carry = combined.slice(offset);
+
+    // Stash the remaining (sub-window) samples back into the reusable carry.
+    const remaining = float32.length - inputOffset;
+    if (remaining > 0) {
+      this.carryBuf.set(
+        float32.subarray(inputOffset, inputOffset + remaining),
+        this.carryLen,
+      );
+      this.carryLen += remaining;
+    }
   }
 
   private enqueueWindow(window: Float32Array): void {

@@ -16,7 +16,13 @@ import { getHelperPath } from "./helperPaths";
 import { bootTimeline } from "./bootTimeline";
 import { spawnHelper } from "./helperProcess";
 import { preSpawnPasteHelper, killPasteDaemon } from "./pasteDaemon";
+import { prewarmLocalSidecar } from "./localSttLifecycle";
 import { state } from "./windowState";
+
+// Per-key-event tracing is noisy (one line per PTT press/release); gate it
+// behind an env flag so it stays off the hot path in normal runs.
+const DEBUG_PTT =
+  process.env.SF_DEBUG_PTT === "1" || process.env.SF_DEBUG_PTT === "true";
 
 // ── Internal state ─────────────────────────────────────────────────────
 
@@ -152,7 +158,8 @@ export function startFnListener() {
         const trimmedLine = line.trim();
         if (!trimmedLine) return; // Skip empty lines
 
-        console.log(`[FnListener] Received command: "${trimmedLine}"`);
+        if (DEBUG_PTT)
+          console.log(`[FnListener] Received command: "${trimmedLine}"`);
         if (trimmedLine === "ready") {
           bootTimeline.mark("helper:ready");
         }
@@ -175,6 +182,10 @@ export function startFnListener() {
         } else if (trimmedLine === "optR-down") {
           // Right Option: primary PTT hotkey (press-and-hold)
           preSpawnPasteHelper();
+          // Start loading the model the moment the user signals dictation
+          // intent, so the idle watchdog's cold start is hidden. Self-guards
+          // on provider/ready/in-flight and re-arms the idle timer.
+          prewarmLocalSidecar("ptt-down");
           targetWindow?.webContents.send("ptt-down");
           if (
             state.pttTarget === "main" &&

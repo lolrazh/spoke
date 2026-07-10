@@ -105,6 +105,9 @@ export class PcmCaptureSession {
     await this.flush();
 
     const pcm16 = concatPcm16(this.chunks);
+    // Drop the per-frame chunks now that they're concatenated so we don't keep
+    // a second full copy of the recording alive through cleanup() and beyond.
+    this.chunks.length = 0;
     await this.cleanup();
 
     return createCapturedAudio(pcm16, {
@@ -159,6 +162,11 @@ export class PcmCaptureSession {
   }
 
   private async cleanup(): Promise<void> {
+    // Release any retained capture chunks (the cancel() path never concatenates
+    // them, and stop() already did) so the recording buffer isn't held past
+    // teardown waiting on GC.
+    this.chunks.length = 0;
+
     if (this.flushResolver) {
       this.flushResolver();
       this.flushResolver = null;

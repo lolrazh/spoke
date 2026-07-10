@@ -1,5 +1,5 @@
 import React, { useMemo, useRef } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import SettingsCard from "./SettingsCard";
 import { Button } from "./ui/button";
 import Spinner from "./ui/Spinner";
@@ -135,18 +135,18 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
           ref={contentRef}
           className="max-w-lg mx-auto w-full px-5 pt-4 pb-14"
         >
-          <motion.div
+          <m.div
             className="flex flex-col gap-4"
             initial="hidden"
             animate="visible"
             variants={panelCascadeContainer}
           >
-            <motion.div
+            <m.div
               variants={panelCascadeItem}
               style={{ marginTop: "var(--panel-section-offset)" }}
             >
               <SectionSeparator title="Permissions" />
-            </motion.div>
+            </m.div>
             {permissionEntries.map((entry) => {
               const copy = PERMISSION_COPY[entry.key];
               return (
@@ -197,7 +197,7 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
                 </SettingsCard>
               );
             })}
-          </motion.div>
+          </m.div>
         </div>
       </div>
     </div>

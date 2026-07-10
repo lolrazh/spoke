@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import SfIcon from "./icons/SfIcon";
 import IconButton from "./ui/IconButton";
 import { panelCascadeItem } from "./shared/panelMotion";
@@ -42,7 +42,7 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
   };
 
   return (
-    <motion.div
+    <m.div
       initial={skipAnimation ? false : "hidden"}
       animate="visible"
       exit="exit"
@@ -76,7 +76,7 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
           >
             <AnimatePresence mode="wait">
               {copied ? (
-                <motion.svg
+                <m.svg
                   key="check"
                   width={14}
                   height={14}
@@ -97,15 +97,15 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
                     mass: 0.5,
                   }}
                 >
-                  <motion.path
+                  <m.path
                     d="M4 12l5 5L20 6"
                     initial={{ pathLength: 0 }}
                     animate={{ pathLength: 1 }}
                     transition={{ duration: 0.15, ease: "easeOut" }}
                   />
-                </motion.svg>
+                </m.svg>
               ) : (
-                <motion.div
+                <m.div
                   key="copy"
                   initial={{ scale: 0.6, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
@@ -118,7 +118,7 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
                   }}
                 >
                   <SfIcon name="document.on.document" size={14} />
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
           </IconButton>
@@ -128,7 +128,7 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
           {formatTime(item.timestamp)}
         </span>
       </div>
-    </motion.div>
+    </m.div>
   );
 };
 

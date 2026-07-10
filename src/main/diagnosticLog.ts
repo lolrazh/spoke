@@ -19,9 +19,18 @@ const ORIGINAL_CONSOLE: Pick<Console, ConsoleMethod> = {
 const MAX_LOG_SIZE_BYTES = 5 * 1024 * 1024;
 const ROTATION_CHECK_EVERY_N_WRITES = 250;
 
+// Lines are buffered and flushed asynchronously off the hot path so console
+// calls never block the main thread on a synchronous open+write+close. A short
+// timer batches bursts into a single append; a best-effort synchronous flush on
+// process exit ensures crash logs aren't lost.
+const FLUSH_INTERVAL_MS = 250;
+
 let installed = false;
 let cachedLogPath: string | null = null;
 let writesSinceRotationCheck = 0;
+let pendingLines: string[] = [];
+let flushTimer: NodeJS.Timeout | null = null;
+let exitHookInstalled = false;
 
 export function getDiagnosticLogPath(): string {
   if (cachedLogPath) return cachedLogPath;
@@ -106,19 +115,52 @@ function appendDiagnosticLine(
   args: unknown[],
 ): void {
   try {
-    writesSinceRotationCheck += 1;
+    const timestamp = new Date().toISOString();
+    const message = args.map(formatArg).filter(Boolean).join(" ");
+    pendingLines.push(`${timestamp} [${scope}] [${level}] ${message}\n`);
+    scheduleFlush();
+  } catch {
+    // Diagnostics must never affect the app path.
+  }
+}
+
+function scheduleFlush(): void {
+  if (!exitHookInstalled) {
+    exitHookInstalled = true;
+    // Synchronously drain whatever is buffered so crash/exit logs survive.
+    process.on("exit", () => flushDiagnosticLines(true));
+  }
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    flushDiagnosticLines(false);
+  }, FLUSH_INTERVAL_MS);
+  // Never keep the event loop (or app quit) alive just to flush diagnostics.
+  flushTimer.unref?.();
+}
+
+function flushDiagnosticLines(sync: boolean): void {
+  if (pendingLines.length === 0) return;
+
+  const chunk = pendingLines.join("");
+  const lineCount = pendingLines.length;
+  pendingLines = [];
+
+  try {
+    writesSinceRotationCheck += lineCount;
     if (writesSinceRotationCheck >= ROTATION_CHECK_EVERY_N_WRITES) {
       writesSinceRotationCheck = 0;
       rotateLogIfNeeded();
     }
 
-    const timestamp = new Date().toISOString();
-    const message = args.map(formatArg).filter(Boolean).join(" ");
-    fs.appendFileSync(
-      getDiagnosticLogPath(),
-      `${timestamp} [${scope}] [${level}] ${message}\n`,
-      "utf8",
-    );
+    const logPath = getDiagnosticLogPath();
+    if (sync) {
+      fs.appendFileSync(logPath, chunk, "utf8");
+    } else {
+      fs.appendFile(logPath, chunk, "utf8", () => {
+        // Diagnostics must never affect the app path.
+      });
+    }
   } catch {
     // Diagnostics must never affect the app path.
   }

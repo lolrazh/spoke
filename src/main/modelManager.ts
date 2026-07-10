@@ -140,6 +140,11 @@ function setStatus(modelId: string, partial: Partial<ModelStatus>): void {
   const current = statuses.get(modelId) ?? defaultStatus(modelId);
   const next = { ...current, ...partial };
   statuses.set(modelId, next);
+  // The in-memory status is always kept current, but the broadcast (which fans
+  // out to every window) only fires on an actual state transition. Progress-only
+  // updates during a download flow through the throttled onDownloadProgress
+  // channel instead, avoiding thousands of redundant broadcasts per download.
+  if (next.state === current.state) return;
   try {
     callbacks.onStatusChange(next);
   } catch {}

@@ -1,5 +1,5 @@
 import React from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 
 // The app's single loading spinner. Every surface — onboarding, permissions,
 // models, updates — imports this so the colours, border weight and speed stay
@@ -12,7 +12,7 @@ import { motion } from "framer-motion";
 // A loading spinner is functional feedback (not decoration), so it should keep
 // turning — and a JS transform is immune to that CSS override.
 const Spinner: React.FC<{ className?: string }> = ({ className = "h-4 w-4" }) => (
-  <motion.span
+  <m.span
     className={`inline-block shrink-0 rounded-full border-2 border-white/30 border-t-white ${className}`}
     animate={{ rotate: 360 }}
     transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}

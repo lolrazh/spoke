@@ -127,8 +127,15 @@ export function registerSttIpc(): void {
     "stt:transcribe-local",
     async (_event, pcmBuffer: Uint8Array, prompt?: string) => {
       try {
+        // Wrap the transferred bytes in place instead of copying them: the
+        // sidecar only reads this buffer, and the Uint8Array isn't reused after
+        // this handler returns.
         return await transcribeWithLocalSidecar(
-          Buffer.from(pcmBuffer),
+          Buffer.from(
+            pcmBuffer.buffer,
+            pcmBuffer.byteOffset,
+            pcmBuffer.byteLength,
+          ),
           prompt,
         );
       } catch (err) {

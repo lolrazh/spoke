@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import DateGroup from "./DateGroup";
 import IconButton from "./ui/IconButton";
 import { useVocabulary } from "../hooks/useVocabulary";
@@ -48,7 +48,7 @@ const DictionaryRowInner: React.FC<DictionaryRowProps> = ({
   };
 
   return (
-    <motion.div
+    <m.div
       variants={panelCascadeItem}
       className="group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default"
     >
@@ -99,7 +99,7 @@ const DictionaryRowInner: React.FC<DictionaryRowProps> = ({
           </>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 };
 
@@ -117,7 +117,7 @@ const DictionaryView: React.FC = () => {
   };
 
   return (
-    <motion.div
+    <m.div
       initial="hidden"
       animate="visible"
       variants={panelCascadeContainer}
@@ -125,7 +125,7 @@ const DictionaryView: React.FC = () => {
       <DateGroup label="Vocabulary">
         {/* First slot in the list: the add-word input, same height/padding as
             the word rows so it reads as part of the list, not a header. */}
-        <motion.div
+        <m.div
           variants={panelCascadeItem}
           className="flex border-b border-white/[0.08]"
         >
@@ -148,7 +148,7 @@ const DictionaryView: React.FC = () => {
               className={INPUT_CLASS}
             />
           </div>
-        </motion.div>
+        </m.div>
 
         {dictionary.map((word) => (
           <DictionaryRow
@@ -159,7 +159,7 @@ const DictionaryView: React.FC = () => {
           />
         ))}
       </DateGroup>
-    </motion.div>
+    </m.div>
   );
 };
 

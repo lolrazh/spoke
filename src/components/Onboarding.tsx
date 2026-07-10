@@ -9,7 +9,8 @@ import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
-import { motion, AnimatePresence, type Variants } from "framer-motion";
+import { MicBars } from "./MicBars";
+import { m, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import Spinner from "./ui/Spinner";
 import {
@@ -178,7 +179,7 @@ const Onboarding: React.FC = () => {
 
   // Mic-check visualizer (Web Audio API capture + frequency analysis)
   const {
-    barValues,
+    analyserRef,
     micDevices,
     setMicDevices,
     selectedMicId,
@@ -695,7 +696,7 @@ const Onboarding: React.FC = () => {
 
       {/* Auto-restart moment after all permissions are granted */}
       {autoRestarting && (
-        <motion.div
+        <m.div
           className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-background"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -704,7 +705,7 @@ const Onboarding: React.FC = () => {
           <p className="text-sm text-foreground">
             You&apos;re all set. Restarting Spoke…
           </p>
-        </motion.div>
+        </m.div>
       )}
       {/* Native macOS traffic lights are now handled by Electron with titleBarStyle: 'hiddenInset' */}
 
@@ -790,7 +791,7 @@ const Onboarding: React.FC = () => {
             <AnimatePresence mode="wait">
               {/* Hotkey Info Step */}
               {currentStep === "hotkey-info" && (
-                <motion.div
+                <m.div
                   key="hotkey-info"
                   variants={containerVariants}
                   initial="hidden"
@@ -828,13 +829,13 @@ const Onboarding: React.FC = () => {
                     </div>
                   </div>
                   {/* Removed central Continue button; Next lives in bottom-right consistently */}
-                </motion.div>
+                </m.div>
               )}
               {/* Legacy welcome step removed (block fully deleted) */}
 
               {/* Combined Permissions Step */}
               {currentStep === "permissions" && (
-                <motion.div
+                <m.div
                   key="permissions"
                   variants={containerVariants}
                   initial="hidden"
@@ -842,21 +843,21 @@ const Onboarding: React.FC = () => {
                   exit="exit"
                   className="text-center"
                 >
-                  <motion.div className="heading-stack" variants={panelCascadeItem}>
+                  <m.div className="heading-stack" variants={panelCascadeItem}>
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Enable Required Permissions
                     </h2>
                     <p className="text-sm text-subtle leading-relaxed subheading">
                       Spoke needs these permissions to work.
                     </p>
-                  </motion.div>
+                  </m.div>
 
-                  <motion.div
+                  <m.div
                     className="onboarding-section space-y-3"
                     variants={panelCascadeContainer}
                   >
                     {/* Microphone Permission */}
-                    <motion.div
+                    <m.div
                       variants={panelCascadeItem}
                       className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.microphone ? "opacity-60" : "opacity-100"}`}
                     >
@@ -882,7 +883,7 @@ const Onboarding: React.FC = () => {
                           <div className="relative w-[84px] flex items-center justify-center">
                             <AnimatePresence mode="wait" initial={false}>
                               {!permissions.microphone ? (
-                                <motion.div
+                                <m.div
                                   key={
                                     ui.microphone.loading
                                       ? "mic-loading"
@@ -907,16 +908,16 @@ const Onboarding: React.FC = () => {
                                       )}
                                     </div>
                                   </Button>
-                                </motion.div>
+                                </m.div>
                               ) : (
                                 <div className="flex items-center justify-center">
-                                  <motion.svg
+                                  <m.svg
                                     width="22"
                                     height="22"
                                     viewBox="0 0 24 24"
                                     className="text-white/80"
                                   >
-                                    <motion.path
+                                    <m.path
                                       // Draw when just granted; otherwise show complete path instantly
                                       initial={{
                                         pathLength: ui.microphone.justGranted
@@ -939,7 +940,7 @@ const Onboarding: React.FC = () => {
                                       strokeLinecap="round"
                                       strokeLinejoin="round"
                                     />
-                                  </motion.svg>
+                                  </m.svg>
                                 </div>
                               )}
                             </AnimatePresence>
@@ -947,10 +948,10 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                       {/* No separate denied section; user can press Enable again. */}
-                    </motion.div>
+                    </m.div>
 
                     {/* Accessibility Permission */}
-                    <motion.div
+                    <m.div
                       variants={panelCascadeItem}
                       className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.accessibility ? "opacity-60" : "opacity-100"}`}
                     >
@@ -976,7 +977,7 @@ const Onboarding: React.FC = () => {
                           <div className="relative w-[84px] flex items-center justify-center">
                             <AnimatePresence mode="wait" initial={false}>
                               {!permissions.accessibility ? (
-                                <motion.div
+                                <m.div
                                   key={
                                     ui.accessibility.loading
                                       ? "ax-loading"
@@ -1001,16 +1002,16 @@ const Onboarding: React.FC = () => {
                                       )}
                                     </div>
                                   </Button>
-                                </motion.div>
+                                </m.div>
                               ) : (
                                 <div className="flex items-center justify-center">
-                                  <motion.svg
+                                  <m.svg
                                     width="22"
                                     height="22"
                                     viewBox="0 0 24 24"
                                     className="text-white/80"
                                   >
-                                    <motion.path
+                                    <m.path
                                       initial={{
                                         pathLength: ui.accessibility.justGranted
                                           ? 0
@@ -1032,7 +1033,7 @@ const Onboarding: React.FC = () => {
                                       strokeLinecap="round"
                                       strokeLinejoin="round"
                                     />
-                                  </motion.svg>
+                                  </m.svg>
                                 </div>
                               )}
                             </AnimatePresence>
@@ -1040,10 +1041,10 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                       {/* No separate denied section; user can press Enable again. */}
-                    </motion.div>
+                    </m.div>
 
                     {/* Input Monitoring Permission */}
-                    <motion.div
+                    <m.div
                       variants={panelCascadeItem}
                       className={`onboarding-permission-row rounded-lg p-3 transition-opacity duration-300 ${permissions.inputMonitoring ? "opacity-60" : "opacity-100"}`}
                     >
@@ -1069,7 +1070,7 @@ const Onboarding: React.FC = () => {
                           <div className="relative w-[84px] flex items-center justify-center">
                             <AnimatePresence mode="wait" initial={false}>
                               {!permissions.inputMonitoring ? (
-                                <motion.div
+                                <m.div
                                   key={
                                     ui.inputMonitoring.loading
                                       ? "im-loading"
@@ -1094,16 +1095,16 @@ const Onboarding: React.FC = () => {
                                       )}
                                     </div>
                                   </Button>
-                                </motion.div>
+                                </m.div>
                               ) : (
                                 <div className="flex items-center justify-center">
-                                  <motion.svg
+                                  <m.svg
                                     width="22"
                                     height="22"
                                     viewBox="0 0 24 24"
                                     className="text-white/80"
                                   >
-                                    <motion.path
+                                    <m.path
                                       initial={{
                                         pathLength: ui.inputMonitoring
                                           .justGranted
@@ -1126,7 +1127,7 @@ const Onboarding: React.FC = () => {
                                       strokeLinecap="round"
                                       strokeLinejoin="round"
                                     />
-                                  </motion.svg>
+                                  </m.svg>
                                 </div>
                               )}
                             </AnimatePresence>
@@ -1134,22 +1135,22 @@ const Onboarding: React.FC = () => {
                         </div>
                       </div>
                       {/* No separate denied section; user can press Enable again. */}
-                    </motion.div>
+                    </m.div>
 
                     {/* Auto-restart note */}
-                    <motion.p
+                    <m.p
                       variants={panelCascadeItem}
                       className="text-xs text-muted-foreground/60 text-center pt-4"
                     >
                       Spoke restarts automatically once all permissions are on.
-                    </motion.p>
-                  </motion.div>
-                </motion.div>
+                    </m.p>
+                  </m.div>
+                </m.div>
               )}
 
               {/* Mic Check Step */}
               {currentStep === "mic-check" && (
-                <motion.div
+                <m.div
                   key="mic-check"
                   variants={containerVariants}
                   initial="hidden"
@@ -1157,7 +1158,7 @@ const Onboarding: React.FC = () => {
                   exit="exit"
                   className="text-center"
                 >
-                  <motion.div className="heading-stack" variants={panelCascadeItem}>
+                  <m.div className="heading-stack" variants={panelCascadeItem}>
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Let’s Check Your Microphone
                     </h2>
@@ -1165,14 +1166,14 @@ const Onboarding: React.FC = () => {
                       Pick the right input and say a few words. The bars should
                       bounce.
                     </p>
-                  </motion.div>
+                  </m.div>
 
-                  <motion.div
+                  <m.div
                     className="onboarding-section space-y-5"
                     variants={panelCascadeContainer}
                   >
                     {/* Mic selector */}
-                    <motion.div
+                    <m.div
                       className="mx-auto w-full max-w-xl"
                       variants={panelCascadeItem}
                     >
@@ -1195,34 +1196,24 @@ const Onboarding: React.FC = () => {
                           ))}
                         </SelectContent>
                       </Select>
-                    </motion.div>
+                    </m.div>
 
-                    <motion.div
+                    <m.div
                       className="flex items-center justify-center py-3"
                       variants={panelCascadeItem}
                     >
-                      <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
-                        {barValues.map((v, i) => {
-                          const h = Math.max(6, Math.round(6 + v * 80));
-                          const opacity = 0.45 + v * 0.55;
-                          return (
-                            <div
-                              key={i}
-                              className="flex-1 rounded-[3px] bg-white/70"
-                              style={{ height: `${h}px`, opacity }}
-                              aria-hidden
-                            />
-                          );
-                        })}
-                      </div>
-                    </motion.div>
-                  </motion.div>
-                </motion.div>
+                      <MicBars
+                        analyserRef={analyserRef}
+                        active={currentStep === "mic-check"}
+                      />
+                    </m.div>
+                  </m.div>
+                </m.div>
               )}
 
               {/* Transcription Setup Step */}
               {currentStep === "transcription-setup" && (
-                <motion.div
+                <m.div
                   key="transcription-setup"
                   variants={containerVariants}
                   initial="hidden"
@@ -1230,7 +1221,7 @@ const Onboarding: React.FC = () => {
                   exit="exit"
                   className="text-center"
                 >
-                  <motion.div className="heading-stack" variants={panelCascadeItem}>
+                  <m.div className="heading-stack" variants={panelCascadeItem}>
                     <h2 className="text-heading-lg heading-gradient heading-crisp text-breathe">
                       Install Local Model
                     </h2>
@@ -1238,9 +1229,9 @@ const Onboarding: React.FC = () => {
                       Spoke transcribes on-device, so your voice is processed
                       locally instead of by a transcription server.
                     </p>
-                  </motion.div>
+                  </m.div>
 
-                  <motion.div
+                  <m.div
                     className="onboarding-section space-y-2"
                     variants={panelCascadeContainer}
                   >
@@ -1256,13 +1247,13 @@ const Onboarding: React.FC = () => {
                       enabled={shouldLoadTranscriptionSetup}
                       inGroup={false}
                     />
-                  </motion.div>
-                </motion.div>
+                  </m.div>
+                </m.div>
               )}
 
               {/* Hotkey Test Step */}
               {currentStep === "hotkey-test" && (
-                <motion.div
+                <m.div
                   key="hotkey-test"
                   variants={containerVariants}
                   initial="hidden"
@@ -1302,7 +1293,7 @@ const Onboarding: React.FC = () => {
                             <div className="onboarding-task-status">
                               <AnimatePresence mode="wait" initial={false}>
                                 {dictationChecklist.pushToTalk ? (
-                                  <motion.svg
+                                  <m.svg
                                     key="push-to-talk-done"
                                     width="22"
                                     height="22"
@@ -1313,7 +1304,7 @@ const Onboarding: React.FC = () => {
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
                                   >
-                                    <motion.path
+                                    <m.path
                                       initial={{ pathLength: 0 }}
                                       animate={{ pathLength: 1 }}
                                       transition={{
@@ -1326,9 +1317,9 @@ const Onboarding: React.FC = () => {
                                       strokeLinecap="round"
                                       strokeLinejoin="round"
                                     />
-                                  </motion.svg>
+                                  </m.svg>
                                 ) : (
-                                  <motion.span
+                                  <m.span
                                     key="push-to-talk-try"
                                     className="onboarding-task-prompt"
                                     initial={{ opacity: 0 }}
@@ -1337,7 +1328,7 @@ const Onboarding: React.FC = () => {
                                     aria-hidden
                                   >
                                     Try
-                                  </motion.span>
+                                  </m.span>
                                 )}
                               </AnimatePresence>
                             </div>
@@ -1364,7 +1355,7 @@ const Onboarding: React.FC = () => {
                             <div className="onboarding-task-status">
                               <AnimatePresence mode="wait" initial={false}>
                                 {dictationChecklist.handsFree ? (
-                                  <motion.svg
+                                  <m.svg
                                     key="hands-free-done"
                                     width="22"
                                     height="22"
@@ -1375,7 +1366,7 @@ const Onboarding: React.FC = () => {
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
                                   >
-                                    <motion.path
+                                    <m.path
                                       initial={{ pathLength: 0 }}
                                       animate={{ pathLength: 1 }}
                                       transition={{
@@ -1388,9 +1379,9 @@ const Onboarding: React.FC = () => {
                                       strokeLinecap="round"
                                       strokeLinejoin="round"
                                     />
-                                  </motion.svg>
+                                  </m.svg>
                                 ) : (
-                                  <motion.span
+                                  <m.span
                                     key="hands-free-try"
                                     className="onboarding-task-prompt"
                                     initial={{ opacity: 0 }}
@@ -1399,7 +1390,7 @@ const Onboarding: React.FC = () => {
                                     aria-hidden
                                   >
                                     Try
-                                  </motion.span>
+                                  </m.span>
                                 )}
                               </AnimatePresence>
                             </div>
@@ -1421,12 +1412,12 @@ const Onboarding: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                </motion.div>
+                </m.div>
               )}
 
               {/* Complete Step */}
               {currentStep === "complete" && (
-                <motion.div
+                <m.div
                   key="complete"
                   variants={containerVariants}
                   initial="hidden"
@@ -1435,7 +1426,7 @@ const Onboarding: React.FC = () => {
                   className="text-center space-y-4"
                 >
                   {/* Checkmark badge - matches waitlist modal */}
-                  <motion.div
+                  <m.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: "spring", stiffness: 700, damping: 25 }}
@@ -1448,7 +1439,7 @@ const Onboarding: React.FC = () => {
                       fill="none"
                       className="text-white/80"
                     >
-                      <motion.path
+                      <m.path
                         initial={{ pathLength: 0 }}
                         animate={{ pathLength: 1 }}
                         transition={{
@@ -1463,7 +1454,7 @@ const Onboarding: React.FC = () => {
                         strokeLinejoin="round"
                       />
                     </svg>
-                  </motion.div>
+                  </m.div>
                   <h2 className="text-heading-xl heading-gradient heading-crisp text-breathe">
                     You're all set
                   </h2>
@@ -1479,7 +1470,7 @@ const Onboarding: React.FC = () => {
                       Start Dictating
                     </Button>
                   </div>
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
           )}

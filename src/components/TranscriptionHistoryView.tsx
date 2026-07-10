@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import DateGroup from "./DateGroup";
 import HistoryItem, { HistoryItemData } from "./HistoryItem";
 import {
@@ -99,8 +99,8 @@ const toHistoryItem = (item: TranscriptionItem): HistoryItemData => ({
 });
 
 const TranscriptionHistoryView: React.FC = () => {
-  const [historyItems, setHistoryItems] = useState<HistoryItemData[]>(() =>
-    getTranscriptionHistory().map(toHistoryItem),
+  const [historyItems, setHistoryItems] = useState<TranscriptionItem[]>(() =>
+    getTranscriptionHistory(),
   );
   const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -118,16 +118,21 @@ const TranscriptionHistoryView: React.FC = () => {
     }
   }, [historyItems]);
 
-  // Subscribe to transcription history changes
+  // Subscribe to transcription history changes. Store the raw list as-is so a
+  // new transcription doesn't re-map the whole history on every emit; only the
+  // visible window is mapped below.
   useEffect(() => {
-    const unsubscribe = subscribeTranscriptionHistory((items) => {
-      setHistoryItems(items.map(toHistoryItem));
-    });
+    const unsubscribe = subscribeTranscriptionHistory(setHistoryItems);
     return unsubscribe;
   }, []);
 
-  // Only process the visible slice of items
-  const visibleItems = historyItems.slice(0, displayedCount);
+  // Map only the visible slice of items. Memoized so its identity is stable
+  // across renders where neither the list nor the paging cursor changed,
+  // which keeps the grouping memo below from recomputing needlessly.
+  const visibleItems = React.useMemo(
+    () => historyItems.slice(0, displayedCount).map(toHistoryItem),
+    [historyItems, displayedCount],
+  );
 
   // Memoize grouping since it does real work (Map creation, sorting)
   const groupedItems = React.useMemo(() => {
@@ -189,24 +194,24 @@ const TranscriptionHistoryView: React.FC = () => {
   // Empty state
   if (historyItems.length === 0) {
     return (
-      <motion.div
+      <m.div
         className="flex flex-col items-center justify-center py-16 px-4"
         initial="hidden"
         animate="visible"
         variants={panelCascadeContainer}
       >
-        <motion.div className="text-center" variants={panelCascadeItem}>
+        <m.div className="text-center" variants={panelCascadeItem}>
           <p className="text-sm text-muted-foreground">No transcriptions yet</p>
           <p className="text-xs text-muted-foreground/60 mt-1">
             Your transcription history will appear here
           </p>
-        </motion.div>
-      </motion.div>
+        </m.div>
+      </m.div>
     );
   }
 
   return (
-    <motion.div
+    <m.div
       initial="hidden"
       animate="visible"
       variants={panelCascadeContainer}
@@ -238,7 +243,7 @@ const TranscriptionHistoryView: React.FC = () => {
           </span>
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 };
 

@@ -69,6 +69,9 @@ const NOTCH_WIDTH_OPTICAL_ADJUSTMENT = 2;
 
 // === Active display tracking for continuous follow ===
 let followCursorInterval: NodeJS.Timeout | null = null;
+// Whether follow-cursor is logically enabled. Polling itself is paused while
+// the pill window is hidden, but this stays true so "show" can resume it.
+let followCursorActive = false;
 let coalesceTimer: NodeJS.Timeout | null = null;
 let pendingBounds: Rectangle | null = null;
 
@@ -265,7 +268,9 @@ export async function detectAndStoreNotchWidth(): Promise<number | null> {
   return finalWidth;
 }
 
-export function startFollowCursor(): void {
+// (Re)arm the polling timer. Internal: callers gate on followCursorActive and
+// window visibility.
+function runFollowCursorInterval(): void {
   if (followCursorInterval) {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
@@ -287,11 +292,43 @@ export function startFollowCursor(): void {
   }, CURSOR_POLL_INTERVAL_MS);
 }
 
-export function stopFollowCursor(): void {
+// Pause the timer without clearing the logical "active" flag, so a later
+// "show" resumes polling.
+function pauseFollowCursorInterval(): void {
   if (followCursorInterval) {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
   }
+}
+
+export function startFollowCursor(): void {
+  followCursorActive = true;
+  // Don't burn CPU polling while the pill is hidden; the window "show" handler
+  // resumes polling (and re-syncs the display).
+  if (state.mainWindow && !state.mainWindow.isVisible()) {
+    pauseFollowCursorInterval();
+    return;
+  }
+  runFollowCursorInterval();
+}
+
+export function stopFollowCursor(): void {
+  followCursorActive = false;
+  pauseFollowCursorInterval();
+}
+
+/** Resume polling when the pill is shown, if follow-cursor is enabled. */
+function resumeFollowCursorOnShow(): void {
+  if (!followCursorActive) return;
+  // Land the pill on the display it should be on before polling resumes.
+  syncToCurrentDisplay("window-shown");
+  runFollowCursorInterval();
+}
+
+/** Pause polling when the pill is hidden. */
+function pauseFollowCursorOnHide(): void {
+  if (!followCursorActive) return;
+  pauseFollowCursorInterval();
 }
 
 export function syncToCurrentDisplay(reason: string): void {
@@ -337,19 +374,34 @@ export function coalescedSetBounds(bounds: Rectangle): void {
   }, 16);
 }
 
+// refreshNotchInfo spawns a native binary each time, and display-metrics-changed
+// fires in bursts (e.g. resolution/arrangement changes). Debounce the refresh so
+// a burst spawns the helper once, on the trailing edge; the emit still runs after
+// that final refresh completes.
+const NOTCH_REFRESH_DEBOUNCE_MS = 300;
+let notchRefreshTimer: NodeJS.Timeout | null = null;
+
+function debouncedRefreshNotchInfoAndEmit(reason: string): void {
+  if (notchRefreshTimer) clearTimeout(notchRefreshTimer);
+  notchRefreshTimer = setTimeout(() => {
+    notchRefreshTimer = null;
+    void refreshNotchInfoAndEmit(reason);
+  }, NOTCH_REFRESH_DEBOUNCE_MS);
+}
+
 // React to OS display changes to keep the pill consistent
 export function registerDisplayChangeListeners(): void {
   screen.on("display-added", () => {
     syncToCurrentDisplay("display-added");
-    void refreshNotchInfoAndEmit("display-added");
+    debouncedRefreshNotchInfoAndEmit("display-added");
   });
   screen.on("display-removed", () => {
     syncToCurrentDisplay("display-removed");
-    void refreshNotchInfoAndEmit("display-removed");
+    debouncedRefreshNotchInfoAndEmit("display-removed");
   });
   screen.on("display-metrics-changed", () => {
     syncToCurrentDisplay("display-metrics-changed");
-    void refreshNotchInfoAndEmit("display-metrics-changed");
+    debouncedRefreshNotchInfoAndEmit("display-metrics-changed");
   });
 }
 
@@ -545,11 +597,13 @@ export const createWindow = () => {
     // Clear any active hide timer when window is shown
     clearHideTimer();
     rebuildTrayMenu();
+    resumeFollowCursorOnShow();
   });
 
   state.mainWindow.on("hide", () => {
     console.log("[Main Window] Window hidden, rebuilding tray menu");
     rebuildTrayMenu();
+    pauseFollowCursorOnHide();
   });
 
   // Position window centered on the cursor's display and hidden under the notch

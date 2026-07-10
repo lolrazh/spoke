@@ -1,5 +1,5 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import type { LocalModelInfo, ModelStatus } from "../types/shared";
 import { Button } from "./ui/button";
 import SettingsCard, { CardTrailing } from "./SettingsCard";
@@ -47,7 +47,7 @@ const RecommendedBadge: React.FC = () => (
 // used for its ready state. `dim` renders it as a faint affordance that the
 // card's group-hover brightens to full to signal "click to make active".
 const InstalledCheck: React.FC<{ dim?: boolean }> = ({ dim = false }) => (
-  <motion.svg
+  <m.svg
     width="17"
     height="17"
     viewBox="0 0 24 24"
@@ -61,7 +61,7 @@ const InstalledCheck: React.FC<{ dim?: boolean }> = ({ dim = false }) => (
     role="img"
     aria-label={dim ? "Installed, click to use" : "Active"}
   >
-    <motion.path
+    <m.path
       initial={{ pathLength: 0 }}
       animate={{ pathLength: 1 }}
       transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
@@ -71,7 +71,7 @@ const InstalledCheck: React.FC<{ dim?: boolean }> = ({ dim = false }) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-  </motion.svg>
+  </m.svg>
 );
 
 interface ModelInstallCardProps {
@@ -143,7 +143,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
       <div className="ml-2 flex items-center justify-end">
         <AnimatePresence mode="wait" initial={false}>
           {loaded && status.state === "not_installed" && (
-            <motion.div
+            <m.div
               key="install"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -161,7 +161,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                   </span>
                 }
               />
-            </motion.div>
+            </m.div>
           )}
 
           {/* downloading → installing → ready all live in this one block so the
@@ -173,7 +173,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
           {(status.state === "downloading" ||
             status.state === "installing" ||
             status.state === "ready") && (
-            <motion.div
+            <m.div
               key="progress"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -183,7 +183,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                 primary={
                   <AnimatePresence mode="popLayout" initial={false}>
                     {status.state === "ready" ? (
-                      <motion.span
+                      <m.span
                         key="check"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -195,9 +195,9 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                             active". Shares the primary glyph column with the
                             download glyph + ring so every row lines up. */}
                         <InstalledCheck dim={!isActive} />
-                      </motion.span>
+                      </m.span>
                     ) : (
-                      <motion.span
+                      <m.span
                         key="ring"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -215,7 +215,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                               : status.downloadProgress
                           }
                         />
-                      </motion.span>
+                      </m.span>
                     )}
                   </AnimatePresence>
                 }
@@ -237,11 +237,11 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                   )
                 }
               />
-            </motion.div>
+            </m.div>
           )}
 
           {status.state === "broken" && (
-            <motion.div
+            <m.div
               key="broken"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -255,7 +255,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               >
                 Repair
               </Button>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </div>

@@ -1,16 +1,14 @@
 /**
  * Microphone Visualizer Hook
  *
- * Manages Web Audio API capture, frequency analysis, and visualizer state
- * for a microphone check UI. Provides bar values (0-1), speaking detection,
- * and device selection.
+ * Manages Web Audio API capture and device selection for a microphone check UI.
+ * Exposes the live AnalyserNode via a ref so the per-frame bar animation can be
+ * driven from a leaf component (see MicBars), keeping 60 Hz updates off the hook
+ * consumer's render path.
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
-
-const NUM_BARS = 24;
-const SPEAKING_THRESHOLD = 14;
 
 export function useMicVisualizer(options: {
   /** Whether the visualizer is currently active (e.g., on the mic-check step) */
@@ -19,22 +17,13 @@ export function useMicVisualizer(options: {
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const rafIdRef = useRef<number | null>(null);
 
-  const [barValues, setBarValues] = useState<number[]>(
-    Array.from({ length: NUM_BARS }, () => 0),
-  );
-  const [speakingDetected, setSpeakingDetected] = useState(false);
   const [micDevices, setMicDevices] = useState<
     Array<{ id: string; label: string }>
   >([{ id: "default", label: "System Default" }]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   const stopMic = useCallback(() => {
-    try {
-      if (rafIdRef.current != null) cancelAnimationFrame(rafIdRef.current);
-    } catch {}
-    rafIdRef.current = null;
     try {
       analyserRef.current?.disconnect();
     } catch {}
@@ -74,34 +63,7 @@ export function useMicVisualizer(options: {
       analyser.smoothingTimeConstant = 0.85;
       src.connect(analyser);
       analyserRef.current = analyser;
-
-      const freqData = new Uint8Array(analyser.frequencyBinCount);
-
-      const tick = () => {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(freqData);
-        const buckets: number[] = new Array(NUM_BARS).fill(0);
-        const binsPerBar = Math.max(1, Math.floor(freqData.length / NUM_BARS));
-        let energy = 0;
-        for (let i = 0; i < NUM_BARS; i++) {
-          let sum = 0;
-          const start = i * binsPerBar;
-          const end = Math.min(freqData.length, start + binsPerBar);
-          for (let j = start; j < end; j++) sum += freqData[j];
-          const avg = sum / (end - start || 1);
-          buckets[i] = avg / 255;
-          energy += avg;
-        }
-        const avgEnergy = energy / freqData.length;
-        setSpeakingDetected((prev) =>
-          avgEnergy > SPEAKING_THRESHOLD ? true : prev,
-        );
-        setBarValues(buckets);
-        rafIdRef.current = requestAnimationFrame(tick);
-      };
-      rafIdRef.current = requestAnimationFrame(tick);
     } catch (e) {
-      setSpeakingDetected(false);
       const isDev =
         typeof import.meta !== "undefined" &&
         (import.meta as any).env?.MODE === "development";
@@ -118,18 +80,25 @@ export function useMicVisualizer(options: {
     stopMic();
   }, [options.active, startMic, stopMic]);
 
-  // Restart capture when device changes while active
+  // Restart capture when the selected device changes while active. The active
+  // effect above already builds the graph on the first run (and rebuilds it
+  // whenever startMic's identity changes), so skip this effect's own startMic on
+  // the initial run to avoid constructing the audio graph twice on mount.
+  const deviceEffectPrimed = useRef(false);
   useEffect(() => {
     if (!options.active) return;
-    startMic();
     try {
       if (selectedMicId) window.mic?.select?.(selectedMicId);
     } catch {}
+    if (!deviceEffectPrimed.current) {
+      deviceEffectPrimed.current = true;
+      return;
+    }
+    startMic();
   }, [selectedMicId, options.active, startMic]);
 
   return {
-    barValues,
-    speakingDetected,
+    analyserRef,
     micDevices,
     setMicDevices,
     selectedMicId,

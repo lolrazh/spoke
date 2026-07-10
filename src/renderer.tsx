@@ -1,10 +1,16 @@
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter, Routes, Route } from "react-router-dom";
-import { MotionConfig } from "framer-motion";
+import { LazyMotion, MotionConfig } from "framer-motion";
 import "./index.css";
 
 window.electron?.bootMark?.("module-loaded");
+
+// Lazy-load the full DOM feature set (domMax, not domAnimation: the Pill uses
+// `layout` animations). Components render with the lightweight `m` primitives
+// and this bundle is code-split so it loads once, off the critical path.
+const loadMotionFeatures = () =>
+  import("framer-motion").then((mod) => mod.domMax);
 
 const App = lazy(() => {
   window.electron?.bootMark?.("route:app-import:start");
@@ -26,16 +32,20 @@ function mountReact(root: HTMLElement) {
   window.electron?.bootMark?.("react-render:start");
   const reactRoot = createRoot(root);
   reactRoot.render(
-    <MotionConfig reducedMotion="user">
-      <HashRouter>
-        <Suspense fallback={null}>
-          <Routes>
-            <Route path="/" element={<App />} />
-            <Route path="/onboarding" element={<Onboarding />} />
-          </Routes>
-        </Suspense>
-      </HashRouter>
-    </MotionConfig>,
+    // Non-strict LazyMotion: if any `motion.` usage is missed it still renders
+    // (loading the full features) instead of throwing.
+    <LazyMotion features={loadMotionFeatures} strict={false}>
+      <MotionConfig reducedMotion="user">
+        <HashRouter>
+          <Suspense fallback={null}>
+            <Routes>
+              <Route path="/" element={<App />} />
+              <Route path="/onboarding" element={<Onboarding />} />
+            </Routes>
+          </Suspense>
+        </HashRouter>
+      </MotionConfig>
+    </LazyMotion>,
   );
   window.electron?.bootMark?.("react-render:scheduled");
 }
