@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   setAutoRestart: vi.fn(),
   spawnSidecar: vi.fn(),
   transcribeLocal: vi.fn(),
+  state: { appPreferences: {} as { vocabularyDictionary?: string[] } },
 }));
 
 vi.mock("./modelManager", () => ({
@@ -34,6 +35,8 @@ vi.mock("./sidecarEngine", () => ({
   transcribeLocal: mocks.transcribeLocal,
 }));
 
+vi.mock("./windowState", () => ({ state: mocks.state }));
+
 async function importLifecycle() {
   return import("./localSttLifecycle");
 }
@@ -49,6 +52,7 @@ describe("localSttLifecycle", () => {
     mocks.isSidecarRunning.mockReturnValue(false);
     mocks.spawnSidecar.mockResolvedValue(undefined);
     mocks.transcribeLocal.mockResolvedValue({ text: "hello", metrics: {} });
+    mocks.state.appPreferences = {};
   });
 
   it("throws without spawning when the local model is not ready", async () => {
@@ -86,6 +90,25 @@ describe("localSttLifecycle", () => {
     await transcribeWithLocalSidecar(pcmBuffer, prompt);
 
     expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer, prompt);
+  });
+
+  it("applies dictionary correction to the transcript", async () => {
+    mocks.state.appPreferences = { vocabularyDictionary: ["GitHub"] };
+    mocks.transcribeLocal.mockResolvedValue({ text: "github", metrics: {} });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await expect(
+      transcribeWithLocalSidecar(Buffer.from([1, 2, 3])),
+    ).resolves.toEqual({ text: "GitHub", metrics: {} });
+  });
+
+  it("passes the transcript through unchanged when no dictionary is set", async () => {
+    mocks.transcribeLocal.mockResolvedValue({ text: "github", metrics: {} });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await expect(
+      transcribeWithLocalSidecar(Buffer.from([1, 2, 3])),
+    ).resolves.toEqual({ text: "github", metrics: {} });
   });
 
   it("does not spawn when the sidecar is already running", async () => {

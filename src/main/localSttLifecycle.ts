@@ -15,6 +15,8 @@ import {
   transcribeLocal,
 } from "./sidecarEngine";
 import { bootTimeline } from "./bootTimeline";
+import { correctTranscript } from "./dictionaryCorrection";
+import { state } from "./windowState";
 
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
@@ -132,5 +134,7 @@ export async function transcribeWithLocalSidecar(
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
   await ensureLocalSidecarRunning();
-  return transcribeLocal(pcmBuffer, prompt);
+  const result = await transcribeLocal(pcmBuffer, prompt);
+  const dictionary = state.appPreferences.vocabularyDictionary ?? [];
+  return { ...result, text: correctTranscript(result.text, dictionary) };
 }

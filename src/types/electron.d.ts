@@ -184,6 +184,11 @@ declare global {
       setAutoSpaceEnabled: (
         enabled: boolean,
       ) => Promise<{ ok: boolean; error?: string }>;
+      // Vocabulary dictionary (words/phrases used to correct transcripts)
+      getVocabularyDictionary: () => Promise<{ dictionary: string[] }>;
+      setVocabularyDictionary: (
+        dictionary: string[],
+      ) => Promise<{ ok: boolean; error?: string }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       // Renderer lifecycle
       rendererReady: () => void;

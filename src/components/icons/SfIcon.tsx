@@ -137,6 +137,18 @@ function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Corrections exist only for icons used as interchangeable siblings in a
+// row-action set (trash/edit/copy across Models, Dictionary, and History
+// rows) where mismatched fill makes otherwise-equal actions look unequal.
+// Standalone/decorative icons (toggle leading icons, tab icons) keep their
+// natural proportions — area-normalizing a deliberately wide/short glyph
+// like "space" or "eye.fill" toward a square reference would undo Apple's
+// own optical tuning for icons that were never meant to match a sibling.
+const OPTICAL_SCALE: Record<string, number> = {
+  trash: 1.1041,
+  "document.on.document": 1.1,
+};
+
 export interface SfIconProps {
   name: string; // e.g., "keyboard.badge.eye.fill"
   weight?: WeightKey; // default "bold"
@@ -182,11 +194,18 @@ const SfIcon: React.FC<SfIconProps> = ({
     [rawSvg, title],
   );
 
+  const scale = OPTICAL_SCALE[name] ?? 1;
+  const renderedSize = size * scale;
+
   if (!normalizedSvg) {
     return (
       <span
         className={className}
-        style={{ display: "inline-flex", width: size, height: size }}
+        style={{
+          display: "inline-flex",
+          width: renderedSize,
+          height: renderedSize,
+        }}
         aria-hidden
       />
     );
@@ -198,7 +217,11 @@ const SfIcon: React.FC<SfIconProps> = ({
       role={title ? "img" : undefined}
       aria-label={title ?? undefined}
       aria-hidden={title ? undefined : true}
-      style={{ display: "inline-flex", width: size, height: size }}
+      style={{
+        display: "inline-flex",
+        width: renderedSize,
+        height: renderedSize,
+      }}
       dangerouslySetInnerHTML={{ __html: normalizedSvg }}
     />
   );

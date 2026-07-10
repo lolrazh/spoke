@@ -297,6 +297,13 @@ contextBridge.exposeInMainWorld("electron", {
     enabled: boolean,
   ): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("auto-space:set-enabled", { enabled }),
+  // Vocabulary dictionary (words/phrases used to correct transcripts)
+  getVocabularyDictionary: (): Promise<{ dictionary: string[] }> =>
+    ipcRenderer.invoke("vocabulary:get-dictionary"),
+  setVocabularyDictionary: (
+    dictionary: string[],
+  ): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("vocabulary:set-dictionary", { dictionary }),
   // Generic external URL opener
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
   // Renderer lifecycle

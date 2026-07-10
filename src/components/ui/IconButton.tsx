@@ -12,6 +12,7 @@ interface IconButtonProps {
   /** Hidden until the nearest `.group` ancestor is hovered (row-reveal). */
   revealOnHover?: boolean;
   className?: string;
+  children?: React.ReactNode;
 }
 
 /**
@@ -27,6 +28,7 @@ const IconButton: React.FC<IconButtonProps> = ({
   size = 14,
   revealOnHover = false,
   className = "",
+  children,
 }) => (
   <button
     type="button"
@@ -34,17 +36,13 @@ const IconButton: React.FC<IconButtonProps> = ({
     title={title}
     aria-label={ariaLabel ?? title}
     style={{ width: size, height: size }}
-    className={`flex items-center justify-center transition-opacity focus-visible:outline-none ${
+    className={`relative flex items-center justify-center text-muted-foreground/50 transition-[color,opacity] hover:text-foreground focus-visible:outline-none after:absolute after:-inset-[3px] after:content-[''] ${
       revealOnHover
         ? "opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
         : ""
     } ${className}`}
   >
-    <SfIcon
-      name={name}
-      size={size}
-      className="text-muted-foreground/50 transition-colors hover:text-foreground"
-    />
+    {children ?? <SfIcon name={name} size={size} />}
   </button>
 );
 

@@ -73,6 +73,34 @@ export function registerTranscriptIpc(): void {
     },
   );
 
+  // Vocabulary dictionary (words/phrases used to correct transcripts)
+  ipcMain.handle("vocabulary:get-dictionary", () => {
+    return { dictionary: state.appPreferences.vocabularyDictionary ?? [] };
+  });
+
+  ipcMain.handle(
+    "vocabulary:set-dictionary",
+    (_event, payload: { dictionary: string[] }) => {
+      try {
+        const seen = new Set<string>();
+        const sanitized: string[] = [];
+        for (const entry of payload.dictionary ?? []) {
+          const trimmed = typeof entry === "string" ? entry.trim() : "";
+          if (trimmed.length === 0) continue;
+          const key = trimmed.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          sanitized.push(trimmed);
+        }
+        state.appPreferences.vocabularyDictionary = sanitized;
+        saveAppPreferences(state.appPreferences);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    },
+  );
+
   // Transcription history storage handlers
   ipcMain.handle("transcriptions:get-all", () => {
     return bootTimeline.measureSync("ipc:transcriptions:get-all", () =>

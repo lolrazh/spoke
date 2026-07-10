@@ -4,7 +4,11 @@ export type MicPreferences = { selectedMicId?: string };
 
 export type PillPreferences = { notchWidth?: number };
 
-export type AppPreferences = { showInDock?: boolean; autoSpace?: boolean };
+export type AppPreferences = {
+  showInDock?: boolean;
+  autoSpace?: boolean;
+  vocabularyDictionary?: string[];
+};
 
 export type PttTarget = "auto" | "onboarding" | "main";
 

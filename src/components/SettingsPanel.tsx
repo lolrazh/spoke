@@ -14,12 +14,13 @@ import Spinner from "./ui/Spinner";
 import ProgressRing from "./ui/ProgressRing";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
+import DictionaryView from "./DictionaryView";
 import {
   panelCascadeContainer,
   panelCascadeItem,
 } from "./shared/panelMotion";
 
-type SettingsPanelTab = "settings" | "models" | "history";
+type SettingsPanelTab = "settings" | "models" | "dictionary" | "history";
 type SettingsPanelInitialTab = Extract<
   SettingsPanelTab,
   "settings" | "history"
@@ -874,6 +875,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 onClick={() => setActiveTab("settings")}
               />
               <TabButton
+                active={activeTab === "dictionary"}
+                iconName="text.book.closed"
+                label="Dictionary"
+                onClick={() => setActiveTab("dictionary")}
+              />
+              <TabButton
                 active={activeTab === "models"}
                 iconName="brain"
                 label="Models"
@@ -1028,6 +1035,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                     </div>
                   </motion.section>
                 </motion.div>
+              ) : activeTab === "dictionary" ? (
+                <DictionaryView />
               ) : (
                 <TranscriptionHistoryView />
               )}
