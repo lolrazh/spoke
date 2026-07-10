@@ -15,6 +15,8 @@ import {
   transcribeLocal,
 } from "./sidecarEngine";
 import { bootTimeline } from "./bootTimeline";
+import { correctTranscript } from "./dictionaryCorrection";
+import { state } from "./windowState";
 
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
@@ -179,7 +181,9 @@ export async function transcribeWithLocalSidecar(
   // guard blocks the stop.
   armIdleTimer();
   try {
-    return await transcribeLocal(pcmBuffer, prompt);
+    const result = await transcribeLocal(pcmBuffer, prompt);
+    const dictionary = state.appPreferences.vocabularyDictionary ?? [];
+    return { ...result, text: correctTranscript(result.text, dictionary) };
   } finally {
     transcriptionsInFlight--;
     // Reset on completion so idle time is measured from the last activity.

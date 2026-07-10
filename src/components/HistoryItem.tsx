@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { m, AnimatePresence } from "framer-motion";
 import SfIcon from "./icons/SfIcon";
+import IconButton from "./ui/IconButton";
 import { panelCascadeItem } from "./shared/panelMotion";
 
 export interface HistoryItemData {
@@ -64,12 +65,14 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
       <div className="flex flex-col items-center pt-2 pb-1 px-3 min-w-[48px]">
         {/* Copy button - takes remaining space, centered within */}
         <div className="flex-1 flex items-center justify-center">
-          <button
-            type="button"
+          <IconButton
+            name="document.on.document"
             onClick={handleCopy}
-            className={`transition-opacity w-[14px] h-[14px] flex items-center justify-center ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
             title="Copy to clipboard"
-            aria-label="Copy to clipboard"
+            ariaLabel="Copy to clipboard"
+            className={
+              copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }
           >
             <AnimatePresence mode="wait">
               {copied ? (
@@ -114,15 +117,11 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
                     mass: 0.5,
                   }}
                 >
-                  <SfIcon
-                    name="document.on.document"
-                    size={14}
-                    className="text-muted-foreground/50 hover:text-foreground transition-colors"
-                  />
+                  <SfIcon name="document.on.document" size={14} />
                 </m.div>
               )}
             </AnimatePresence>
-          </button>
+          </IconButton>
         </div>
         {/* Time - anchored at bottom */}
         <span className="text-[10px] text-muted-foreground/50">

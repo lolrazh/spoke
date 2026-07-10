@@ -1,9 +1,11 @@
 import type { SelectionInspectSnapshot } from "../types/shared";
+import { isDictionaryWord } from "./dictionaryCorrection";
 
 export type DictationFormatOptions = {
   autoSpace: boolean;
   selection?: SelectionInspectSnapshot | null;
   contextChars?: number;
+  dictionary?: readonly string[];
 };
 
 type InsertionContext = {
@@ -55,7 +57,11 @@ export function formatDictationForInsertion(
 
   if (context) {
     payload = normalizeLeadingBoundary(payload, context.before);
-    payload = normalizeInitialCapitalization(payload, context.before);
+    payload = normalizeInitialCapitalization(
+      payload,
+      context.before,
+      options.dictionary,
+    );
     payload = normalizeContinuationEnding(
       payload,
       context.before,
@@ -149,6 +155,7 @@ function normalizeContinuationEnding(
 function normalizeInitialCapitalization(
   payload: string,
   before: string,
+  dictionary?: readonly string[],
 ): string {
   if (payload.length === 0 || startsNewSentence(before)) return payload;
 
@@ -160,6 +167,7 @@ function normalizeInitialCapitalization(
   if (
     token === "I" ||
     isLikelyAcronym(token) ||
+    isDictionaryWord(token, dictionary ?? []) ||
     hasProtectedLeadingAbbreviation(payload.slice(index))
   ) {
     return payload;
