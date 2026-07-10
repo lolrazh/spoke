@@ -6,7 +6,7 @@ import { correctTranscript } from "./dictionaryCorrection";
 // fires thousands of iterations the I/O would dominate and drown the results,
 // so silence it to measure the algorithm rather than terminal throughput.
 // eslint-disable-next-line no-console
-console.info = () => {};
+console.info = () => undefined;
 
 // Same skip-list correctTranscript uses internally, so generated adversarial
 // tokens can be filtered to guarantee they are NOT common words.

@@ -68,5 +68,30 @@ export function useVocabulary() {
     [dictionary, persist],
   );
 
-  return { dictionary, addWord, removeWord, loaded };
+  const editWord = useCallback(
+    async (oldWord: string, newWord: string) => {
+      const trimmed = newWord.trim();
+      // Editing to blank is a no-op, not a delete — that's what the trash is for.
+      if (!trimmed) return;
+      const previous = dictionary;
+      const index = previous.findIndex(
+        (w) => w.toLowerCase() === oldWord.toLowerCase(),
+      );
+      if (index === -1) return;
+      // Collides with a *different* entry — same duplicate-prevention as addWord.
+      if (
+        previous.some(
+          (w, i) => i !== index && w.toLowerCase() === trimmed.toLowerCase(),
+        )
+      ) {
+        return;
+      }
+      const next = [...previous];
+      next[index] = trimmed;
+      await persist(next, previous);
+    },
+    [dictionary, persist],
+  );
+
+  return { dictionary, addWord, removeWord, editWord, loaded };
 }

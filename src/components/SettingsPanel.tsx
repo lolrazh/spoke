@@ -9,18 +9,18 @@ import {
 } from "./ui/select";
 import SettingsCard from "./SettingsCard";
 import ModelsList from "./ModelsList";
-import VocabularySettings from "./VocabularySettings";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
 import ProgressRing from "./ui/ProgressRing";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
+import DictionaryView from "./DictionaryView";
 import {
   panelCascadeContainer,
   panelCascadeItem,
 } from "./shared/panelMotion";
 
-type SettingsPanelTab = "settings" | "models" | "history";
+type SettingsPanelTab = "settings" | "models" | "dictionary" | "history";
 type SettingsPanelInitialTab = Extract<
   SettingsPanelTab,
   "settings" | "history"
@@ -881,6 +881,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 onClick={() => setActiveTab("models")}
               />
               <TabButton
+                active={activeTab === "dictionary"}
+                iconName="text.book.closed"
+                label="Dictionary"
+                onClick={() => setActiveTab("dictionary")}
+              />
+              <TabButton
                 active={activeTab === "history"}
                 iconName="clock.arrow.trianglehead.counterclockwise.rotate.90"
                 label="History"
@@ -1028,20 +1034,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <ModelsList enabled={activeTab === "models"} />
                     </div>
                   </motion.section>
-
-                  <motion.section
-                    variants={panelCascadeContainer}
-                    className="space-y-4"
-                    style={{ marginTop: "var(--panel-section-offset)" }}
-                  >
-                    <motion.div variants={panelCascadeItem}>
-                      <SectionSeparator title="Vocabulary" />
-                    </motion.div>
-                    <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      <VocabularySettings />
-                    </div>
-                  </motion.section>
                 </motion.div>
+              ) : activeTab === "dictionary" ? (
+                <DictionaryView />
               ) : (
                 <TranscriptionHistoryView />
               )}
