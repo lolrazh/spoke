@@ -79,7 +79,7 @@ const DictionaryRowInner: React.FC<DictionaryRowProps> = ({
         )}
       </div>
 
-      <div className="flex items-center gap-2 px-3 min-w-[48px]">
+      <div className="flex items-center gap-3 px-3 min-w-[48px]">
         {!isEditing && (
           <>
             <IconButton
@@ -125,14 +125,17 @@ const DictionaryView: React.FC = () => {
       animate="visible"
       variants={panelCascadeContainer}
     >
-      <DateGroup label="Dictionary">
+      <DateGroup label="Vocabulary">
         {/* First slot in the list: the add-word input, same height/padding as
             the word rows so it reads as part of the list, not a header. */}
         <motion.div
           variants={panelCascadeItem}
           className="flex border-b border-white/[0.08]"
         >
-          <div className="flex-1 p-3 pr-2">
+          <div className="flex-1 p-3 pr-2 flex items-center gap-2">
+            <span className="text-xs text-muted-foreground/50 select-none">
+              +
+            </span>
             <input
               type="text"
               value={draft}
@@ -143,7 +146,7 @@ const DictionaryView: React.FC = () => {
                   submit();
                 }
               }}
-              placeholder="add a word or name"
+              placeholder="Add a word or name"
               aria-label="Add a word"
               className={INPUT_CLASS}
             />

@@ -875,16 +875,16 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 onClick={() => setActiveTab("settings")}
               />
               <TabButton
-                active={activeTab === "models"}
-                iconName="brain"
-                label="Models"
-                onClick={() => setActiveTab("models")}
-              />
-              <TabButton
                 active={activeTab === "dictionary"}
                 iconName="text.book.closed"
                 label="Dictionary"
                 onClick={() => setActiveTab("dictionary")}
+              />
+              <TabButton
+                active={activeTab === "models"}
+                iconName="brain"
+                label="Models"
+                onClick={() => setActiveTab("models")}
               />
               <TabButton
                 active={activeTab === "history"}

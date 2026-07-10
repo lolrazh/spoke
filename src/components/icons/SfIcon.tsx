@@ -137,6 +137,15 @@ function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Some SF Symbols have narrower native proportions (e.g. trash's tall, thin
+// viewBox) that render visibly smaller than a square glyph at an identical
+// box size under uniform xMidYMid-meet scaling. Corrected by sqrt(area
+// ratio) against a square reference, not by naive width-fill ratio (which
+// overshoots for height-constrained glyphs already maxed at the box size).
+const OPTICAL_SCALE: Record<string, number> = {
+  trash: 1.09,
+};
+
 export interface SfIconProps {
   name: string; // e.g., "keyboard.badge.eye.fill"
   weight?: WeightKey; // default "bold"
@@ -182,11 +191,18 @@ const SfIcon: React.FC<SfIconProps> = ({
     [rawSvg, title],
   );
 
+  const scale = OPTICAL_SCALE[name] ?? 1;
+  const renderedSize = size * scale;
+
   if (!normalizedSvg) {
     return (
       <span
         className={className}
-        style={{ display: "inline-flex", width: size, height: size }}
+        style={{
+          display: "inline-flex",
+          width: renderedSize,
+          height: renderedSize,
+        }}
         aria-hidden
       />
     );
@@ -198,7 +214,11 @@ const SfIcon: React.FC<SfIconProps> = ({
       role={title ? "img" : undefined}
       aria-label={title ?? undefined}
       aria-hidden={title ? undefined : true}
-      style={{ display: "inline-flex", width: size, height: size }}
+      style={{
+        display: "inline-flex",
+        width: renderedSize,
+        height: renderedSize,
+      }}
       dangerouslySetInnerHTML={{ __html: normalizedSvg }}
     />
   );
