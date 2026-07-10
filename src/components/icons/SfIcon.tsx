@@ -137,13 +137,16 @@ function escapeHtml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
-// Some SF Symbols have narrower native proportions (e.g. trash's tall, thin
-// viewBox) that render visibly smaller than a square glyph at an identical
-// box size under uniform xMidYMid-meet scaling. Corrected by sqrt(area
-// ratio) against a square reference, not by naive width-fill ratio (which
-// overshoots for height-constrained glyphs already maxed at the box size).
+// Corrections exist only for icons used as interchangeable siblings in a
+// row-action set (trash/edit/copy across Models, Dictionary, and History
+// rows) where mismatched fill makes otherwise-equal actions look unequal.
+// Standalone/decorative icons (toggle leading icons, tab icons) keep their
+// natural proportions — area-normalizing a deliberately wide/short glyph
+// like "space" or "eye.fill" toward a square reference would undo Apple's
+// own optical tuning for icons that were never meant to match a sibling.
 const OPTICAL_SCALE: Record<string, number> = {
-  trash: 1.09,
+  trash: 1.1041,
+  "document.on.document": 1.1,
 };
 
 export interface SfIconProps {
