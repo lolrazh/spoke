@@ -416,4 +416,7 @@ const Pill: React.FC<PillProps> = ({
   );
 };
 
-export default Pill;
+// Memoized: during recording the audio level now lives in an external store,
+// so Pill's props are stable frame-to-frame and it should not re-render on
+// audio frames — only on genuine state transitions (its own props changing).
+export default React.memo(Pill);

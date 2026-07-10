@@ -4,6 +4,7 @@ import React, {
   useRef,
   useCallback,
   useLayoutEffect,
+  useMemo,
 } from "react";
 import Pill from "./Pill";
 import { useTranscription } from "../hooks/useTranscription";
@@ -544,6 +545,72 @@ const AppInner: React.FC = () => {
     }
   }, [pillState]);
 
+  const handleHoverChange = useCallback(
+    (h: boolean) => {
+      pillDispatch({ type: h ? "HOVER_ENTER" : "HOVER_LEAVE" });
+    },
+    [pillDispatch],
+  );
+
+  const handleAnimDone = useCallback(() => {
+    pillDispatch({ type: "ANIM_DONE" });
+  }, [pillDispatch]);
+
+  const handleExpand = useCallback(() => {
+    // Check if paste shortcut was pressed within last 5 seconds
+    const pasteTs = lastPasteShortcutTsRef.current;
+    const withinWindow = pasteTs && Date.now() - pasteTs < 5000;
+    setInitialSettingsTab(withinWindow ? "history" : "settings");
+    // Clear the timestamp so subsequent expands don't trigger history
+    lastPasteShortcutTsRef.current = null;
+    pillDispatch({ type: "EXPAND" });
+  }, [pillDispatch]);
+
+  const handleToggleFloatingBar = useCallback(
+    async (enabled: boolean) => {
+      // Cancel any pending hide if user turns it back on
+      if (enabled) {
+        const cancelledDeferredHide =
+          pendingHideAfterCollapse.active &&
+          pendingHideAfterCollapse.deferNotification;
+
+        setPendingHideAfterCollapse({
+          active: false,
+          message: "",
+          deferNotification: false,
+        });
+
+        if (cancelledDeferredHide) {
+          // Pill never hid; avoid re-triggering smoothShow flicker
+          return;
+        }
+        // Ensure pill is in clean IDLE state when showing the floating bar
+        if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
+          pillDispatch({ type: "ANIM_DONE" }); // Reset to IDLE state
+        }
+        try {
+          await window.electron?.showFloatingBar?.();
+        } catch {}
+        return;
+      }
+
+      const message =
+        "Floating Bar Hidden. Use the Tray Menu to bring it back.";
+      // If expanded, defer notification until collapse to avoid jank
+      if (pillState === "EXPANDED") {
+        setPendingHideAfterCollapse({
+          active: true,
+          message,
+          deferNotification: true,
+        });
+        return;
+      }
+      // If not expanded, show heads-up now and then hide after it settles
+      notifyThenHide(message);
+    },
+    [pendingHideAfterCollapse, pillState, pillDispatch, notifyThenHide],
+  );
+
   // Derived scaled dimensions based on active display scale
   // (MIN/MAX_UI_SCALE shared with main process via constants/display)
   const S = Math.min(MAX_UI_SCALE, Math.max(MIN_UI_SCALE, uiScale || 1));
@@ -570,6 +637,20 @@ const AppInner: React.FC = () => {
   const EXPANDED_W = Math.round(expandedWidthTarget * S);
   const EXPANDED_H = Math.round(expandedHeightTarget);
   const MAX_W = Math.round(TOKENS.PILL_MAX_W * S);
+
+  // Stable dims object so a Pill re-render isn't forced by a fresh literal
+  // each render (the values only change on scale/notch/panel transitions).
+  const dims = useMemo(
+    () => ({
+      baseW: BASE_W,
+      baseH: BASE_H,
+      restingH: RESTING_H,
+      expandedW: EXPANDED_W,
+      expandedH: EXPANDED_H,
+      maxW: MAX_W,
+    }),
+    [BASE_W, BASE_H, RESTING_H, EXPANDED_W, EXPANDED_H, MAX_W],
+  );
 
   useEffect(() => {
     // Pill width computed from notch (removed noisy logging)
@@ -610,72 +691,15 @@ const AppInner: React.FC = () => {
         pillContext={pillContext}
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
-        dims={{
-          baseW: BASE_W,
-          baseH: BASE_H,
-          restingH: RESTING_H,
-          expandedW: EXPANDED_W,
-          expandedH: EXPANDED_H,
-          maxW: MAX_W,
-        }}
-        onHoverChange={(h) =>
-          pillDispatch({ type: h ? "HOVER_ENTER" : "HOVER_LEAVE" })
-        }
+        dims={dims}
+        onHoverChange={handleHoverChange}
         onMetrics={handlePillMetrics}
-        onAnimDone={() => pillDispatch({ type: "ANIM_DONE" })}
+        onAnimDone={handleAnimDone}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        onExpand={() => {
-          // Check if paste shortcut was pressed within last 5 seconds
-          const pasteTs = lastPasteShortcutTsRef.current;
-          const withinWindow = pasteTs && Date.now() - pasteTs < 5000;
-          setInitialSettingsTab(withinWindow ? "history" : "settings");
-          // Clear the timestamp so subsequent expands don't trigger history
-          lastPasteShortcutTsRef.current = null;
-          pillDispatch({ type: "EXPAND" });
-        }}
+        onExpand={handleExpand}
         onCollapse={handleCollapse}
-        onToggleFloatingBar={async (enabled: boolean) => {
-          // Cancel any pending hide if user turns it back on
-          if (enabled) {
-            const cancelledDeferredHide =
-              pendingHideAfterCollapse.active &&
-              pendingHideAfterCollapse.deferNotification;
-
-            setPendingHideAfterCollapse({
-              active: false,
-              message: "",
-              deferNotification: false,
-            });
-
-            if (cancelledDeferredHide) {
-              // Pill never hid; avoid re-triggering smoothShow flicker
-              return;
-            }
-            // Ensure pill is in clean IDLE state when showing the floating bar
-            if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
-              pillDispatch({ type: "ANIM_DONE" }); // Reset to IDLE state
-            }
-            try {
-              await window.electron?.showFloatingBar?.();
-            } catch {}
-            return;
-          }
-
-          const message =
-            "Floating Bar Hidden. Use the Tray Menu to bring it back.";
-          // If expanded, defer notification until collapse to avoid jank
-          if (pillState === "EXPANDED") {
-            setPendingHideAfterCollapse({
-              active: true,
-              message,
-              deferNotification: true,
-            });
-            return;
-          }
-          // If not expanded, show heads-up now and then hide after it settles
-          notifyThenHide(message);
-        }}
+        onToggleFloatingBar={handleToggleFloatingBar}
         onNotificationAction={handleNotificationAction}
         panelView={panelView}
         initialSettingsTab={initialSettingsTab}
