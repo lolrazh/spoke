@@ -304,14 +304,14 @@ export function useTranscription(
       result,
       timing,
       providerKind,
-      capturedAudio,
+      capturedAudioMs,
       vadResult,
       isCancelled,
     }: {
       result: TranscriptionResult;
       timing: TranscriptionLatencyTiming;
       providerKind: TranscriptionProviderKind;
-      capturedAudio: CapturedAudio;
+      capturedAudioMs: number;
       vadResult: VadAudioResult;
       isCancelled: () => boolean;
     }) => {
@@ -366,7 +366,7 @@ export function useTranscription(
         providerKind,
         status: "done",
         timing,
-        capturedAudio,
+        capturedAudioMs,
         vadResult,
         metrics: result.metrics,
       });
@@ -449,17 +449,16 @@ export function useTranscription(
       recorderRef.current = null;
       recorderStartPromiseRef.current = null;
       timing.pcmStopStartedAt = performance.now();
-      const capturedAudio = await recorder.stop();
+      let capturedAudio: CapturedAudio | null = await recorder.stop();
       timing.pcmReadyAt = performance.now();
       if (isCancelled()) return;
+      const capturedAudioMs = Math.round(capturedAudio.durationMs);
       log.info(
-        `PCM captured: ${capturedAudio.pcm16.length} samples, ${Math.round(capturedAudio.durationMs)}ms`,
+        `PCM captured: ${capturedAudio.pcm16.length} samples, ${capturedAudioMs}ms`,
       );
 
       timing.vadStartedAt = performance.now();
-      vadLog.info(
-        `Starting trim for ${Math.round(capturedAudio.durationMs)}ms audio`,
-      );
+      vadLog.info(`Starting trim for ${capturedAudioMs}ms audio`);
       let vadResult: VadAudioResult | null = null;
       if (streamingVadSession && streamingVadSession.isUsable()) {
         vadResult = await streamingVadSession.finish(capturedAudio);
@@ -476,13 +475,18 @@ export function useTranscription(
         `speech=${vadResult.speechDetected} segments=${vadResult.segments.length} leading=${Math.round(vadResult.leadingTrimmedMs)}ms trailing=${Math.round(vadResult.trailingTrimmedMs)}ms vad=${vadResult.vadMs}ms`,
       );
 
+      // The trimmed clip (vadResult.audio) is all that feeds STT from here on;
+      // drop the reference to the full untrimmed capture so its PCM can be
+      // reclaimed while transcription/enhancement/paste run.
+      capturedAudio = null;
+
       if (!vadResult.speechDetected) {
         log.info("No speech detected; skipping STT");
         logTranscriptionLatency({
           providerKind: provider.descriptor.kind,
           status: "no_speech",
           timing,
-          capturedAudio,
+          capturedAudioMs,
           vadResult,
         });
         setText("");
@@ -526,7 +530,7 @@ export function useTranscription(
         result,
         timing,
         providerKind,
-        capturedAudio,
+        capturedAudioMs,
         vadResult,
         isCancelled,
       });
@@ -658,14 +662,14 @@ function logTranscriptionLatency({
   providerKind,
   status,
   timing,
-  capturedAudio,
+  capturedAudioMs,
   vadResult,
   metrics,
 }: {
   providerKind: TranscriptionProviderKind;
   status: "done" | "no_speech";
   timing: TranscriptionLatencyTiming;
-  capturedAudio: CapturedAudio;
+  capturedAudioMs: number;
   vadResult: VadAudioResult;
   metrics?: Record<string, unknown>;
 }) {
@@ -683,7 +687,7 @@ function logTranscriptionLatency({
     stt_wall_ms: elapsedMs(timing.sttStartedAt, timing.sttDoneAt),
     sidecar_inference_ms: numberMetric(metrics, "inference_ms"),
     paste_ms: elapsedMs(timing.pasteStartedAt, timing.pasteDoneAt),
-    captured_audio_ms: Math.round(capturedAudio.durationMs),
+    captured_audio_ms: capturedAudioMs,
     transcribed_audio_ms: Math.round(vadResult.audio.durationMs),
     trimmed_audio_ms: Math.round(trimmedMs),
   });
