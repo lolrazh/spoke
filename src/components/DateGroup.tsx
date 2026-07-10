@@ -1,5 +1,5 @@
 import React from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { SectionSeparator } from "./SettingsPanel";
 import {
   panelCascadeContainer,
@@ -13,7 +13,7 @@ interface DateGroupProps {
 
 const DateGroup: React.FC<DateGroupProps> = ({ label, children }) => {
   return (
-    <motion.div
+    <m.div
       variants={panelCascadeItem}
       style={{ marginTop: "var(--panel-section-offset)" }}
     >
@@ -21,13 +21,13 @@ const DateGroup: React.FC<DateGroupProps> = ({ label, children }) => {
       <SectionSeparator title={label} />
 
       {/* Items - with card outline */}
-      <motion.div
+      <m.div
         variants={panelCascadeContainer}
         className="border border-white/[0.08] rounded-lg overflow-hidden bg-background [&>*:last-child]:border-b-0"
       >
         {children}
-      </motion.div>
-    </motion.div>
+      </m.div>
+    </m.div>
   );
 };
 

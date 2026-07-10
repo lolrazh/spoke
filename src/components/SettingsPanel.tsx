@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "framer-motion";
 import { Switch } from "./ui/switch";
 import {
   Select,
@@ -163,7 +163,7 @@ const TabButton: React.FC<{
     }`}
   >
     {active && (
-      <motion.div
+      <m.div
         key={`${label}-bg`}
         className="absolute inset-0 bg-white/10 rounded-md"
         initial={{ opacity: 0 }}
@@ -178,7 +178,7 @@ const TabButton: React.FC<{
     >
       <SfIcon name={iconName} size={17} />
     </span>
-    <motion.span
+    <m.span
       initial={false}
       animate={{
         opacity: active ? 1 : 0,
@@ -201,7 +201,7 @@ const TabButton: React.FC<{
       className="relative z-10 text-[11px] font-medium overflow-hidden whitespace-nowrap"
     >
       {label}
-    </motion.span>
+    </m.span>
   </button>
 );
 
@@ -280,7 +280,7 @@ export const DownloadGlyph: React.FC<{ size?: number }> = ({ size = 12 }) => (
 // Draw-on checkmark — the exact path/animation the Models card uses for its
 // "ready" state, so the update's completion reads as the same moment.
 const InstalledCheck: React.FC = () => (
-  <motion.svg
+  <m.svg
     width="13"
     height="13"
     viewBox="0 0 24 24"
@@ -288,7 +288,7 @@ const InstalledCheck: React.FC = () => (
     className="shrink-0"
     aria-hidden
   >
-    <motion.path
+    <m.path
       initial={{ pathLength: 0 }}
       animate={{ pathLength: 1 }}
       transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
@@ -298,7 +298,7 @@ const InstalledCheck: React.FC = () => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-  </motion.svg>
+  </m.svg>
 );
 
 // The single slot at the trailing edge of the chip cross-fades between the
@@ -396,7 +396,7 @@ const UpdateCapsule: React.FC<{
     // its center while fading in, as one cohesive motion on a single spring.
     // It reserves its slot while invisible (scale is a transform, so layout is
     // unaffected); nothing slides — the version is handled separately.
-    <motion.div
+    <m.div
       style={{
         transformOrigin: "center center",
         pointerEvents: revealed ? "auto" : "none",
@@ -406,7 +406,7 @@ const UpdateCapsule: React.FC<{
       exit={{ opacity: 0, scale: 0 }}
       transition={UPDATE_CAPSULE_POP}
     >
-      <motion.button
+      <m.button
         type="button"
         whileTap={interactive ? { scale: 0.95 } : undefined}
         onClick={interactive ? handleClick : undefined}
@@ -422,7 +422,7 @@ const UpdateCapsule: React.FC<{
         {/* Hover label for the actionable states; its width animates 0 -> auto
             so it extends the chip leftward while the icon slot stays pinned to
             the right edge. */}
-        <motion.span
+        <m.span
           initial={false}
           animate={{
             width: showLabel ? "auto" : 0,
@@ -433,7 +433,7 @@ const UpdateCapsule: React.FC<{
           className="overflow-hidden whitespace-nowrap"
         >
           {UPDATE_CAPSULE_LABELS[mode]}
-        </motion.span>
+        </m.span>
 
         {/* Trailing icon slot — fixed-size; the chip's scale handles the
             entrance, and this only cross-fades the glyph / spinner / checkmark
@@ -443,7 +443,7 @@ const UpdateCapsule: React.FC<{
             with no dead gap. The checkmark then draws itself on. */}
         <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
           <AnimatePresence initial={false}>
-            <motion.span
+            <m.span
               key={icon.key}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -452,11 +452,11 @@ const UpdateCapsule: React.FC<{
               className="absolute inset-0 flex items-center justify-center"
             >
               {icon.node}
-            </motion.span>
+            </m.span>
           </AnimatePresence>
         </span>
-      </motion.button>
-    </motion.div>
+      </m.button>
+    </m.div>
   );
 };
 
@@ -807,7 +807,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               with an equal-and-opposite x offset (applied instantly) so the
               version stays flush-right — then, on reveal, animate x to 0 so it
               springs left in sync with the icon blooming. */}
-          <motion.a
+          <m.a
             initial={false}
             animate={{ x: capsuleMode && !showUpdateCapsule ? 40 : 0 }}
             transition={{
@@ -822,7 +822,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             Spoke v{appVersion}
-          </motion.a>
+          </m.a>
           {/* Mounted as soon as an update exists (reserving the slot); the
               entrance delay only gates the visual reveal, not the layout. */}
           <AnimatePresence initial={false}>
@@ -850,14 +850,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       )}
 
       {/* Content container for height measurement - includes navbar */}
-      <motion.div
+      <m.div
         ref={contentRef}
         variants={panelCascadeContainer}
         initial="hidden"
         animate="visible"
       >
         {/* Tab Navigation - top bezel */}
-        <motion.div
+        <m.div
           variants={panelCascadeItem}
           className="bg-background flex-shrink-0 no-drag"
           style={{
@@ -887,7 +887,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
               />
             </div>
           </div>
-        </motion.div>
+        </m.div>
 
         {/* Scrollable Content - the screen */}
         <div className="relative flex-1">
@@ -908,7 +908,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           >
             <div className="max-w-lg mx-auto w-full px-5 pt-0 pb-14">
               {activeTab === "settings" ? (
-                <motion.div
+                <m.div
                   key="settings-tab"
                   initial="hidden"
                   animate="visible"
@@ -916,14 +916,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   className="flex flex-col"
                 >
                   {/* Section 1: Defaults */}
-                  <motion.section
+                  <m.section
                     variants={panelCascadeContainer}
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <motion.div variants={panelCascadeItem}>
+                    <m.div variants={panelCascadeItem}>
                       <SectionSeparator title="Defaults" />
-                    </motion.div>
+                    </m.div>
 
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <SelectField
@@ -1005,29 +1005,29 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                         inGroup
                       />
                     </div>
-                  </motion.section>
-                </motion.div>
+                  </m.section>
+                </m.div>
               ) : activeTab === "models" ? (
-                <motion.div
+                <m.div
                   key="models-tab"
                   initial="hidden"
                   animate="visible"
                   variants={panelCascadeContainer}
                   className="flex flex-col"
                 >
-                  <motion.section
+                  <m.section
                     variants={panelCascadeContainer}
                     className="space-y-4"
                     style={{ marginTop: "var(--panel-section-offset)" }}
                   >
-                    <motion.div variants={panelCascadeItem}>
+                    <m.div variants={panelCascadeItem}>
                       <SectionSeparator title="Transcription" />
-                    </motion.div>
+                    </m.div>
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
                       <ModelsList enabled={activeTab === "models"} />
                     </div>
-                  </motion.section>
-                </motion.div>
+                  </m.section>
+                </m.div>
               ) : (
                 <TranscriptionHistoryView />
               )}
@@ -1062,7 +1062,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
             )}
           </div>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 };

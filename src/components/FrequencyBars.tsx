@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { useAudioLevel } from "../state/audioLevel";
 
 interface FrequencyBarsProps {
@@ -143,7 +143,7 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
         const isDot = !isListening && !isProcessing;
 
         return (
-          <motion.div
+          <m.div
             key={`freq-${index}`}
             className={`frequency-element ${isDot ? "as-dot" : "as-bar"}`}
             animate={{

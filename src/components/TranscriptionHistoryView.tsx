@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import DateGroup from "./DateGroup";
 import HistoryItem, { HistoryItemData } from "./HistoryItem";
 import {
@@ -194,24 +194,24 @@ const TranscriptionHistoryView: React.FC = () => {
   // Empty state
   if (historyItems.length === 0) {
     return (
-      <motion.div
+      <m.div
         className="flex flex-col items-center justify-center py-16 px-4"
         initial="hidden"
         animate="visible"
         variants={panelCascadeContainer}
       >
-        <motion.div className="text-center" variants={panelCascadeItem}>
+        <m.div className="text-center" variants={panelCascadeItem}>
           <p className="text-sm text-muted-foreground">No transcriptions yet</p>
           <p className="text-xs text-muted-foreground/60 mt-1">
             Your transcription history will appear here
           </p>
-        </motion.div>
-      </motion.div>
+        </m.div>
+      </m.div>
     );
   }
 
   return (
-    <motion.div
+    <m.div
       initial="hidden"
       animate="visible"
       variants={panelCascadeContainer}
@@ -243,7 +243,7 @@ const TranscriptionHistoryView: React.FC = () => {
           </span>
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 };
 

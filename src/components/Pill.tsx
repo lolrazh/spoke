@@ -5,7 +5,7 @@ import React, {
   useRef,
   useEffect,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
@@ -284,7 +284,7 @@ const Pill: React.FC<PillProps> = ({
         onMouseLeave();
       }}
     >
-      <motion.div
+      <m.div
         ref={pillCoreRef}
         className={`pill-core ${isExpanded ? "expanded" : ""}`}
         layout
@@ -300,7 +300,7 @@ const Pill: React.FC<PillProps> = ({
       >
         {/* Afterglow overlay: subtle fade right after state changes */}
         {!isExpanded && shouldImpactPulse && (
-          <motion.div
+          <m.div
             key={`impact-glow-${pillState}`}
             className="impact-glow-overlay"
             initial={{ opacity: 0.03 }}
@@ -311,7 +311,7 @@ const Pill: React.FC<PillProps> = ({
         <div className="pill-content flex items-center justify-center w-full h-full">
           <AnimatePresence mode="wait">
             {isExpanded ? (
-              <motion.div
+              <m.div
                 key="panel-content"
                 className="w-full h-full"
                 initial={{ opacity: 0 }}
@@ -344,9 +344,9 @@ const Pill: React.FC<PillProps> = ({
                     <SfIcon name="chevron.up" size={14} />
                   </button>
                 </div>
-              </motion.div>
+              </m.div>
             ) : isShowingNotification ? (
-              <motion.span
+              <m.span
                 key="notification"
                 className={`notification-text ${isTextTruncated ? "truncated" : ""} ${
                   notificationAction ? "cursor-pointer" : ""
@@ -369,9 +369,9 @@ const Pill: React.FC<PillProps> = ({
                 transition={{ duration: MOTION.durations.fast / 2 }}
               >
                 {pillContext.notifMsg}
-              </motion.span>
+              </m.span>
             ) : (
-              <motion.div
+              <m.div
                 key="visualizer"
                 className="visualization-container"
                 initial={{ opacity: 0 }}
@@ -407,11 +407,11 @@ const Pill: React.FC<PillProps> = ({
                   />
                 )}
                 {pillState === "IDLE" && <div className="resting-indicator" />}
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   );
 };

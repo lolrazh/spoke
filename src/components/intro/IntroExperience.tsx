@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { Button } from "../ui/button";
 import { ParticlesCanvas } from "../shared/ParticlesCanvas";
 import { ENABLE_ONBOARDING_PARTICLES } from "../../config/featureFlags";
@@ -75,7 +75,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
   return (
     <AnimatePresence onExitComplete={onFinish}>
       {visible && (
-        <motion.div
+        <m.div
           className="sf-intro-overlay"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -88,7 +88,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
           {ENABLE_ONBOARDING_PARTICLES && !reduced && <ParticlesCanvas />}
 
           {/* Logo - positioned independently */}
-          <motion.img
+          <m.img
             src={logoSrc}
             alt="Spoke logo"
             className="sf-intro-logo"
@@ -105,7 +105,7 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
           {/* Center group - text and CTA */}
           <div className="sf-intro-center space-y-3 md:space-y-4">
             {/* Headline + Subcopy */}
-            <motion.div
+            <m.div
               className="text-center space-y-1"
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 6 }}
@@ -117,9 +117,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
               <p className="sf-intro-sub text-sm text-subtle leading-relaxed">
                 Let's get you set up for fast, private dictation in every app.
               </p>
-            </motion.div>
+            </m.div>
             {/* CTA */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: stage >= 3 ? 1 : 0, y: stage >= 3 ? 0 : 10 }}
               transition={{
@@ -132,9 +132,9 @@ export const IntroExperience: React.FC<IntroExperienceProps> = ({
               <Button onClick={handleSkip} className="btn-primary shimmer">
                 <span>Get Started</span>
               </Button>
-            </motion.div>
+            </m.div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

@@ -1,5 +1,5 @@
 import React from "react";
-import { motion } from "framer-motion";
+import { m } from "framer-motion";
 import { panelCascadeItem } from "./shared/panelMotion";
 
 type SettingsCardProps = {
@@ -50,7 +50,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
     : { role: "group" as const };
 
   return (
-    <motion.div
+    <m.div
       variants={panelCascadeItem}
       className={`group ${baseClass} ${roundedClass} ${borderClass} ${
         interactive ? "transition-colors hover:bg-white/5" : ""
@@ -88,7 +88,7 @@ const SettingsCard: React.FC<SettingsCardProps> = ({
           {children}
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 };
 
