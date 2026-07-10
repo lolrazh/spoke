@@ -33,8 +33,13 @@ export default defineConfig({
           dest: "vad",
         },
         {
-          // Copy ORT Web WASM binaries for VAD
-          src: [join(__dirname, "public/vad/ort-wasm/*")],
+          // Copy the ORT Web WASM binary for VAD. NonRealTimeVAD (the only
+          // vad-web API we use) resolves onnxruntime-web to its `ort.min`
+          // build, which loads the jsep pair; the non-jsep CPU pair is only
+          // reachable via MicVAD, which we never touch, so it isn't vendored.
+          src: [
+            join(__dirname, "public/vad/ort-wasm/ort-wasm-simd-threaded.jsep.*"),
+          ],
           dest: "vad/ort-wasm",
         },
       ],
