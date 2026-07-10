@@ -1,4 +1,7 @@
-import type { TranscriptionItem } from "../types/shared";
+import {
+  MAX_TRANSCRIPTION_HISTORY,
+  type TranscriptionItem,
+} from "../types/shared";
 
 const listeners = new Set<(items: TranscriptionItem[]) => void>();
 let items: TranscriptionItem[] = [];
@@ -83,9 +86,9 @@ export async function addTranscription(
   // Add to beginning of in-memory list
   items = [newItem, ...items];
 
-  // Keep in sync with storage cap (100000 items)
-  if (items.length > 100000) {
-    items = items.slice(0, 100000);
+  // Keep in sync with the storage cap
+  if (items.length > MAX_TRANSCRIPTION_HISTORY) {
+    items = items.slice(0, MAX_TRANSCRIPTION_HISTORY);
   }
 
   emit();

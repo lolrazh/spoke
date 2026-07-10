@@ -101,6 +101,12 @@ export type TranscriptionItem = {
   mode: "dictation" | "edit";
 };
 
+/**
+ * Maximum number of transcription history items retained on disk and mirrored
+ * in memory. Bounds the JSON store to a few hundred KB so full loads stay cheap.
+ */
+export const MAX_TRANSCRIPTION_HISTORY = 2000;
+
 // ── Model Management ───────────────────────────────────────────────────
 
 export type ModelInstallState =

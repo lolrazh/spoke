@@ -1,7 +1,8 @@
 import Store from "electron-store";
-import type { TranscriptionItem } from "../types/shared";
-
-const MAX_ITEMS = 100000;
+import {
+  MAX_TRANSCRIPTION_HISTORY,
+  type TranscriptionItem,
+} from "../types/shared";
 
 interface TranscriptionStoreSchema {
   transcriptions: TranscriptionItem[];
@@ -13,6 +14,10 @@ const store = new Store<TranscriptionStoreSchema>({
     transcriptions: [],
   },
 });
+
+// Cleaned, capped mirror of the persisted list. Validated once on first access
+// and kept in sync on every write, so reads never re-validate the whole file.
+let cache: TranscriptionItem[] | null = null;
 
 /**
  * Validate and fix corrupted transcription items
@@ -48,34 +53,56 @@ function validateItem(item: unknown): TranscriptionItem | null {
 }
 
 /**
- * Get all transcriptions from storage (most recent first)
- * Validates and filters out corrupted entries
+ * Load, validate, cap, and cache the persisted list on first access.
+ * Persists once if validation dropped corrupted items or the stored file
+ * exceeded the current cap (migration for users with pre-cap history files).
  */
-export function getTranscriptions(): TranscriptionItem[] {
+function ensureCache(): TranscriptionItem[] {
+  if (cache) return cache;
+
   const raw = store.get("transcriptions", []);
   const validated = raw
     .map(validateItem)
     .filter((item): item is TranscriptionItem => item !== null);
 
-  // If we filtered out items, save the cleaned data
-  if (validated.length !== raw.length) {
+  const droppedCount = raw.length - validated.length;
+  if (droppedCount > 0) {
     console.warn(
-      `[TranscriptionStorage] Cleaned ${raw.length - validated.length} corrupted items`,
+      `[TranscriptionStorage] Cleaned ${droppedCount} corrupted items`,
     );
-    store.set("transcriptions", validated);
   }
 
-  return validated;
+  // Truncate legacy oversized history down to the current cap.
+  const cleaned =
+    validated.length > MAX_TRANSCRIPTION_HISTORY
+      ? validated.slice(0, MAX_TRANSCRIPTION_HISTORY)
+      : validated;
+
+  // Persist once if either cleaning or capping changed the list.
+  if (cleaned.length !== raw.length) {
+    store.set("transcriptions", cleaned);
+  }
+
+  cache = cleaned;
+  return cache;
+}
+
+/**
+ * Get all transcriptions from storage (most recent first)
+ * Served from the validated in-memory cache.
+ */
+export function getTranscriptions(): TranscriptionItem[] {
+  return ensureCache();
 }
 
 /**
  * Save a new transcription to storage
- * Automatically prunes to MAX_ITEMS
+ * Automatically prunes to MAX_TRANSCRIPTION_HISTORY
  */
 export function saveTranscription(
   item: Omit<TranscriptionItem, "id">,
 ): TranscriptionItem {
-  const transcriptions = store.get("transcriptions", []);
+  const transcriptions = ensureCache();
 
   const newItem: TranscriptionItem = {
     ...item,
@@ -86,8 +113,8 @@ export function saveTranscription(
   transcriptions.unshift(newItem);
 
   // Prune to max items
-  if (transcriptions.length > MAX_ITEMS) {
-    transcriptions.length = MAX_ITEMS;
+  if (transcriptions.length > MAX_TRANSCRIPTION_HISTORY) {
+    transcriptions.length = MAX_TRANSCRIPTION_HISTORY;
   }
 
   store.set("transcriptions", transcriptions);
@@ -99,7 +126,7 @@ export function saveTranscription(
  * Delete a transcription by ID
  */
 export function deleteTranscription(id: string): boolean {
-  const transcriptions = store.get("transcriptions", []);
+  const transcriptions = ensureCache();
   const index = transcriptions.findIndex((t) => t.id === id);
 
   if (index === -1) {
@@ -116,5 +143,6 @@ export function deleteTranscription(id: string): boolean {
  * Clear all transcriptions
  */
 export function clearTranscriptions(): void {
+  cache = [];
   store.set("transcriptions", []);
 }
