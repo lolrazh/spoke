@@ -2,8 +2,11 @@ import { defineConfig } from "vite";
 import path from "node:path";
 
 // https://vitejs.dev/config
-export default defineConfig({
+// The Forge Vite plugin passes mode "production" on package/make and
+// "development" on dev start, so gate sourcemaps to keep them out of releases.
+export default defineConfig(({ mode }) => ({
   build: {
+    sourcemap: mode !== "production",
     lib: {
       // Specify multiple entry points for preload scripts
       entry: {
@@ -23,4 +26,4 @@ export default defineConfig({
     // Ensure the output directory is cleared before building
     emptyOutDir: false, // Set to false if other build steps use the same outDir
   },
-});
+}));

@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 
 // https://vitejs.dev/config/
-export default defineConfig({
+// The Forge Vite plugin passes mode "production" on package/make and
+// "development" on dev start, so gate sourcemaps to keep them out of releases.
+export default defineConfig(({ mode }) => ({
   base: "./",
   plugins: [
     react(),
@@ -57,6 +59,6 @@ export default defineConfig({
     // Don't override rollupOptions.input - let Forge control it
     target: "esnext",
 
-    sourcemap: true,
+    sourcemap: mode !== "production",
   },
-});
+}));
