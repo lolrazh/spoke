@@ -9,6 +9,7 @@ import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
+import { MicBars } from "./MicBars";
 import { m, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import Spinner from "./ui/Spinner";
@@ -178,7 +179,7 @@ const Onboarding: React.FC = () => {
 
   // Mic-check visualizer (Web Audio API capture + frequency analysis)
   const {
-    barValues,
+    analyserRef,
     micDevices,
     setMicDevices,
     selectedMicId,
@@ -1201,20 +1202,10 @@ const Onboarding: React.FC = () => {
                       className="flex items-center justify-center py-3"
                       variants={panelCascadeItem}
                     >
-                      <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
-                        {barValues.map((v, i) => {
-                          const h = Math.max(6, Math.round(6 + v * 80));
-                          const opacity = 0.45 + v * 0.55;
-                          return (
-                            <div
-                              key={i}
-                              className="flex-1 rounded-[3px] bg-white/70"
-                              style={{ height: `${h}px`, opacity }}
-                              aria-hidden
-                            />
-                          );
-                        })}
-                      </div>
+                      <MicBars
+                        analyserRef={analyserRef}
+                        active={currentStep === "mic-check"}
+                      />
                     </m.div>
                   </m.div>
                 </m.div>
