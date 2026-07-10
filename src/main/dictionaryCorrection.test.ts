@@ -82,6 +82,17 @@ describe("main/dictionaryCorrection", () => {
     );
   });
 
+  it("survives a malformed dictionary from a corrupt prefs file", () => {
+    // Transcription must never fail because prefs JSON has the wrong shape.
+    const junk = [42, null, "Sandheep"] as unknown as string[];
+    expect(correctTranscript("I met Sandheap today", junk)).toBe(
+      "I met Sandheep today",
+    );
+    expect(correctTranscript("hello there", "oops" as unknown as string[])).toBe(
+      "hello there",
+    );
+  });
+
   it("does not correct when two candidates are a near-tie", () => {
     // "Karan" is equidistant from both entries (similarity 0.8 each), so there
     // is no clear winner and it must be left unchanged.

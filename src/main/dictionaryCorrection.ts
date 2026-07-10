@@ -22,8 +22,13 @@ const COMMON_WORDS = new Set(
 const WORD_SPAN = /[\p{L}\p{N}']+/gu;
 
 function expandEntries(dictionary: readonly string[]): string[] {
+  // The dictionary comes from a JSON prefs file that is loaded without shape
+  // validation, so junk here must degrade to "no correction", not break
+  // transcription.
+  if (!Array.isArray(dictionary)) return [];
   const words: string[] = [];
   for (const entry of dictionary) {
+    if (typeof entry !== "string") continue;
     for (const part of entry.split(/\s+/)) {
       if (part) words.push(part);
     }
