@@ -21,6 +21,12 @@ import {
 import { bootTimeline } from "../bootTimeline";
 import { insertTextAtCursor } from "../pasteOrchestrator";
 import { saveAppPreferences } from "../preferences";
+import {
+  addVocabularyEntry,
+  getVocabularyDictionary,
+  removeVocabularyEntry,
+  updateVocabularyEntry,
+} from "../vocabularyService";
 import { state } from "../windowState";
 
 // Registered at module load (not inside app.whenReady()), matching the
@@ -75,30 +81,22 @@ export function registerTranscriptIpc(): void {
 
   // Vocabulary dictionary (words/phrases used to correct transcripts)
   ipcMain.handle("vocabulary:get-dictionary", () => {
-    return { dictionary: state.appPreferences.vocabularyDictionary ?? [] };
+    return { dictionary: getVocabularyDictionary() };
   });
 
   ipcMain.handle(
-    "vocabulary:set-dictionary",
-    (_event, payload: { dictionary: string[] }) => {
-      try {
-        const seen = new Set<string>();
-        const sanitized: string[] = [];
-        for (const entry of payload.dictionary ?? []) {
-          const trimmed = typeof entry === "string" ? entry.trim() : "";
-          if (trimmed.length === 0) continue;
-          const key = trimmed.toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          sanitized.push(trimmed);
-        }
-        state.appPreferences.vocabularyDictionary = sanitized;
-        saveAppPreferences(state.appPreferences);
-        return { ok: true };
-      } catch (e) {
-        return { ok: false, error: (e as Error).message };
-      }
-    },
+    "vocabulary:add-entry",
+    (_event, payload: { value: unknown }) => addVocabularyEntry(payload?.value),
+  );
+  ipcMain.handle(
+    "vocabulary:update-entry",
+    (_event, payload: { currentValue: unknown; nextValue: unknown }) =>
+      updateVocabularyEntry(payload?.currentValue, payload?.nextValue),
+  );
+  ipcMain.handle(
+    "vocabulary:remove-entry",
+    (_event, payload: { value: unknown }) =>
+      removeVocabularyEntry(payload?.value),
   );
 
   // Transcription history storage handlers

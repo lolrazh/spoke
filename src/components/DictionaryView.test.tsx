@@ -3,7 +3,6 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import DictionaryView from "./DictionaryView";
 
-// Mock SfIcon to avoid import.meta.glob issues in tests
 vi.mock("./icons/SfIcon", () => ({
   default: ({ name }: { name: string }) => (
     <span data-testid={`sf-icon-${name}`} />
@@ -11,18 +10,46 @@ vi.mock("./icons/SfIcon", () => ({
 }));
 
 function mockElectron(initial: string[]) {
-  const setVocabularyDictionary = vi.fn(async () => ({ ok: true }));
+  let current = [...initial];
+  const addVocabularyEntry = vi.fn(async (value: string) => {
+    const trimmed = value.trim();
+    if (
+      trimmed &&
+      !current.some((word) => word.toLowerCase() === trimmed.toLowerCase())
+    ) {
+      current = [...current, trimmed];
+    }
+    return { ok: true, dictionary: [...current] };
+  });
+  const updateVocabularyEntry = vi.fn(
+    async (currentValue: string, nextValue: string) => {
+      const index = current.findIndex(
+        (word) => word.toLowerCase() === currentValue.toLowerCase(),
+      );
+      if (index !== -1) {
+        current = [...current];
+        current[index] = nextValue.trim();
+      }
+      return { ok: true, dictionary: [...current] };
+    },
+  );
+  const removeVocabularyEntry = vi.fn(async (value: string) => {
+    current = current.filter(
+      (word) => word.toLowerCase() !== value.toLowerCase(),
+    );
+    return { ok: true, dictionary: [...current] };
+  });
   (window as any).electron = {
-    getVocabularyDictionary: vi.fn(async () => ({ dictionary: initial })),
-    setVocabularyDictionary,
+    getVocabularyDictionary: vi.fn(async () => ({ dictionary: current })),
+    addVocabularyEntry,
+    updateVocabularyEntry,
+    removeVocabularyEntry,
   };
-  return { setVocabularyDictionary };
+  return { addVocabularyEntry, updateVocabularyEntry, removeVocabularyEntry };
 }
 
 describe("DictionaryView", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
+  beforeEach(() => vi.restoreAllMocks());
 
   it("renders the words from the dictionary", async () => {
     mockElectron(["Anthropic", "Kubernetes"]);
@@ -31,148 +58,75 @@ describe("DictionaryView", () => {
     expect(screen.getByText("Kubernetes")).toBeTruthy();
   });
 
-  it("adds a word on Enter, persisting the full appended list and clearing the input", async () => {
-    const { setVocabularyDictionary } = mockElectron(["Anthropic"]);
+  it("adds through an atomic command and applies the canonical response", async () => {
+    const { addVocabularyEntry } = mockElectron(["Anthropic"]);
     render(<DictionaryView />);
     await screen.findByText("Anthropic");
-
-    const input = screen.getByLabelText("Add a word");
-    fireEvent.change(input, { target: { value: "Parakeet" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() =>
-      expect(setVocabularyDictionary).toHaveBeenCalledWith([
-        "Anthropic",
-        "Parakeet",
-      ]),
-    );
-    expect((input as HTMLInputElement).value).toBe("");
-  });
-
-  it("title-cases an all-lowercase word on add", async () => {
-    const { setVocabularyDictionary } = mockElectron([]);
-    render(<DictionaryView />);
 
     const input = screen.getByLabelText("Add a word");
     fireEvent.change(input, { target: { value: "parakeet holdings" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() =>
-      expect(setVocabularyDictionary).toHaveBeenCalledWith([
-        "Parakeet Holdings",
-      ]),
+      expect(addVocabularyEntry).toHaveBeenCalledWith("parakeet holdings"),
     );
+    expect(await screen.findByText("parakeet holdings")).toBeTruthy();
+    expect((input as HTMLInputElement).value).toBe("");
   });
 
   it("keeps intentional casing on add", async () => {
-    const { setVocabularyDictionary } = mockElectron([]);
+    const { addVocabularyEntry } = mockElectron([]);
     render(<DictionaryView />);
-
     const input = screen.getByLabelText("Add a word");
     fireEvent.change(input, { target: { value: "iPhone" } });
     fireEvent.keyDown(input, { key: "Enter" });
-
     await waitFor(() =>
-      expect(setVocabularyDictionary).toHaveBeenCalledWith(["iPhone"]),
+      expect(addVocabularyEntry).toHaveBeenCalledWith("iPhone"),
     );
   });
 
-  it("stores an edit verbatim, so editing can force a lowercase entry", async () => {
-    const { setVocabularyDictionary } = mockElectron(["Kubectl"]);
-    render(<DictionaryView />);
-    await screen.findByText("Kubectl");
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit Kubectl" }));
-    const input = screen.getByLabelText("Edit Kubectl");
-    fireEvent.change(input, { target: { value: "kubectl" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() =>
-      expect(setVocabularyDictionary).toHaveBeenCalledWith(["kubectl"]),
-    );
-  });
-
-  it("removes against the latest list after an add (memoized rows must not act on a stale list)", async () => {
-    const { setVocabularyDictionary } = mockElectron(["Anthropic"]);
+  it("removes through an atomic command", async () => {
+    const { removeVocabularyEntry } = mockElectron(["Anthropic", "Kubernetes"]);
     render(<DictionaryView />);
     await screen.findByText("Anthropic");
-
-    const input = screen.getByLabelText("Add a word");
-    fireEvent.change(input, { target: { value: "Parakeet" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    await screen.findByText("Parakeet");
-
     fireEvent.click(screen.getByRole("button", { name: "Remove Anthropic" }));
-
     await waitFor(() =>
-      expect(setVocabularyDictionary).toHaveBeenLastCalledWith(["Parakeet"]),
+      expect(removeVocabularyEntry).toHaveBeenCalledWith("Anthropic"),
     );
+    expect(screen.queryByText("Anthropic")).toBeNull();
+    expect(screen.getByText("Kubernetes")).toBeTruthy();
   });
 
-  it("rolls back the optimistic update when the write is rejected", async () => {
+  it("edits through an atomic command", async () => {
+    const { updateVocabularyEntry } = mockElectron(["Anthropic", "Kubernetes"]);
+    render(<DictionaryView />);
+    await screen.findByText("Anthropic");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Anthropic" }));
+    const input = screen.getByLabelText("Edit Anthropic") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Anthropic PBC" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(updateVocabularyEntry).toHaveBeenCalledWith(
+        "Anthropic",
+        "Anthropic PBC",
+      ),
+    );
+    expect(await screen.findByText("Anthropic PBC")).toBeTruthy();
+  });
+
+  it("keeps rendered state when a main-process mutation fails", async () => {
     mockElectron(["Anthropic"]);
-    (window as any).electron.setVocabularyDictionary = vi.fn(async () => ({
+    (window as any).electron.removeVocabularyEntry = vi.fn(async () => ({
       ok: false,
+      dictionary: ["Anthropic"],
       error: "disk full",
     }));
     render(<DictionaryView />);
     await screen.findByText("Anthropic");
-
     fireEvent.click(screen.getByRole("button", { name: "Remove Anthropic" }));
-
-    // The word must come back once the failed write reports { ok: false }.
-    expect(await screen.findByText("Anthropic")).toBeTruthy();
-  });
-
-  it("ignores an empty submit and a case-insensitive duplicate", async () => {
-    const { setVocabularyDictionary } = mockElectron(["Anthropic"]);
-    render(<DictionaryView />);
-    await screen.findByText("Anthropic");
-
-    const input = screen.getByLabelText("Add a word");
-    fireEvent.keyDown(input, { key: "Enter" });
-    fireEvent.change(input, { target: { value: "  anthropic  " } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(setVocabularyDictionary).not.toHaveBeenCalled();
-  });
-
-  it("removes a word via its trash action, persisting the filtered list", async () => {
-    const { setVocabularyDictionary } = mockElectron([
-      "Anthropic",
-      "Kubernetes",
-    ]);
-    render(<DictionaryView />);
-    await screen.findByText("Anthropic");
-
-    fireEvent.click(screen.getByRole("button", { name: "Remove Anthropic" }));
-
     await waitFor(() =>
-      expect(setVocabularyDictionary).toHaveBeenCalledWith(["Kubernetes"]),
+      expect((window as any).electron.removeVocabularyEntry).toHaveBeenCalled(),
     );
-  });
-
-  it("edits a word: reveals a pre-filled input and persists the replaced entry", async () => {
-    const { setVocabularyDictionary } = mockElectron([
-      "Anthropic",
-      "Kubernetes",
-    ]);
-    render(<DictionaryView />);
-    await screen.findByText("Anthropic");
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit Anthropic" }));
-
-    const input = screen.getByLabelText("Edit Anthropic") as HTMLInputElement;
-    expect(input.value).toBe("Anthropic");
-
-    fireEvent.change(input, { target: { value: "Anthropic PBC" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    await waitFor(() =>
-      expect(setVocabularyDictionary).toHaveBeenCalledWith([
-        "Anthropic PBC",
-        "Kubernetes",
-      ]),
-    );
+    expect(screen.getByText("Anthropic")).toBeTruthy();
   });
 });
