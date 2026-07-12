@@ -50,9 +50,7 @@ declare global {
         ok: boolean;
         snapshot: UpdateSnapshot;
       }>;
-      devSetState?: (
-        state: UpdateStatus | "ready",
-      ) => Promise<{
+      devSetState?: (state: UpdateStatus | "ready") => Promise<{
         ok: boolean;
         snapshot: UpdateSnapshot;
         error?: string;
@@ -186,9 +184,20 @@ declare global {
       ) => Promise<{ ok: boolean; error?: string }>;
       // Vocabulary dictionary (words/phrases used to correct transcripts)
       getVocabularyDictionary: () => Promise<{ dictionary: string[] }>;
-      setVocabularyDictionary: (
-        dictionary: string[],
-      ) => Promise<{ ok: boolean; error?: string }>;
+      addVocabularyEntry: (value: string) => Promise<{
+        ok: boolean;
+        dictionary: string[];
+        error?: string;
+      }>;
+      updateVocabularyEntry: (
+        currentValue: string,
+        nextValue: string,
+      ) => Promise<{ ok: boolean; dictionary: string[]; error?: string }>;
+      removeVocabularyEntry: (value: string) => Promise<{
+        ok: boolean;
+        dictionary: string[];
+        error?: string;
+      }>;
       openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
       // Renderer lifecycle
       rendererReady: () => void;

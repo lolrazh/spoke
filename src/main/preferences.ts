@@ -112,12 +112,14 @@ export function loadAppPreferences(): AppPreferences {
   return {};
 }
 
-export function saveAppPreferences(prefs: AppPreferences): void {
+export function saveAppPreferences(prefs: AppPreferences): boolean {
   try {
     ensureDir(appPrefsPath);
     fs.writeFileSync(appPrefsPath, JSON.stringify(prefs, null, 2));
     logger.main.info("[AppPrefs] Saved preferences:", prefs);
+    return true;
   } catch (error) {
     logger.main.error("[AppPrefs] Failed to save preferences:", error);
+    return false;
   }
 }

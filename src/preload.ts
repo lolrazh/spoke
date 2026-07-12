@@ -300,10 +300,12 @@ contextBridge.exposeInMainWorld("electron", {
   // Vocabulary dictionary (words/phrases used to correct transcripts)
   getVocabularyDictionary: (): Promise<{ dictionary: string[] }> =>
     ipcRenderer.invoke("vocabulary:get-dictionary"),
-  setVocabularyDictionary: (
-    dictionary: string[],
-  ): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke("vocabulary:set-dictionary", { dictionary }),
+  addVocabularyEntry: (value: string) =>
+    ipcRenderer.invoke("vocabulary:add-entry", { value }),
+  updateVocabularyEntry: (currentValue: string, nextValue: string) =>
+    ipcRenderer.invoke("vocabulary:update-entry", { currentValue, nextValue }),
+  removeVocabularyEntry: (value: string) =>
+    ipcRenderer.invoke("vocabulary:remove-entry", { value }),
   // Generic external URL opener
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
   // Renderer lifecycle
