@@ -9,7 +9,9 @@ const MIN_TOKEN_LENGTH = 4;
 const COMMON_WORD_LIMIT = 30000;
 const PHONETIC_THRESHOLD = 0.6;
 const FUZZY_THRESHOLD = 0.85;
+const PHRASE_FUZZY_THRESHOLD = 0.95;
 const TIE_MARGIN = 0.05;
+const MAX_PHRASE_TOKENS = 4;
 
 // subtlex is pre-sorted by descending spoken-English frequency, so the head of
 // the list is the highest-value skip-list of everyday words.
@@ -20,6 +22,9 @@ const COMMON_WORDS = new Set(
 );
 
 const WORD_SPAN = /[\p{L}\p{N}']+/gu;
+const PHRASE_GAP = /^[\p{Zs}\t&+/-]*$/u;
+
+type PhraseKey = { entry: string; key: string };
 
 function expandEntries(dictionary: readonly string[]): string[] {
   // The dictionary comes from a JSON prefs file that is loaded without shape
@@ -40,11 +45,57 @@ type Index = {
   canonical: Map<string, string>;
   phonetic: Map<string, string[]>;
   words: string[];
+  phraseCanonical: Map<string, PhraseKey[]>;
+  phrasePhonetic: Map<string, PhraseKey[]>;
+  phraseKeys: PhraseKey[];
 };
+
+function normalizePhrase(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}]+/gu, "")
+    .toLowerCase();
+}
+
+function phraseKeys(entry: string): string[] {
+  const keys = new Set<string>();
+  const direct = normalizePhrase(entry);
+  if (direct) keys.add(direct);
+  if (entry.includes("&")) {
+    const expanded = normalizePhrase(entry.replaceAll("&", " and "));
+    if (expanded) keys.add(expanded);
+  }
+  return [...keys];
+}
+
+function isPhraseAwareEntry(entry: string): boolean {
+  // Only entries that visibly express phrase/compound intent participate in
+  // cross-token matching. A plain title-cased name such as "Karin" stays on
+  // the single-token path, preventing ordinary prose like "car in" from being
+  // merged merely because it has similar phonetics.
+  return (
+    /\s/u.test(entry) ||
+    /[^\p{L}\p{N}']/u.test(entry) ||
+    /\p{Lu}/u.test(entry.slice(1))
+  );
+}
+
+function addPhraseBucket(
+  index: Map<string, PhraseKey[]>,
+  key: string,
+  candidate: PhraseKey,
+): void {
+  const bucket = index.get(key);
+  if (bucket) bucket.push(candidate);
+  else index.set(key, [candidate]);
+}
 
 function buildIndex(dictionary: readonly string[]): Index {
   const canonical = new Map<string, string>();
   const phonetic = new Map<string, string[]>();
+  const phraseCanonical = new Map<string, PhraseKey[]>();
+  const phrasePhonetic = new Map<string, PhraseKey[]>();
+  const indexedPhraseKeys: PhraseKey[] = [];
   for (const word of expandEntries(dictionary)) {
     const lower = word.toLowerCase();
     if (canonical.has(lower)) continue;
@@ -57,13 +108,42 @@ function buildIndex(dictionary: readonly string[]): Index {
       else phonetic.set(code, [word]);
     }
   }
-  return { canonical, phonetic, words: [...canonical.values()] };
+
+  if (Array.isArray(dictionary)) {
+    const seen = new Set<string>();
+    for (const rawEntry of dictionary) {
+      if (typeof rawEntry !== "string") continue;
+      const entry = rawEntry.trim();
+      if (!entry || !isPhraseAwareEntry(entry)) continue;
+      for (const key of phraseKeys(entry)) {
+        const dedupeKey = `${entry.toLowerCase()}\0${key}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        const candidate = { entry, key };
+        indexedPhraseKeys.push(candidate);
+        addPhraseBucket(phraseCanonical, key, candidate);
+        const [primary, secondary] = doubleMetaphone(key);
+        for (const code of new Set([primary, secondary])) {
+          if (code) addPhraseBucket(phrasePhonetic, code, candidate);
+        }
+      }
+    }
+  }
+
+  return {
+    canonical,
+    phonetic,
+    words: [...canonical.values()],
+    phraseCanonical,
+    phrasePhonetic,
+    phraseKeys: indexedPhraseKeys,
+  };
 }
 
-// The dictionary array is replaced wholesale on every edit (the IPC handler
-// sanitizes into a fresh array; the prefs loader parses a fresh one) and never
-// mutated in place, so reference identity is a correct invalidation signal:
-// one slot, rebuilt only when the dictionary actually changes.
+// The vocabulary service replaces the dictionary array on every mutation and
+// the prefs loader parses a fresh one. Neither mutates it in place, so reference
+// identity is a correct invalidation signal: one slot, rebuilt only when the
+// dictionary actually changes.
 let cachedDictionary: readonly string[] | null = null;
 let cachedIndex: Index | null = null;
 
@@ -83,7 +163,11 @@ function similarity(a: string, b: string): number {
 
 type Scored = { word: string; sim: number };
 
-function bestFrom(candidates: string[], lower: string, threshold: number): Scored[] {
+function bestFrom(
+  candidates: string[],
+  lower: string,
+  threshold: number,
+): Scored[] {
   const seen = new Set<string>();
   const scored: Scored[] = [];
   for (const word of candidates) {
@@ -110,6 +194,75 @@ function matchCasing(entry: string, stem: string): string {
 }
 
 type Match = { word: string; sim: number; path: "phonetic" | "fuzzy" };
+
+type PhraseMatch = {
+  entry: string;
+  sim: number;
+  path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase";
+};
+
+function scorePhraseCandidates(
+  candidates: PhraseKey[],
+  key: string,
+  threshold: number,
+): Array<{ candidate: PhraseKey; sim: number }> {
+  const bestByEntry = new Map<string, { candidate: PhraseKey; sim: number }>();
+  for (const candidate of candidates) {
+    const sim = similarity(key, candidate.key);
+    if (sim < threshold) continue;
+    const entryKey = candidate.entry.toLowerCase();
+    const previous = bestByEntry.get(entryKey);
+    if (!previous || sim > previous.sim) {
+      bestByEntry.set(entryKey, { candidate, sim });
+    }
+  }
+  return [...bestByEntry.values()].sort((a, b) => b.sim - a.sim);
+}
+
+function unambiguousPhrase(
+  scored: Array<{ candidate: PhraseKey; sim: number }>,
+  path: PhraseMatch["path"],
+): PhraseMatch | null {
+  if (scored.length === 0) return null;
+  if (scored.length >= 2 && scored[0].sim - scored[1].sim < TIE_MARGIN) {
+    return null;
+  }
+  return { entry: scored[0].candidate.entry, sim: scored[0].sim, path };
+}
+
+function findPhraseMatch(key: string, index: Index): PhraseMatch | null {
+  const exact = index.phraseCanonical.get(key) ?? [];
+  const exactMatch = unambiguousPhrase(
+    scorePhraseCandidates(exact, key, 1),
+    "exact-phrase",
+  );
+  if (exactMatch) return exactMatch;
+  if (exact.length > 1) return null;
+
+  const phoneticCandidates: PhraseKey[] = [];
+  const [primary, secondary] = doubleMetaphone(key);
+  for (const code of new Set([primary, secondary])) {
+    if (!code) continue;
+    const bucket = index.phrasePhonetic.get(code);
+    if (bucket) phoneticCandidates.push(...bucket);
+  }
+  const scoredPhonetic = scorePhraseCandidates(
+    phoneticCandidates,
+    key,
+    PHONETIC_THRESHOLD,
+  );
+  // A near-tie is a terminal ambiguity, not a signal to try another matching
+  // path. Falling through could let the stricter fuzzy threshold discard the
+  // runner-up and incorrectly turn the same ambiguous set into a winner.
+  if (scoredPhonetic.length > 0) {
+    return unambiguousPhrase(scoredPhonetic, "phonetic-phrase");
+  }
+
+  return unambiguousPhrase(
+    scorePhraseCandidates(index.phraseKeys, key, PHRASE_FUZZY_THRESHOLD),
+    "fuzzy-phrase",
+  );
+}
 
 function findMatch(stem: string, lower: string, index: Index): Match | null {
   const [primary, secondary] = doubleMetaphone(stem);
@@ -141,8 +294,10 @@ export function correctTranscript(
 ): string {
   if (dictionary.length === 0) return text;
   const index = getIndex(dictionary);
+  const tokens = [...text.matchAll(WORD_SPAN)];
+  if (tokens.length === 0) return text;
 
-  return text.replace(WORD_SPAN, (token) => {
+  const correctToken = (token: string): string => {
     // Strip a trailing possessive before matching so "Sandheap's" is compared
     // as "Sandheap", then reattach the possessive unchanged after correcting.
     let stem = token;
@@ -175,7 +330,69 @@ export function correctTranscript(
       `"${stem}" -> "${cased}" (${match.path}, similarity=${match.sim.toFixed(2)})`,
     );
     return `${cased}${possessive}`;
-  });
+  };
+
+  let output = "";
+  let cursor = 0;
+  let tokenIndex = 0;
+  while (tokenIndex < tokens.length) {
+    const first = tokens[tokenIndex];
+    const firstStart = first.index;
+    let phrase:
+      | { count: number; end: number; match: PhraseMatch; source: string }
+      | undefined;
+
+    const maxCount = index.phraseKeys.length
+      ? Math.min(MAX_PHRASE_TOKENS, tokens.length - tokenIndex)
+      : 1;
+    for (let count = maxCount; count >= 2; count--) {
+      const span = tokens.slice(tokenIndex, tokenIndex + count);
+      let gapsAllowed = true;
+      for (let offset = 1; offset < span.length; offset++) {
+        const previous = span[offset - 1];
+        const previousEnd = previous.index + previous[0].length;
+        const gap = text.slice(previousEnd, span[offset].index);
+        if (!PHRASE_GAP.test(gap)) {
+          gapsAllowed = false;
+          break;
+        }
+      }
+      if (!gapsAllowed) continue;
+
+      const source = text.slice(
+        span[0].index,
+        span[span.length - 1].index + span[span.length - 1][0].length,
+      );
+      const key = normalizePhrase(source);
+      if (key.length < MIN_TOKEN_LENGTH) continue;
+      const match = findPhraseMatch(key, index);
+      if (!match) continue;
+      phrase = {
+        count,
+        end: span[span.length - 1].index + span[span.length - 1][0].length,
+        match,
+        source,
+      };
+      break;
+    }
+
+    output += text.slice(cursor, firstStart);
+    if (phrase) {
+      const replacement = matchCasing(phrase.match.entry, first[0]);
+      log.info(
+        `"${phrase.source}" -> "${replacement}" (${phrase.match.path}, similarity=${phrase.match.sim.toFixed(2)})`,
+      );
+      output += replacement;
+      cursor = phrase.end;
+      tokenIndex += phrase.count;
+    } else {
+      output += correctToken(first[0]);
+      cursor = firstStart + first[0].length;
+      tokenIndex++;
+    }
+  }
+
+  return output + text.slice(cursor);
 }
 
 export function isDictionaryWord(

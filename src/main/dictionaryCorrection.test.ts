@@ -3,9 +3,9 @@ import { correctTranscript, isDictionaryWord } from "./dictionaryCorrection";
 
 describe("main/dictionaryCorrection", () => {
   it("corrects a phonetically garbled name against the dictionary", () => {
-    expect(correctTranscript("I met with Sandheap yesterday", ["Sandheep"])).toBe(
-      "I met with Sandheep yesterday",
-    );
+    expect(
+      correctTranscript("I met with Sandheap yesterday", ["Sandheep"]),
+    ).toBe("I met with Sandheep yesterday");
   });
 
   it("is idempotent when run on its own output", () => {
@@ -21,7 +21,9 @@ describe("main/dictionaryCorrection", () => {
 
   it("never corrects a short token even when it phonetically matches", () => {
     // "Kob" shares Kobe's phonetics but is <= 3 chars, so it is left alone.
-    expect(correctTranscript("Say Kob loudly", ["Kobe"])).toBe("Say Kob loudly");
+    expect(correctTranscript("Say Kob loudly", ["Kobe"])).toBe(
+      "Say Kob loudly",
+    );
   });
 
   it("never corrects a common word close to a dictionary entry", () => {
@@ -64,6 +66,70 @@ describe("main/dictionaryCorrection", () => {
     ).toBe("I saw Sandheep and later Rajkumar");
   });
 
+  it("joins a phonetic two-token transcription into a compound entry", () => {
+    expect(
+      correctTranscript("We use Charge B, for billing", ["ChargeBee"]),
+    ).toBe("We use ChargeBee, for billing");
+  });
+
+  it("joins a four-token spelling into one canonical entry", () => {
+    expect(correctTranscript("Ask Chat G P T for help", ["ChatGPT"])).toBe(
+      "Ask ChatGPT for help",
+    );
+  });
+
+  it("normalizes spacing inside a compound entry", () => {
+    expect(correctTranscript("The Open AI API is ready", ["OpenAI"])).toBe(
+      "The OpenAI API is ready",
+    );
+    expect(correctTranscript("I use a Mac Book Pro", ["MacBook Pro"])).toBe(
+      "I use a MacBook Pro",
+    );
+  });
+
+  it("matches a spoken ampersand form", () => {
+    expect(correctTranscript("Send this to R and D today", ["R&D"])).toBe(
+      "Send this to R&D today",
+    );
+  });
+
+  it("does not match phrases across sentence punctuation", () => {
+    expect(correctTranscript("I chose Open. AI is useful", ["OpenAI"])).toBe(
+      "I chose Open. AI is useful",
+    );
+    expect(correctTranscript("I chose Open\nAI today", ["OpenAI"])).toBe(
+      "I chose Open\nAI today",
+    );
+  });
+
+  it("keeps ordinary title-cased names on the single-token path", () => {
+    expect(correctTranscript("Ask Car In now", ["Karin"])).toBe(
+      "Ask Car In now",
+    );
+  });
+
+  it("prefers the longest exact phrase without swallowing its neighbor", () => {
+    expect(correctTranscript("Use Open AI GPT today", ["OpenAI", "GPT"])).toBe(
+      "Use OpenAI GPT today",
+    );
+  });
+
+  it("rejects an ambiguous phrase match", () => {
+    expect(correctTranscript("Try Open AI today", ["OpenAI", "Open AI"])).toBe(
+      "Try Open AI today",
+    );
+  });
+
+  it("does not turn an ambiguous phonetic phrase into a fuzzy winner", () => {
+    const text = "Say Super califragilistic expialidociouz now";
+    expect(
+      correctTranscript(text, [
+        "SupercalifragilisticExpialidocious",
+        "SupercalifragilisticExpialadocious",
+      ]),
+    ).toBe(text);
+  });
+
   it("keeps a capitalized token capitalized when the entry is lowercase", () => {
     expect(correctTranscript("I met Sandheep today", ["sandheep"])).toBe(
       "I met Sandheep today",
@@ -102,9 +168,9 @@ describe("main/dictionaryCorrection", () => {
     expect(correctTranscript("I met Sandheap today", junk)).toBe(
       "I met Sandheep today",
     );
-    expect(correctTranscript("hello there", "oops" as unknown as string[])).toBe(
-      "hello there",
-    );
+    expect(
+      correctTranscript("hello there", "oops" as unknown as string[]),
+    ).toBe("hello there");
   });
 
   it("does not correct when two candidates are a near-tie", () => {
