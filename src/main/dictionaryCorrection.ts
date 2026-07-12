@@ -246,11 +246,17 @@ function findPhraseMatch(key: string, index: Index): PhraseMatch | null {
     const bucket = index.phrasePhonetic.get(code);
     if (bucket) phoneticCandidates.push(...bucket);
   }
-  const phoneticMatch = unambiguousPhrase(
-    scorePhraseCandidates(phoneticCandidates, key, PHONETIC_THRESHOLD),
-    "phonetic-phrase",
+  const scoredPhonetic = scorePhraseCandidates(
+    phoneticCandidates,
+    key,
+    PHONETIC_THRESHOLD,
   );
-  if (phoneticMatch) return phoneticMatch;
+  // A near-tie is a terminal ambiguity, not a signal to try another matching
+  // path. Falling through could let the stricter fuzzy threshold discard the
+  // runner-up and incorrectly turn the same ambiguous set into a winner.
+  if (scoredPhonetic.length > 0) {
+    return unambiguousPhrase(scoredPhonetic, "phonetic-phrase");
+  }
 
   return unambiguousPhrase(
     scorePhraseCandidates(index.phraseKeys, key, PHRASE_FUZZY_THRESHOLD),

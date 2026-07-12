@@ -120,6 +120,16 @@ describe("main/dictionaryCorrection", () => {
     );
   });
 
+  it("does not turn an ambiguous phonetic phrase into a fuzzy winner", () => {
+    const text = "Say Super califragilistic expialidociouz now";
+    expect(
+      correctTranscript(text, [
+        "SupercalifragilisticExpialidocious",
+        "SupercalifragilisticExpialadocious",
+      ]),
+    ).toBe(text);
+  });
+
   it("keeps a capitalized token capitalized when the entry is lowercase", () => {
     expect(correctTranscript("I met Sandheep today", ["sandheep"])).toBe(
       "I met Sandheep today",
