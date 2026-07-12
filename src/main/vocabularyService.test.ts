@@ -17,6 +17,7 @@ import {
 describe("main/vocabularyService", () => {
   beforeEach(() => {
     mocks.saveAppPreferences.mockReset();
+    mocks.saveAppPreferences.mockReturnValue(true);
     state.appPreferences = {};
   });
 
@@ -69,15 +70,13 @@ describe("main/vocabularyService", () => {
     expect(removeVocabularyEntry("GITHUB").dictionary).toEqual(["Anthropic"]);
   });
 
-  it("rolls main-process state back when persistence fails", () => {
+  it("rolls main-process state back when the preference writer reports failure", () => {
     state.appPreferences.vocabularyDictionary = ["GitHub"];
-    mocks.saveAppPreferences.mockImplementationOnce(() => {
-      throw new Error("disk full");
-    });
+    mocks.saveAppPreferences.mockReturnValueOnce(false);
     expect(addVocabularyEntry("Anthropic")).toEqual({
       ok: false,
       dictionary: ["GitHub"],
-      error: "disk full",
+      error: "Failed to save vocabulary preferences",
     });
     expect(state.appPreferences.vocabularyDictionary).toEqual(["GitHub"]);
   });

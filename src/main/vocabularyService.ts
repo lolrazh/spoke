@@ -28,17 +28,16 @@ export function getVocabularyDictionary(): string[] {
 function commitDictionary(dictionary: string[]): VocabularyMutationResult {
   const previous = state.appPreferences.vocabularyDictionary;
   state.appPreferences.vocabularyDictionary = dictionary;
-  try {
-    saveAppPreferences(state.appPreferences);
+  if (saveAppPreferences(state.appPreferences)) {
     return { ok: true, dictionary: [...dictionary] };
-  } catch (error) {
-    state.appPreferences.vocabularyDictionary = previous;
-    return {
-      ok: false,
-      dictionary: getVocabularyDictionary(),
-      error: error instanceof Error ? error.message : String(error),
-    };
   }
+
+  state.appPreferences.vocabularyDictionary = previous;
+  return {
+    ok: false,
+    dictionary: getVocabularyDictionary(),
+    error: "Failed to save vocabulary preferences",
+  };
 }
 
 export function addVocabularyEntry(value: unknown): VocabularyMutationResult {
