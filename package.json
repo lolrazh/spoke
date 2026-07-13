@@ -1,7 +1,7 @@
 {
   "name": "spoke",
   "productName": "Spoke",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "Voice-to-text AI that works everywhere you do",
   "main": ".vite/build/main.js",
   "scripts": {
