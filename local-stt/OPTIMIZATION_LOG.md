@@ -1,6 +1,6 @@
 # Local STT Optimization Log
 
-Goal: reduce local Whisper inference latency and memory without losing transcription quality.
+Goal: reduce local dictation inference latency and memory without losing transcription quality.
 
 Benchmark command:
 
@@ -675,19 +675,109 @@ Conclusion:
   CPU-driven transducer decoding with GPU work. It did not improve this
   workload and was not enabled.
 
+## Experiment 16: labeled Parakeet kernels and decoder synchronization
+
+Status: QKV fusion and decoder synchronization reduction adopted
+
+Profiling method:
+
+- Built the exact MLX 0.32.0 revision with `MLX_METAL_DEBUG=ON` after installing
+  Apple's Metal Toolchain through `xcodebuild -downloadComponent MetalToolchain`.
+  This preserved primitive names in a Metal System Trace instead of presenting
+  anonymous command buffers.
+- Exported the complete long-input encoder graph. Its main primitives were 217
+  quantized matrix multiplies, 120 layer norms, 77 convolutions, 25 regular
+  matrix multiplies, and 24 fused scaled-dot-product attention calls.
+- Intrusive sublayer evaluation ranked the encoder categories as attention
+  26.7%, FFN2 25.8%, FFN1 25.3%, convolution 15.3%, and subsampling 3.5%.
+  These percentages rank work but are not production latency because each
+  measurement adds a synchronization boundary.
+- A representative attention block spent about 5.28 ms in quantized Q/K/V/pos
+  projections, 1.36 ms in relative bias, 1.17 ms in fused SDPA, and 1.55 ms in
+  the output projection. The proposed relative-bias kernel is therefore not
+  the first hotspot on this checkpoint.
+
+Labeled trace result:
+
+| Stage | GPU busy | Observed span | Busy fraction | Command buffers |
+|---|---:|---:|---:|---:|
+| Encoder | 164.98 ms | 181.63 ms | 90.8% | 45 |
+| TDT decoder | 74.39 ms | 338.02 ms | 22.0% | 461 |
+
+The trace slows the request and is unsuitable for absolute benchmarks, but the
+utilization contrast is decisive: there is no large encoder bubble. The TDT
+decoder repeatedly waits for Python-visible token and duration decisions.
+
+### Fused quantized QKV projections
+
+- Concatenate the packed quantized Q/K/V parameters once at model load and run
+  one quantized projection per Conformer attention block.
+- Preserve the existing relative-position bias and fused SDPA calculation.
+- `SPOKE_STT_PARAKEET_FUSED_QKV=0` restores the upstream three projections.
+
+Strict A-B-B-A validation, ten cases x three measured passes per process:
+
+| Mode | Mean inference | Mean MLX peak | Max MLX peak | Mean RSS |
+|---|---:|---:|---:|---:|
+| Three Q/K/V projections | 166.78 ms | 698.15 MB | 792.3 MB | 668.7 MB |
+| One fused QKV projection | 165.25 ms | 693.92 MB | 786.8 MB | 611.3 MB |
+
+All 120 transcript comparisons were exact. The fused path improved mean
+latency by 0.9%, reduced the worst MLX peak by 5.5 MB, and substantially
+reduced process RSS in this run. Active MLX model memory remained 612.2 MB.
+
+### One synchronization per greedy TDT decision
+
+- The upstream loop synchronized once for token argmax, performed a separate
+  softmax/entropy graph and synchronization for alignment confidence, then
+  synchronized again for duration argmax.
+- Spoke does not expose Parakeet alignment confidence. The sidecar now omits
+  that discarded work and evaluates the two required argmax results together.
+- The patch still uses Parakeet's normal aligned-token/result lifecycle, which
+  avoids retaining decoder scratch allocations after a request.
+- `SPOKE_STT_PARAKEET_FAST_DECODE=0` restores upstream greedy decoding.
+
+Strict A-B-B-A validation, ten cases x three measured passes per process:
+
+| Mode | Mean inference | Median inference | Mean MLX peak | Max MLX peak | MLX active |
+|---|---:|---:|---:|---:|---:|
+| Upstream decoder | 159.70 ms | 138.25 ms | 693.92 MB | 786.8 MB | 612.2 MB |
+| Reduced synchronization | 138.38 ms | 119.25 ms | 693.92 MB | 786.8 MB | 612.2 MB |
+
+All 120 transcript comparisons were exact. Mean inference improved by 13.3%
+without increasing peak, active, or model-load MLX memory.
+
+Rejected follow-ups:
+
+- `mx.compile` around the repeated decoder step did not improve latency and
+  increased startup/RSS; MLX's lazy execution already fused the useful graph.
+- Blank-frame lookahead is a poor fit for this model. Only 36 of 492 corpus
+  decisions were blank, so the decoder state changed on 93% of steps. Batched
+  speculation would usually perform extra joint projections and allocate more
+  logits without removing the next token dependency.
+
+Conclusion:
+
+- The encoder's next runtime-level target is the repeated quantized
+  projection/FFN work, not SDPA or a hunt for idle gaps.
+- The remaining decoder idle time is a true autoregressive dependency. A
+  larger step requires a persistent GPU-controlled transducer loop, speculative
+  decoding trained for this model, or a different decoder architecture.
+
 ## Research-guided next targets
 
 Runtime-level, preserving the current weights:
 
-1. Profile labeled kernels with an MLX build using `MLX_METAL_DEBUG=ON`, then
-   rank quantized GEMM, relative-bias, feed-forward, convolution, and dispatch
-   time before writing a custom kernel.
-2. Prototype a Parakeet bias-aware fused attention kernel. FlashBias is the
-   closest research analogue, but exactness and Apple-GPU performance must be
-   demonstrated on this relative-shift formulation.
-3. Prototype fused norm + quantized projection + residual kernels for the
-   repeated Conformer/Whisper block patterns. The trace suggests eliminating
-   many small dispatches is more plausible than filling a large bubble.
+1. Prototype fused norm + quantized projection + activation/residual kernels
+   for the repeated Conformer FFNs. Quantized projections dominate the measured
+   attention block, and FFN1/FFN2 together account for about half of encoder
+   time.
+2. Evaluate an MLX-level quantized GEMM aggregation or command-buffer batching
+   change. The encoder is already about 91% GPU-busy, so this must reduce
+   dispatch and memory traffic rather than merely add Python compilation.
+3. Keep a Parakeet bias-aware attention kernel as a secondary experiment.
+   FlashBias is the closest research analogue, but relative-bias plus SDPA was
+   much smaller than projections in the measured block.
 4. A true static arena planner could use tensor liveness to reuse offsets, in
    the style of OLLA. MLX currently manages this below the Python graph, so this
    belongs in an MLX fork/upstream contribution rather than sidecar code.
