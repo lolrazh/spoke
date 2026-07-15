@@ -113,6 +113,9 @@ ENCODER_ATTENTION_CHUNK_SIZE = os.environ.get(
 DYNAMIC_PADDING_FRAMES = os.environ.get(
     "SPOKE_STT_DYNAMIC_PADDING_FRAMES", "0"
 ).strip()
+PARAKEET_ENCODER_EVAL_INTERVAL = os.environ.get(
+    "SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL", "1"
+).strip()
 WARMUP_SAMPLE_LEN = 8
 
 
@@ -1185,6 +1188,10 @@ def _import_parakeet(mel_filters_path: Path) -> None:
     import mlx.nn as nn
     import mlx.utils
     from parakeet_mlx.audio import get_logmel
+    from parakeet_mlx.conformer import (
+        Conformer,
+        DwStridingSubsampling,
+    )
     from parakeet_mlx.utils import from_config
 
     _p.update(
@@ -1193,8 +1200,69 @@ def _import_parakeet(mel_filters_path: Path) -> None:
         tree_unflatten=mlx.utils.tree_unflatten,
         get_logmel=get_logmel,
         from_config=from_config,
+        Conformer=Conformer,
+        DwStridingSubsampling=DwStridingSubsampling,
     )
     _parakeet_imported = True
+
+
+def install_parakeet_encoder_eval_patch() -> None:
+    """Materialize the Parakeet encoder every N Conformer blocks."""
+    try:
+        interval = int(PARAKEET_ENCODER_EVAL_INTERVAL)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL must be non-negative"
+        ) from exc
+    if interval < 0:
+        raise ValueError(
+            "SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL must be non-negative"
+        )
+    if interval == 0:
+        log("sidecar: Parakeet encoder evaluation boundaries disabled")
+        return
+
+    Conformer = _p["Conformer"]
+    DwStridingSubsampling = _p["DwStridingSubsampling"]
+    nn = _p["nn"]
+
+    def staged_conformer_call(self, x, lengths=None, cache=None):
+        if lengths is None:
+            lengths = mx.full((x.shape[0],), x.shape[-2], dtype=mx.int64)
+
+        if isinstance(self.pre_encode, DwStridingSubsampling):
+            x, out_lengths = self.pre_encode(x, lengths)
+        elif isinstance(self.pre_encode, nn.Linear):
+            x = self.pre_encode(x)
+            out_lengths = lengths
+        else:
+            raise NotImplementedError("Non-implemented pre-encoding layer type")
+
+        if cache is None:
+            cache = [None] * len(self.layers)
+
+        pos_emb = None
+        if self.pos_enc is not None:
+            x, pos_emb = self.pos_enc(
+                x,
+                offset=cache[0].offset if cache[0] is not None else 0,
+            )
+
+        for layer_index, (layer, layer_cache) in enumerate(
+            zip(self.layers, cache), start=1
+        ):
+            x = layer(x, pos_emb=pos_emb, cache=layer_cache)
+            if (
+                interval > 0
+                and layer_index % interval == 0
+                and layer_index < len(self.layers)
+            ):
+                mx.eval(x)
+
+        return x, out_lengths
+
+    Conformer.__call__ = staged_conformer_call
+    log(f"sidecar: Parakeet encoder boundary every {interval} block(s)")
 
 
 class ParakeetEngine(Engine):
@@ -1209,6 +1277,7 @@ class ParakeetEngine(Engine):
 
     def load(self) -> None:
         _import_parakeet(self.weights_dir / "mel_filters.npy")
+        install_parakeet_encoder_eval_patch()
         validate_weights_dir(self.weights_dir, PARAKEET_REQUIRED_MODEL_FILES)
 
         log(f"sidecar: loading {PARAKEET_MODEL_DISPLAY_NAME} from {self.weights_dir}")
