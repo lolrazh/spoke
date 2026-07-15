@@ -97,11 +97,31 @@ NOISE_SPECTRAL_FLATNESS_THRESHOLD = 0.35
 SPECTRAL_FRAME_LENGTH = 400
 SPECTRAL_HOP_LENGTH = 160
 SPECTRAL_ACTIVE_RMS_THRESHOLD = 0.0005
-FAST_ATTENTION_MODE = os.environ.get("SPOKE_STT_FAST_ATTENTION", "0").strip().lower()
+FAST_ATTENTION_MODE = os.environ.get(
+    "SPOKE_STT_FAST_ATTENTION", "encoder-cross"
+).strip().lower()
 SAMPLE_LEN_LIMIT = os.environ.get("SPOKE_STT_SAMPLE_LEN", "").strip()
 PROFILE_MODE = os.environ.get("SPOKE_STT_PROFILE", "0").strip().lower()
 WARMUP_MODE = os.environ.get("SPOKE_STT_WARMUP", "1").strip().lower()
 CLEAR_CACHE_MODE = os.environ.get("SPOKE_STT_CLEAR_CACHE", "1").strip().lower()
+ENCODER_EVAL_INTERVAL = os.environ.get(
+    "SPOKE_STT_ENCODER_EVAL_INTERVAL", "1"
+).strip()
+ENCODER_ATTENTION_CHUNK_SIZE = os.environ.get(
+    "SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE", "0"
+).strip()
+DYNAMIC_PADDING_FRAMES = os.environ.get(
+    "SPOKE_STT_DYNAMIC_PADDING_FRAMES", "0"
+).strip()
+PARAKEET_ENCODER_EVAL_INTERVAL = os.environ.get(
+    "SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL", "1"
+).strip()
+PARAKEET_FUSED_QKV_MODE = os.environ.get(
+    "SPOKE_STT_PARAKEET_FUSED_QKV", "1"
+).strip().lower()
+PARAKEET_FAST_DECODE_MODE = os.environ.get(
+    "SPOKE_STT_PARAKEET_FAST_DECODE", "1"
+).strip().lower()
 WARMUP_SAMPLE_LEN = 8
 
 
@@ -191,6 +211,24 @@ def get_sample_len_limit() -> int | None:
         raise ValueError("SPOKE_STT_SAMPLE_LEN must be a positive integer")
     if value <= 0:
         raise ValueError("SPOKE_STT_SAMPLE_LEN must be a positive integer")
+    return value
+
+
+def get_dynamic_padding_frames() -> int:
+    """Return extra 10 ms mel frames kept after the real utterance.
+
+    Zero is the compatibility switch for Whisper's stock 30-second padding.
+    """
+    try:
+        value = int(DYNAMIC_PADDING_FRAMES)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_DYNAMIC_PADDING_FRAMES must be a non-negative integer"
+        ) from exc
+    if value < 0:
+        raise ValueError(
+            "SPOKE_STT_DYNAMIC_PADDING_FRAMES must be a non-negative integer"
+        )
     return value
 
 
@@ -397,6 +435,7 @@ def _import_whisper() -> None:
     from mlx_whisper.decoding import DecodingOptions
     from mlx_whisper.load_models import load_model
     from mlx_whisper.tokenizer import get_tokenizer
+    from mlx_whisper.whisper import AudioEncoder
     from mlx_whisper.whisper import MultiHeadAttention
 
     if WHISPER_SAMPLE_RATE != SAMPLE_RATE:
@@ -414,11 +453,111 @@ def _import_whisper() -> None:
         load_model=load_model,
         get_tokenizer=get_tokenizer,
         MultiHeadAttention=MultiHeadAttention,
+        AudioEncoder=AudioEncoder,
     )
     _whisper_imported = True
 
 
-def install_fast_attention_patch() -> None:
+def install_encoder_eval_patch() -> None:
+    """Optionally materialize the encoder output every N transformer blocks.
+
+    MLX builds lazy graphs. Stock mlx-whisper therefore submits the complete
+    audio encoder as one graph, which can keep temporaries from several blocks
+    live at once. Evaluation boundaries trade some fusion/scheduling freedom
+    for a lower peak working set. The interval remains configurable for
+    regression benchmarks and future model shapes.
+    """
+    try:
+        interval = int(ENCODER_EVAL_INTERVAL)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_EVAL_INTERVAL must be a non-negative integer"
+        ) from exc
+    if interval < 0:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_EVAL_INTERVAL must be a non-negative integer"
+        )
+    if interval == 0:
+        log("sidecar: encoder evaluation boundaries disabled")
+        return
+
+    # Import lazily with the Whisper family so other engines do not pay for it.
+    import mlx.nn as nn
+
+    AudioEncoder = _w["AudioEncoder"]
+
+    def staged_encoder_call(self, x):
+        x = nn.gelu(self.conv1(x))
+        x = nn.gelu(self.conv2(x))
+        assert x.shape[2] == self._positional_embedding.shape[1], (
+            "incorrect audio shape"
+        )
+        assert x.shape[1] <= self._positional_embedding.shape[0], (
+            "audio is longer than the encoder context"
+        )
+        x = x + self._positional_embedding[: x.shape[1]]
+
+        for block_index, block in enumerate(self.blocks, start=1):
+            x, _, _ = block(x)
+            if block_index % interval == 0 and block_index < len(self.blocks):
+                mx.eval(x)
+
+        return self.ln_post(x)
+
+    AudioEncoder.__call__ = staged_encoder_call
+    log(f"sidecar: encoder evaluation boundary every {interval} block(s)")
+
+
+def install_encoder_attention_chunking(model) -> None:
+    """Optionally tile encoder self-attention over the query sequence.
+
+    Stock mlx-whisper materializes a [batch, heads, 1500, 1500] score tensor
+    in every encoder block. Query tiling preserves exact attention semantics
+    while giving MLX smaller independent score tensors to schedule and free.
+    """
+    try:
+        chunk_size = int(ENCODER_ATTENTION_CHUNK_SIZE)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE must be a non-negative integer"
+        ) from exc
+    if chunk_size < 0:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE must be a non-negative integer"
+        )
+    if chunk_size == 0:
+        log("sidecar: encoder attention chunking disabled")
+        return
+
+    def chunked_qkv_attention(self, q, k, v, mask=None):
+        n_batch, n_ctx, n_state = q.shape
+        scale = (n_state // self.n_head) ** -0.25
+        q = q.reshape(n_batch, n_ctx, self.n_head, -1).transpose(0, 2, 1, 3)
+        q = q * scale
+        k = k.reshape(n_batch, n_ctx, self.n_head, -1).transpose(0, 2, 3, 1)
+        k = k * scale
+        v = v.reshape(n_batch, n_ctx, self.n_head, -1).transpose(0, 2, 1, 3)
+
+        outputs = []
+        for start in range(0, n_ctx, chunk_size):
+            end = min(start + chunk_size, n_ctx)
+            scores = q[:, :, start:end] @ k
+            if mask is not None:
+                scores = scores + mask[start:end, :n_ctx]
+            weights = mx.softmax(scores, axis=-1, precise=True)
+            output = (weights @ v).transpose(0, 2, 1, 3)
+            outputs.append(output.reshape(n_batch, end - start, n_state))
+
+        return mx.concatenate(outputs, axis=1), None
+
+    for block in model.encoder.blocks:
+        block.attn.qkv_attention = types.MethodType(
+            chunked_qkv_attention, block.attn
+        )
+    log(f"sidecar: encoder attention query chunk size {chunk_size}")
+
+
+def install_fast_attention_patch(model) -> None:
     """Patch mlx_whisper's attention. Must run after _import_whisper()."""
     mode = {
         "1": "all",
@@ -430,9 +569,17 @@ def install_fast_attention_patch() -> None:
     if mode in ("", "0", "false", "no", "off"):
         log("sidecar: fast attention disabled")
         return
-    if mode not in ("all", "self", "cross"):
+    if mode not in (
+        "all",
+        "self",
+        "cross",
+        "encoder",
+        "decoder-cross",
+        "encoder-cross",
+    ):
         raise ValueError(
-            "SPOKE_STT_FAST_ATTENTION must be one of: 0, 1, all, self, cross"
+            "SPOKE_STT_FAST_ATTENTION must be one of: 0, 1, all, self, "
+            "cross, encoder, decoder-cross, encoder-cross"
         )
     if not hasattr(mx, "fast") or not hasattr(mx.fast, "scaled_dot_product_attention"):
         log("sidecar: fast attention unavailable")
@@ -441,12 +588,22 @@ def install_fast_attention_patch() -> None:
     MultiHeadAttention = _w["MultiHeadAttention"]
     original_qkv_attention = MultiHeadAttention.qkv_attention
 
+    for block in model.encoder.blocks:
+        block.attn._spoke_attention_kind = "encoder"
+    for block in model.decoder.blocks:
+        block.attn._spoke_attention_kind = "decoder-self"
+        block.cross_attn._spoke_attention_kind = "decoder-cross"
+
     def fast_qkv_attention(self, q, k, v, mask=None):
-        is_self_attention = mask is not None
+        attention_kind = getattr(self, "_spoke_attention_kind", "unknown")
         should_use_fast_attention = (
             mode == "all"
-            or (mode == "self" and is_self_attention)
-            or (mode == "cross" and not is_self_attention)
+            or (mode == "self" and attention_kind == "decoder-self")
+            or (
+                mode in ("cross", "encoder-cross")
+                and attention_kind in ("encoder", "decoder-cross")
+            )
+            or (mode == attention_kind)
         )
         if not should_use_fast_attention:
             return original_qkv_attention(self, q, k, v, mask)
@@ -485,7 +642,7 @@ class WhisperEngine(Engine):
 
     def load(self) -> None:
         _import_whisper()
-        install_fast_attention_patch()
+        install_encoder_eval_patch()
         validate_weights_dir(self.weights_dir, WHISPER_REQUIRED_MODEL_FILES)
 
         log(f"sidecar: loading {WHISPER_MODEL_DISPLAY_NAME} from {self.weights_dir}")
@@ -493,6 +650,8 @@ class WhisperEngine(Engine):
         start = time.perf_counter()
 
         self.model = _w["load_model"](self.model_path, dtype=mx.float16)
+        install_fast_attention_patch(self.model)
+        install_encoder_attention_chunking(self.model)
 
         self.load_ms = round((time.perf_counter() - start) * 1000)
         self.load_peak_memory_bytes = memory_snapshot()["peak_memory_bytes"]
@@ -623,6 +782,7 @@ def transcribe_audio(
     N_FRAMES = _w["N_FRAMES"]
     N_SAMPLES = _w["N_SAMPLES"]
     HOP_LENGTH = _w["HOP_LENGTH"]
+    dynamic_padding_frames = get_dynamic_padding_frames()
 
     dtype = mx.float16
     profile_enabled = is_enabled(PROFILE_MODE)
@@ -666,7 +826,13 @@ def transcribe_audio(
         time_offset = float(seek * HOP_LENGTH / SAMPLE_RATE)
         duration = float(segment_size * HOP_LENGTH / SAMPLE_RATE)
         mel_segment = mel[seek : seek + segment_size]
-        mel_segment = pad_or_trim(mel_segment, N_FRAMES, axis=-2).astype(dtype)
+        encoder_frames = N_FRAMES
+        if dynamic_padding_frames > 0 and segment_size < N_FRAMES:
+            # Whisper normally encodes 30 seconds even for a short command.
+            # Retain a generous silence tail for model behavior while avoiding
+            # transformer work on the rest of the synthetic padding.
+            encoder_frames = min(N_FRAMES, segment_size + dynamic_padding_frames)
+        mel_segment = pad_or_trim(mel_segment, encoder_frames, axis=-2).astype(dtype)
         audio_features = detected_audio_features if seek == 0 else None
 
         result = decode_segment(
@@ -1027,7 +1193,14 @@ def _import_parakeet(mel_filters_path: Path) -> None:
 
     import mlx.nn as nn
     import mlx.utils
+    from parakeet_mlx import tokenizer as parakeet_tokenizer
+    from parakeet_mlx.alignment import AlignedToken
     from parakeet_mlx.audio import get_logmel
+    from parakeet_mlx.conformer import (
+        Conformer,
+        DwStridingSubsampling,
+    )
+    from parakeet_mlx.attention import RelPositionMultiHeadAttention
     from parakeet_mlx.utils import from_config
 
     _p.update(
@@ -1035,9 +1208,276 @@ def _import_parakeet(mel_filters_path: Path) -> None:
         tree_flatten=mlx.utils.tree_flatten,
         tree_unflatten=mlx.utils.tree_unflatten,
         get_logmel=get_logmel,
+        parakeet_tokenizer=parakeet_tokenizer,
+        AlignedToken=AlignedToken,
         from_config=from_config,
+        Conformer=Conformer,
+        DwStridingSubsampling=DwStridingSubsampling,
+        RelPositionMultiHeadAttention=RelPositionMultiHeadAttention,
     )
     _parakeet_imported = True
+
+
+def install_parakeet_encoder_eval_patch() -> None:
+    """Materialize the Parakeet encoder every N Conformer blocks."""
+    try:
+        interval = int(PARAKEET_ENCODER_EVAL_INTERVAL)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL must be non-negative"
+        ) from exc
+    if interval < 0:
+        raise ValueError(
+            "SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL must be non-negative"
+        )
+    if interval == 0:
+        log("sidecar: Parakeet encoder evaluation boundaries disabled")
+        return
+
+    Conformer = _p["Conformer"]
+    DwStridingSubsampling = _p["DwStridingSubsampling"]
+    nn = _p["nn"]
+
+    def staged_conformer_call(self, x, lengths=None, cache=None):
+        if lengths is None:
+            lengths = mx.full((x.shape[0],), x.shape[-2], dtype=mx.int64)
+
+        if isinstance(self.pre_encode, DwStridingSubsampling):
+            x, out_lengths = self.pre_encode(x, lengths)
+        elif isinstance(self.pre_encode, nn.Linear):
+            x = self.pre_encode(x)
+            out_lengths = lengths
+        else:
+            raise NotImplementedError("Non-implemented pre-encoding layer type")
+
+        if cache is None:
+            cache = [None] * len(self.layers)
+
+        pos_emb = None
+        if self.pos_enc is not None:
+            x, pos_emb = self.pos_enc(
+                x,
+                offset=cache[0].offset if cache[0] is not None else 0,
+            )
+
+        for layer_index, (layer, layer_cache) in enumerate(
+            zip(self.layers, cache), start=1
+        ):
+            x = layer(x, pos_emb=pos_emb, cache=layer_cache)
+            if (
+                interval > 0
+                and layer_index % interval == 0
+                and layer_index < len(self.layers)
+            ):
+                mx.eval(x)
+
+        return x, out_lengths
+
+    Conformer.__call__ = staged_conformer_call
+    log(f"sidecar: Parakeet encoder boundary every {interval} block(s)")
+
+
+def install_parakeet_fused_qkv_patch(model) -> None:
+    """Replace Parakeet's three quantized Q/K/V projections with one QKV."""
+    if not is_enabled(PARAKEET_FUSED_QKV_MODE):
+        log("sidecar: Parakeet fused QKV disabled")
+        return
+
+    nn = _p["nn"]
+    attention_type = _p["RelPositionMultiHeadAttention"]
+
+    def fused_attention_call(
+        self,
+        q,
+        k,
+        v,
+        pos_emb=None,
+        mask=None,
+        cache=None,
+    ):
+        if pos_emb is None:
+            raise ValueError("pos_emb is necessary")
+        if q is not k or q is not v:
+            raise ValueError("Fused Parakeet QKV requires self-attention inputs")
+
+        q, k, v = mx.split(self.linear_qkv(q), 3, axis=-1)
+        p = self.linear_pos(pos_emb)
+
+        batch, q_seq, _ = q.shape
+        _, k_seq, _ = k.shape
+        p_batch, pos_len, _ = p.shape
+
+        if p_batch == 1 and batch > 1:
+            p = mx.broadcast_to(p, (batch, pos_len, p.shape[-1]))
+        elif p_batch != batch:
+            raise ValueError(
+                f"pos_emb batch ({p_batch}) must be 1 or match query batch ({batch})"
+            )
+
+        q = q.reshape(batch, q_seq, self.n_head, self.head_dim)
+        q_u = (q + self.pos_bias_u).transpose(0, 2, 1, 3)
+        q_v = (q + self.pos_bias_v).transpose(0, 2, 1, 3)
+        k = k.reshape(batch, k_seq, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+        v = v.reshape(batch, k_seq, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+        p = p.reshape(batch, pos_len, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+
+        if cache is not None:
+            k, v = cache.update_and_fetch_kv(k, v)
+
+        matrix_bd = mx.matmul(q_v, p.swapaxes(-2, -1))
+        matrix_bd = self.rel_shift(matrix_bd)
+        matrix_bd = matrix_bd[:, :, :, : k.shape[-2]] * self.scale
+
+        if mask is not None:
+            mask = mx.expand_dims(mask, 0)
+            matrix_bd[mask] = -mx.inf
+
+        output = mx.fast.scaled_dot_product_attention(
+            q_u, k, v, scale=self.scale, mask=matrix_bd
+        )
+        output = output.transpose(0, 2, 1, 3).reshape(batch, q_seq, -1)
+        return self.linear_out(output)
+
+    fused_count = 0
+    for layer in model.encoder.layers:
+        attention = layer.self_attn
+        if type(attention) is not attention_type:
+            raise TypeError(
+                "Parakeet fused QKV only supports relative-position self-attention"
+            )
+
+        projections = (
+            attention.linear_q,
+            attention.linear_k,
+            attention.linear_v,
+        )
+        first = projections[0]
+        if not all(
+            type(projection) is nn.QuantizedLinear for projection in projections
+        ):
+            raise TypeError("Parakeet fused QKV requires quantized linear projections")
+        if any("bias" in projection for projection in projections):
+            raise ValueError("Parakeet fused QKV does not support projection biases")
+        if not all(
+            (projection.group_size, projection.bits, projection.mode)
+            == (first.group_size, first.bits, first.mode)
+            for projection in projections
+        ):
+            raise ValueError("Parakeet QKV projection quantization must match")
+
+        input_dims = first.scales.shape[-1] * first.group_size
+        output_dims = sum(projection.weight.shape[0] for projection in projections)
+        fused = nn.QuantizedLinear(
+            input_dims,
+            output_dims,
+            bias=False,
+            group_size=first.group_size,
+            bits=first.bits,
+            mode=first.mode,
+        )
+        fused.weight = mx.concatenate(
+            [projection.weight for projection in projections], axis=0
+        )
+        fused.scales = mx.concatenate(
+            [projection.scales for projection in projections], axis=0
+        )
+        fused.biases = mx.concatenate(
+            [projection.biases for projection in projections], axis=0
+        )
+        mx.eval(fused.weight, fused.scales, fused.biases)
+
+        attention.linear_qkv = fused
+        del attention.linear_q
+        del attention.linear_k
+        del attention.linear_v
+        fused_count += 1
+
+    attention_type.__call__ = fused_attention_call
+    mx.clear_cache()
+    log(f"sidecar: fused Parakeet QKV projections in {fused_count} blocks")
+
+
+def install_parakeet_fast_decode_patch(model) -> None:
+    """Remove unused confidence work and synchronize TDT decisions together."""
+    if not is_enabled(PARAKEET_FAST_DECODE_MODE):
+        log("sidecar: fast Parakeet decoder disabled")
+        return
+
+    aligned_token = _p["AlignedToken"]
+    tokenizer = _p["parakeet_tokenizer"]
+
+    def decode_greedy(
+        self,
+        features,
+        lengths=None,
+        last_token=None,
+        hidden_state=None,
+        *,
+        config=None,
+    ):
+        del config
+        batch_size, sequence_length, *_ = features.shape
+        hidden_state = hidden_state or [None] * batch_size
+        last_token = last_token or [None] * batch_size
+        if lengths is None:
+            lengths = mx.array([sequence_length] * batch_size)
+
+        blank_token = len(self.vocabulary)
+        results = []
+        for batch in range(batch_size):
+            hypothesis = []
+            feature = features[batch : batch + 1]
+            length = int(lengths[batch])
+            step = 0
+            new_symbols = 0
+
+            while step < length:
+                decoder_out, (hidden, cell) = self.decoder(
+                    mx.array([[last_token[batch]]])
+                    if last_token[batch] is not None
+                    else None,
+                    hidden_state[batch],
+                )
+                decoder_out = decoder_out.astype(feature.dtype)
+                decoder_hidden = (
+                    hidden.astype(feature.dtype),
+                    cell.astype(feature.dtype),
+                )
+                joint_out = self.joint(feature[:, step : step + 1], decoder_out)
+
+                pred_token = mx.argmax(joint_out[0, 0, :, : blank_token + 1])
+                decision = mx.argmax(joint_out[0, 0, :, blank_token + 1 :])
+                mx.eval(pred_token, decision)
+                pred_token = int(pred_token)
+                decision = int(decision)
+
+                if pred_token != blank_token:
+                    hypothesis.append(
+                        aligned_token(
+                            pred_token,
+                            start=step * self.time_ratio,
+                            duration=self.durations[decision] * self.time_ratio,
+                            text=tokenizer.decode([pred_token], self.vocabulary),
+                        )
+                    )
+                    last_token[batch] = pred_token
+                    hidden_state[batch] = decoder_hidden
+
+                duration = self.durations[decision]
+                step += duration
+                new_symbols += 1
+                if duration != 0:
+                    new_symbols = 0
+                elif self.max_symbols is not None and self.max_symbols <= new_symbols:
+                    step += 1
+                    new_symbols = 0
+
+            results.append(hypothesis)
+
+        return results, hidden_state
+
+    model.decode_greedy = types.MethodType(decode_greedy, model)
+    log("sidecar: reduced Parakeet greedy decoder synchronization")
 
 
 class ParakeetEngine(Engine):
@@ -1052,6 +1492,7 @@ class ParakeetEngine(Engine):
 
     def load(self) -> None:
         _import_parakeet(self.weights_dir / "mel_filters.npy")
+        install_parakeet_encoder_eval_patch()
         validate_weights_dir(self.weights_dir, PARAKEET_REQUIRED_MODEL_FILES)
 
         log(f"sidecar: loading {PARAKEET_MODEL_DISPLAY_NAME} from {self.weights_dir}")
@@ -1079,6 +1520,8 @@ class ParakeetEngine(Engine):
             )
         )
         mx.eval(model.parameters())
+        install_parakeet_fused_qkv_patch(model)
+        install_parakeet_fast_decode_patch(model)
 
         if model.preprocessor_config.sample_rate != SAMPLE_RATE:
             raise RuntimeError(

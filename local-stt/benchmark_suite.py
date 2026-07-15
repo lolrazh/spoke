@@ -25,7 +25,13 @@ DEFAULT_CORPUS = LOCAL_STT_DIR / "benchmark_corpus.json"
 DEFAULT_OUTPUT_DIR = LOCAL_STT_DIR / "benchmarks"
 DEFAULT_AUDIO_CACHE_DIR = DEFAULT_OUTPUT_DIR / "audio-cache"
 DEFAULT_WEIGHTS_DIR = (
-    Path.home() / "Library" / "Application Support" / "Spoke" / "local-stt" / "weights"
+    Path.home()
+    / "Library"
+    / "Application Support"
+    / "Spoke"
+    / "local-stt"
+    / "weights"
+    / "whisper"
 )
 DEFAULT_DEV_PYTHON = LOCAL_STT_DIR / ".venv" / "bin" / "python"
 DEFAULT_DIST_BINARY = LOCAL_STT_DIR / "dist" / "spoke-stt"
