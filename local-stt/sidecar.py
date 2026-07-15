@@ -116,6 +116,9 @@ DYNAMIC_PADDING_FRAMES = os.environ.get(
 PARAKEET_ENCODER_EVAL_INTERVAL = os.environ.get(
     "SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL", "1"
 ).strip()
+PARAKEET_FUSED_QKV_MODE = os.environ.get(
+    "SPOKE_STT_PARAKEET_FUSED_QKV", "1"
+).strip().lower()
 WARMUP_SAMPLE_LEN = 8
 
 
@@ -1192,6 +1195,7 @@ def _import_parakeet(mel_filters_path: Path) -> None:
         Conformer,
         DwStridingSubsampling,
     )
+    from parakeet_mlx.attention import RelPositionMultiHeadAttention
     from parakeet_mlx.utils import from_config
 
     _p.update(
@@ -1202,6 +1206,7 @@ def _import_parakeet(mel_filters_path: Path) -> None:
         from_config=from_config,
         Conformer=Conformer,
         DwStridingSubsampling=DwStridingSubsampling,
+        RelPositionMultiHeadAttention=RelPositionMultiHeadAttention,
     )
     _parakeet_imported = True
 
@@ -1265,6 +1270,126 @@ def install_parakeet_encoder_eval_patch() -> None:
     log(f"sidecar: Parakeet encoder boundary every {interval} block(s)")
 
 
+def install_parakeet_fused_qkv_patch(model) -> None:
+    """Replace Parakeet's three quantized Q/K/V projections with one QKV."""
+    if not is_enabled(PARAKEET_FUSED_QKV_MODE):
+        log("sidecar: Parakeet fused QKV disabled")
+        return
+
+    nn = _p["nn"]
+    attention_type = _p["RelPositionMultiHeadAttention"]
+
+    def fused_attention_call(
+        self,
+        q,
+        k,
+        v,
+        pos_emb=None,
+        mask=None,
+        cache=None,
+    ):
+        if pos_emb is None:
+            raise ValueError("pos_emb is necessary")
+        if q is not k or q is not v:
+            raise ValueError("Fused Parakeet QKV requires self-attention inputs")
+
+        q, k, v = mx.split(self.linear_qkv(q), 3, axis=-1)
+        p = self.linear_pos(pos_emb)
+
+        batch, q_seq, _ = q.shape
+        _, k_seq, _ = k.shape
+        p_batch, pos_len, _ = p.shape
+
+        if p_batch == 1 and batch > 1:
+            p = mx.broadcast_to(p, (batch, pos_len, p.shape[-1]))
+        elif p_batch != batch:
+            raise ValueError(
+                f"pos_emb batch ({p_batch}) must be 1 or match query batch ({batch})"
+            )
+
+        q = q.reshape(batch, q_seq, self.n_head, self.head_dim)
+        q_u = (q + self.pos_bias_u).transpose(0, 2, 1, 3)
+        q_v = (q + self.pos_bias_v).transpose(0, 2, 1, 3)
+        k = k.reshape(batch, k_seq, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+        v = v.reshape(batch, k_seq, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+        p = p.reshape(batch, pos_len, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+
+        if cache is not None:
+            k, v = cache.update_and_fetch_kv(k, v)
+
+        matrix_bd = mx.matmul(q_v, p.swapaxes(-2, -1))
+        matrix_bd = self.rel_shift(matrix_bd)
+        matrix_bd = matrix_bd[:, :, :, : k.shape[-2]] * self.scale
+
+        if mask is not None:
+            mask = mx.expand_dims(mask, 0)
+            matrix_bd[mask] = -mx.inf
+
+        output = mx.fast.scaled_dot_product_attention(
+            q_u, k, v, scale=self.scale, mask=matrix_bd
+        )
+        output = output.transpose(0, 2, 1, 3).reshape(batch, q_seq, -1)
+        return self.linear_out(output)
+
+    fused_count = 0
+    for layer in model.encoder.layers:
+        attention = layer.self_attn
+        if type(attention) is not attention_type:
+            raise TypeError(
+                "Parakeet fused QKV only supports relative-position self-attention"
+            )
+
+        projections = (
+            attention.linear_q,
+            attention.linear_k,
+            attention.linear_v,
+        )
+        first = projections[0]
+        if not all(
+            type(projection) is nn.QuantizedLinear for projection in projections
+        ):
+            raise TypeError("Parakeet fused QKV requires quantized linear projections")
+        if any("bias" in projection for projection in projections):
+            raise ValueError("Parakeet fused QKV does not support projection biases")
+        if not all(
+            (projection.group_size, projection.bits, projection.mode)
+            == (first.group_size, first.bits, first.mode)
+            for projection in projections
+        ):
+            raise ValueError("Parakeet QKV projection quantization must match")
+
+        input_dims = first.scales.shape[-1] * first.group_size
+        output_dims = sum(projection.weight.shape[0] for projection in projections)
+        fused = nn.QuantizedLinear(
+            input_dims,
+            output_dims,
+            bias=False,
+            group_size=first.group_size,
+            bits=first.bits,
+            mode=first.mode,
+        )
+        fused.weight = mx.concatenate(
+            [projection.weight for projection in projections], axis=0
+        )
+        fused.scales = mx.concatenate(
+            [projection.scales for projection in projections], axis=0
+        )
+        fused.biases = mx.concatenate(
+            [projection.biases for projection in projections], axis=0
+        )
+        mx.eval(fused.weight, fused.scales, fused.biases)
+
+        attention.linear_qkv = fused
+        del attention.linear_q
+        del attention.linear_k
+        del attention.linear_v
+        fused_count += 1
+
+    attention_type.__call__ = fused_attention_call
+    mx.clear_cache()
+    log(f"sidecar: fused Parakeet QKV projections in {fused_count} blocks")
+
+
 class ParakeetEngine(Engine):
     def __init__(self, weights_dir: Path, language: str | None) -> None:
         self.weights_dir = weights_dir
@@ -1305,6 +1430,7 @@ class ParakeetEngine(Engine):
             )
         )
         mx.eval(model.parameters())
+        install_parakeet_fused_qkv_patch(model)
 
         if model.preprocessor_config.sample_rate != SAMPLE_RATE:
             raise RuntimeError(
