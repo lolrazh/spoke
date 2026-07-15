@@ -606,3 +606,110 @@ Research conclusion:
   quantization, and a Core ML encoder, but combining its Core ML encoder weights
   with a separate decoder can increase the resident footprint. That path needs
   an actual end-to-end memory benchmark before replacing this MLX default.
+
+## Experiment 15: Parakeet encoder lifetime planning
+
+Status: adopted
+
+Change:
+
+- Parakeet MLX previously constructed all 24 FastConformer blocks as one lazy
+  graph and materialized only the final encoder output.
+- The sidecar now materializes the encoder output after every Conformer block.
+  `SPOKE_STT_PARAKEET_ENCODER_EVAL_INTERVAL=0` restores the upstream graph for
+  controlled comparisons.
+- A deeper experiment also materialized after the feed-forward, attention, and
+  convolution sublayers. It saved only another 25-27 MB at the worst case and
+  increased mean inference by about 14%, so that code was not retained.
+
+Paired validation:
+
+- Used one immutable PCM corpus for every configuration. Earlier isolated
+  reports generated fresh macOS TTS audio and therefore remain useful for
+  timing/memory, but not for cross-report WER comparisons.
+- An A-B-B-A sequence ran each configuration for 30 measured requests. All 120
+  transcripts were identical between the upstream and staged graphs.
+
+| Graph | Mean inference | Mean MLX peak | Max MLX peak |
+|---|---:|---:|---:|
+| Upstream lazy encoder (average of A runs) | 171.07 ms | 828.37 MB | 1001.7 MB |
+| One evaluation per block (average of B runs) | 174.57 ms | 698.15 MB | 792.3 MB |
+
+Reports:
+
+- `local-stt/benchmarks/runs/20260715T054521Z-parakeet-abba-a1/report.md`
+- `local-stt/benchmarks/runs/20260715T054528Z-parakeet-abba-b1/report.md`
+- `local-stt/benchmarks/runs/20260715T054535Z-parakeet-abba-b2/report.md`
+- `local-stt/benchmarks/runs/20260715T054542Z-parakeet-abba-a2/report.md`
+
+Conclusion:
+
+- Explicit lifetime boundaries reduce mean peak by 15.7% and the long-case
+  peak by 20.9%, at a roughly 2.0% mean latency cost in the interleaved run.
+- An interval of two blocks was slower in a second A-B-B-A run and retained
+  more memory. One block is the measured Pareto point for this model/runtime.
+- This is the practical level of memory planning exposed by MLX's lazy Python
+  graph. Exact buffer placement/reuse across the full DAG would require MLX
+  scheduler/allocator work or a custom C++/Metal execution path.
+
+## Flash attention and Metal trace findings
+
+- Both active engines already use MLX's fused
+  `mx.fast.scaled_dot_product_attention`. Whisper uses it in encoder and
+  decoder cross-attention; Parakeet MLX uses it in its attention modules.
+- Parakeet's relative-position attention still creates `matrix_bd` with a
+  separate Q/position matmul and relative shift, then supplies that full
+  additive bias to fused SDPA. A custom bias-aware attention kernel is a
+  credible experiment, although the model's 8x subsampling keeps short
+  dictation sequences small enough that quantized projections and Conformer
+  feed-forward layers are likely larger targets.
+- A Metal System Trace of the staged long-dictation path contained 563 compute
+  intervals over 558 command buffers across load and inference. The observed
+  span was 658.8 ms with 336.7 ms of GPU-busy union. The largest 130.9 ms gap
+  was between model load and request processing, not an encoder bubble.
+- After excluding that load/request gap, the trace showed many sub-millisecond
+  boundaries and only 12 other gaps above 1 ms. The trace itself slowed the
+  request, so its absolute timing is not a benchmark; it rules out one large
+  idle cavern and points toward kernel/dispatch aggregation.
+- MLX 0.32's `MLX_METAL_FAST_SYNCH=1` was also tested because Parakeet mixes
+  CPU-driven transducer decoding with GPU work. It did not improve this
+  workload and was not enabled.
+
+## Research-guided next targets
+
+Runtime-level, preserving the current weights:
+
+1. Profile labeled kernels with an MLX build using `MLX_METAL_DEBUG=ON`, then
+   rank quantized GEMM, relative-bias, feed-forward, convolution, and dispatch
+   time before writing a custom kernel.
+2. Prototype a Parakeet bias-aware fused attention kernel. FlashBias is the
+   closest research analogue, but exactness and Apple-GPU performance must be
+   demonstrated on this relative-shift formulation.
+3. Prototype fused norm + quantized projection + residual kernels for the
+   repeated Conformer/Whisper block patterns. The trace suggests eliminating
+   many small dispatches is more plausible than filling a large bubble.
+4. A true static arena planner could use tensor liveness to reuse offsets, in
+   the style of OLLA. MLX currently manages this below the Python graph, so this
+   belongs in an MLX fork/upstream contribution rather than sidecar code.
+
+Architecture-level, requiring compatible weights or training:
+
+- Parakeet already uses the main FastConformer idea: depthwise 8x input
+  subsampling. Efficient Conformer adds progressive downsampling/grouped
+  attention, while Zipformer moves middle stacks to lower frame rates and
+  reuses attention weights. These are promising next-model architectures, not
+  safe transformations of the installed checkpoint.
+- Moonshine is trained on variable-length, unpadded audio. That directly
+  addresses Whisper's fixed 30-second encoder cost without relying on the
+  output-changing positional-embedding/padding hack tested in Experiment 14.
+
+Primary references:
+
+- [MLX fast SDPA](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.fast.scaled_dot_product_attention.html)
+  and [Metal debugger workflow](https://ml-explore.github.io/mlx/build/html/dev/metal_debugger.html)
+- [FlashAttention](https://arxiv.org/abs/2205.14135)
+- [FlashBias](https://arxiv.org/abs/2505.12044)
+- [OLLA](https://arxiv.org/abs/2210.12924)
+- [Efficient Conformer](https://arxiv.org/abs/2109.01163)
+- [Zipformer](https://arxiv.org/abs/2310.11230)
+- [Moonshine](https://arxiv.org/abs/2410.15608)
