@@ -97,11 +97,22 @@ NOISE_SPECTRAL_FLATNESS_THRESHOLD = 0.35
 SPECTRAL_FRAME_LENGTH = 400
 SPECTRAL_HOP_LENGTH = 160
 SPECTRAL_ACTIVE_RMS_THRESHOLD = 0.0005
-FAST_ATTENTION_MODE = os.environ.get("SPOKE_STT_FAST_ATTENTION", "0").strip().lower()
+FAST_ATTENTION_MODE = os.environ.get(
+    "SPOKE_STT_FAST_ATTENTION", "encoder-cross"
+).strip().lower()
 SAMPLE_LEN_LIMIT = os.environ.get("SPOKE_STT_SAMPLE_LEN", "").strip()
 PROFILE_MODE = os.environ.get("SPOKE_STT_PROFILE", "0").strip().lower()
 WARMUP_MODE = os.environ.get("SPOKE_STT_WARMUP", "1").strip().lower()
 CLEAR_CACHE_MODE = os.environ.get("SPOKE_STT_CLEAR_CACHE", "1").strip().lower()
+ENCODER_EVAL_INTERVAL = os.environ.get(
+    "SPOKE_STT_ENCODER_EVAL_INTERVAL", "1"
+).strip()
+ENCODER_ATTENTION_CHUNK_SIZE = os.environ.get(
+    "SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE", "0"
+).strip()
+DYNAMIC_PADDING_FRAMES = os.environ.get(
+    "SPOKE_STT_DYNAMIC_PADDING_FRAMES", "0"
+).strip()
 WARMUP_SAMPLE_LEN = 8
 
 
@@ -191,6 +202,24 @@ def get_sample_len_limit() -> int | None:
         raise ValueError("SPOKE_STT_SAMPLE_LEN must be a positive integer")
     if value <= 0:
         raise ValueError("SPOKE_STT_SAMPLE_LEN must be a positive integer")
+    return value
+
+
+def get_dynamic_padding_frames() -> int:
+    """Return extra 10 ms mel frames kept after the real utterance.
+
+    Zero is the compatibility switch for Whisper's stock 30-second padding.
+    """
+    try:
+        value = int(DYNAMIC_PADDING_FRAMES)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_DYNAMIC_PADDING_FRAMES must be a non-negative integer"
+        ) from exc
+    if value < 0:
+        raise ValueError(
+            "SPOKE_STT_DYNAMIC_PADDING_FRAMES must be a non-negative integer"
+        )
     return value
 
 
@@ -397,6 +426,7 @@ def _import_whisper() -> None:
     from mlx_whisper.decoding import DecodingOptions
     from mlx_whisper.load_models import load_model
     from mlx_whisper.tokenizer import get_tokenizer
+    from mlx_whisper.whisper import AudioEncoder
     from mlx_whisper.whisper import MultiHeadAttention
 
     if WHISPER_SAMPLE_RATE != SAMPLE_RATE:
@@ -414,11 +444,111 @@ def _import_whisper() -> None:
         load_model=load_model,
         get_tokenizer=get_tokenizer,
         MultiHeadAttention=MultiHeadAttention,
+        AudioEncoder=AudioEncoder,
     )
     _whisper_imported = True
 
 
-def install_fast_attention_patch() -> None:
+def install_encoder_eval_patch() -> None:
+    """Optionally materialize the encoder output every N transformer blocks.
+
+    MLX builds lazy graphs. Stock mlx-whisper therefore submits the complete
+    audio encoder as one graph, which can keep temporaries from several blocks
+    live at once. Evaluation boundaries trade some fusion/scheduling freedom
+    for a lower peak working set. The interval remains configurable for
+    regression benchmarks and future model shapes.
+    """
+    try:
+        interval = int(ENCODER_EVAL_INTERVAL)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_EVAL_INTERVAL must be a non-negative integer"
+        ) from exc
+    if interval < 0:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_EVAL_INTERVAL must be a non-negative integer"
+        )
+    if interval == 0:
+        log("sidecar: encoder evaluation boundaries disabled")
+        return
+
+    # Import lazily with the Whisper family so other engines do not pay for it.
+    import mlx.nn as nn
+
+    AudioEncoder = _w["AudioEncoder"]
+
+    def staged_encoder_call(self, x):
+        x = nn.gelu(self.conv1(x))
+        x = nn.gelu(self.conv2(x))
+        assert x.shape[2] == self._positional_embedding.shape[1], (
+            "incorrect audio shape"
+        )
+        assert x.shape[1] <= self._positional_embedding.shape[0], (
+            "audio is longer than the encoder context"
+        )
+        x = x + self._positional_embedding[: x.shape[1]]
+
+        for block_index, block in enumerate(self.blocks, start=1):
+            x, _, _ = block(x)
+            if block_index % interval == 0 and block_index < len(self.blocks):
+                mx.eval(x)
+
+        return self.ln_post(x)
+
+    AudioEncoder.__call__ = staged_encoder_call
+    log(f"sidecar: encoder evaluation boundary every {interval} block(s)")
+
+
+def install_encoder_attention_chunking(model) -> None:
+    """Optionally tile encoder self-attention over the query sequence.
+
+    Stock mlx-whisper materializes a [batch, heads, 1500, 1500] score tensor
+    in every encoder block. Query tiling preserves exact attention semantics
+    while giving MLX smaller independent score tensors to schedule and free.
+    """
+    try:
+        chunk_size = int(ENCODER_ATTENTION_CHUNK_SIZE)
+    except ValueError as exc:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE must be a non-negative integer"
+        ) from exc
+    if chunk_size < 0:
+        raise ValueError(
+            "SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE must be a non-negative integer"
+        )
+    if chunk_size == 0:
+        log("sidecar: encoder attention chunking disabled")
+        return
+
+    def chunked_qkv_attention(self, q, k, v, mask=None):
+        n_batch, n_ctx, n_state = q.shape
+        scale = (n_state // self.n_head) ** -0.25
+        q = q.reshape(n_batch, n_ctx, self.n_head, -1).transpose(0, 2, 1, 3)
+        q = q * scale
+        k = k.reshape(n_batch, n_ctx, self.n_head, -1).transpose(0, 2, 3, 1)
+        k = k * scale
+        v = v.reshape(n_batch, n_ctx, self.n_head, -1).transpose(0, 2, 1, 3)
+
+        outputs = []
+        for start in range(0, n_ctx, chunk_size):
+            end = min(start + chunk_size, n_ctx)
+            scores = q[:, :, start:end] @ k
+            if mask is not None:
+                scores = scores + mask[start:end, :n_ctx]
+            weights = mx.softmax(scores, axis=-1, precise=True)
+            output = (weights @ v).transpose(0, 2, 1, 3)
+            outputs.append(output.reshape(n_batch, end - start, n_state))
+
+        return mx.concatenate(outputs, axis=1), None
+
+    for block in model.encoder.blocks:
+        block.attn.qkv_attention = types.MethodType(
+            chunked_qkv_attention, block.attn
+        )
+    log(f"sidecar: encoder attention query chunk size {chunk_size}")
+
+
+def install_fast_attention_patch(model) -> None:
     """Patch mlx_whisper's attention. Must run after _import_whisper()."""
     mode = {
         "1": "all",
@@ -430,9 +560,17 @@ def install_fast_attention_patch() -> None:
     if mode in ("", "0", "false", "no", "off"):
         log("sidecar: fast attention disabled")
         return
-    if mode not in ("all", "self", "cross"):
+    if mode not in (
+        "all",
+        "self",
+        "cross",
+        "encoder",
+        "decoder-cross",
+        "encoder-cross",
+    ):
         raise ValueError(
-            "SPOKE_STT_FAST_ATTENTION must be one of: 0, 1, all, self, cross"
+            "SPOKE_STT_FAST_ATTENTION must be one of: 0, 1, all, self, "
+            "cross, encoder, decoder-cross, encoder-cross"
         )
     if not hasattr(mx, "fast") or not hasattr(mx.fast, "scaled_dot_product_attention"):
         log("sidecar: fast attention unavailable")
@@ -441,12 +579,22 @@ def install_fast_attention_patch() -> None:
     MultiHeadAttention = _w["MultiHeadAttention"]
     original_qkv_attention = MultiHeadAttention.qkv_attention
 
+    for block in model.encoder.blocks:
+        block.attn._spoke_attention_kind = "encoder"
+    for block in model.decoder.blocks:
+        block.attn._spoke_attention_kind = "decoder-self"
+        block.cross_attn._spoke_attention_kind = "decoder-cross"
+
     def fast_qkv_attention(self, q, k, v, mask=None):
-        is_self_attention = mask is not None
+        attention_kind = getattr(self, "_spoke_attention_kind", "unknown")
         should_use_fast_attention = (
             mode == "all"
-            or (mode == "self" and is_self_attention)
-            or (mode == "cross" and not is_self_attention)
+            or (mode == "self" and attention_kind == "decoder-self")
+            or (
+                mode in ("cross", "encoder-cross")
+                and attention_kind in ("encoder", "decoder-cross")
+            )
+            or (mode == attention_kind)
         )
         if not should_use_fast_attention:
             return original_qkv_attention(self, q, k, v, mask)
@@ -485,7 +633,7 @@ class WhisperEngine(Engine):
 
     def load(self) -> None:
         _import_whisper()
-        install_fast_attention_patch()
+        install_encoder_eval_patch()
         validate_weights_dir(self.weights_dir, WHISPER_REQUIRED_MODEL_FILES)
 
         log(f"sidecar: loading {WHISPER_MODEL_DISPLAY_NAME} from {self.weights_dir}")
@@ -493,6 +641,8 @@ class WhisperEngine(Engine):
         start = time.perf_counter()
 
         self.model = _w["load_model"](self.model_path, dtype=mx.float16)
+        install_fast_attention_patch(self.model)
+        install_encoder_attention_chunking(self.model)
 
         self.load_ms = round((time.perf_counter() - start) * 1000)
         self.load_peak_memory_bytes = memory_snapshot()["peak_memory_bytes"]
@@ -623,6 +773,7 @@ def transcribe_audio(
     N_FRAMES = _w["N_FRAMES"]
     N_SAMPLES = _w["N_SAMPLES"]
     HOP_LENGTH = _w["HOP_LENGTH"]
+    dynamic_padding_frames = get_dynamic_padding_frames()
 
     dtype = mx.float16
     profile_enabled = is_enabled(PROFILE_MODE)
@@ -666,7 +817,13 @@ def transcribe_audio(
         time_offset = float(seek * HOP_LENGTH / SAMPLE_RATE)
         duration = float(segment_size * HOP_LENGTH / SAMPLE_RATE)
         mel_segment = mel[seek : seek + segment_size]
-        mel_segment = pad_or_trim(mel_segment, N_FRAMES, axis=-2).astype(dtype)
+        encoder_frames = N_FRAMES
+        if dynamic_padding_frames > 0 and segment_size < N_FRAMES:
+            # Whisper normally encodes 30 seconds even for a short command.
+            # Retain a generous silence tail for model behavior while avoiding
+            # transformer work on the rest of the synthetic padding.
+            encoder_frames = min(N_FRAMES, segment_size + dynamic_padding_frames)
+        mel_segment = pad_or_trim(mel_segment, encoder_frames, axis=-2).astype(dtype)
         audio_features = detected_audio_features if seek == 0 else None
 
         result = decode_segment(
