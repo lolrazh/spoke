@@ -387,3 +387,222 @@ Conclusion:
 
 - Sidecar quality stayed in the known synthetic-corpus range: failures are still concentrated around product names, symbols, and numeric phrasing.
 - The remaining P0 validation is a real app dogfood pass, not more raw sidecar benchmarking.
+
+## Experiment 10: bounded Whisper encoder graph lifetime
+
+Status: adopted
+
+Change tested:
+
+- Replaced stock `mlx-whisper`'s single 32-block lazy audio-encoder graph with
+  the same encoder computation plus an `mx.eval()` boundary after every block.
+- Added `SPOKE_STT_ENCODER_EVAL_INTERVAL` for regression testing. `1` is the
+  production default; `0` restores the stock graph.
+- Tested intervals 1, 2, 4, 8, and 16. Only short intervals materially reduced
+  peak memory; interval 1 established the best memory frontier.
+- Tested `mx.async_eval()` as a non-blocking alternative. It did not cut the
+  dependency graph and therefore did not reduce peak memory.
+
+Representative result (one case, capped decode for fast interval sweep):
+
+| Evaluation interval | Inference | MLX peak |
+|---:|---:|---:|
+| Stock (`0`) | 1016 ms | 1081.8 MB |
+| Every 1 block | 1021 ms | 654.8 MB |
+| Every 2 blocks | 1067 ms | 776.5 MB |
+| Every 4 blocks | 1091 ms | 992.6 MB |
+| Every 8 blocks | 982 ms | 1081.8 MB |
+
+Full-corpus validation:
+
+| Mode | Mean inference | Mean WER | Mean strict WER | Mean MLX peak |
+|---|---:|---:|---:|---:|
+| Stock graph | 1003.45 ms | 10.2% | 16.2% | 1081.93 MB |
+| Per-block evaluation | 1085.05 ms | 10.2% | 16.2% | 654.93 MB |
+
+The sequential full runs experienced increasing system load. An alternating
+three-case A/B measured only about a 1.2% inference penalty for the boundaries,
+while the 427 MB memory reduction was invariant across every request.
+
+Reports:
+
+- `local-stt/benchmarks/runs/20260715T025118Z-eval-boundary-0-full/report.md`
+- `local-stt/benchmarks/runs/20260715T025142Z-eval-boundary-1-full/report.md`
+
+Conclusion:
+
+- MLX lazy evaluation was retaining a much larger encoder working set than one
+  block required. Explicit lifetime boundaries cut the peak by 39.5% with exact
+  transcript parity.
+- Keep the boundary configurable because larger or differently quantized
+  checkpoints may have a different ideal interval.
+
+## Experiment 11: fused attention with bounded encoder layers
+
+Status: adopted
+
+Change tested:
+
+- Re-tested `mx.fast.scaled_dot_product_attention` after bounding the encoder
+  graph. The earlier fast-attention experiment used the full lazy encoder graph
+  and increased peak memory; the interaction between the two optimizations is
+  the important difference.
+- Marked encoder, decoder self-attention, and decoder cross-attention modules
+  explicitly instead of inferring their kind from the presence of a mask.
+- Applied fused attention to the encoder and decoder cross-attention. Decoder
+  self-attention stays on the stock path because full `all` mode was slower in
+  the full run without reducing memory further.
+- Kept the existing `SPOKE_STT_FAST_ATTENTION` switch. `encoder-cross` is now
+  the production default; `0` restores manual attention.
+
+Full-corpus comparison:
+
+| Mode | Mean wall | Mean inference | Mean WER | Mean strict WER | Mean MLX peak | Mean MLX cache |
+|---|---:|---:|---:|---:|---:|---:|
+| Stock graph + manual attention | 1020.55 ms | 1003.45 ms | 10.2% | 16.2% | 1081.93 MB | 675.52 MB |
+| Per-block + fused encoder/cross | 988.45 ms | 973.05 ms | 10.2% | 16.2% | 535.64 MB | 120.36 MB |
+
+Report:
+
+- `local-stt/benchmarks/runs/20260715T025542Z-i1-fast-cross-full/report.md`
+
+Production-default smoke after making both defaults:
+
+- 3/3 transcript results matched the control.
+- Mean inference: 953.0 ms.
+- Mean MLX peak: 535.1 MB.
+- Report: `local-stt/benchmarks/runs/20260715T025757Z-production-default-smoke/report.md`.
+
+Conclusion:
+
+- The combined path cuts peak MLX memory by about 546 MB (50.5%) and improves
+  mean inference by about 3% on the full corpus.
+- The final peak is only about 84 MB above the 451.6 MB resident model, leaving
+  substantially more unified-memory headroom for larger or mixed-quant models.
+
+## Experiment 12: attention tiling and Python-sidecar overhead
+
+Status: measured; attention tiling not adopted as the default
+
+- Added an exact query-tiling experiment behind
+  `SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE` inspired by flash-attention-style
+  bounded score tiles. A 750-token tile reduced the stock graph peak from
+  1081.8 MB to 916.4 MB without changing the smoke transcript, but fused
+  attention plus per-block evaluation was both smaller and faster.
+- The tiling knob remains available for future MLX/model regressions and for
+  hardware where fused attention is unavailable.
+- Measured import-only process RSS: bare Python 8.8 MB, MLX + NumPy 38.8 MB,
+  sidecar module 41.3 MB, and lazy Whisper imports 71.6 MB. The production
+  process was about 570-583 MB RSS with 451.6 MB of active MLX model memory.
+
+Conclusion:
+
+- Python/PyInstaller is not the source of the former 1.08 GB inference peak.
+  A native sidecar could recover some tens of megabytes, but model execution
+  lifetimes and attention kernels were the dominant levers.
+- Keep a native Swift/MLX or Core ML encoder as a later architecture project,
+  not as the first memory optimization.
+
+## Benchmark harness protocol repair
+
+- Updated `benchmark.py` to send the JSON metadata frame before the PCM frame,
+  matching the current two-frame sidecar protocol. The stale one-frame harness
+  previously left both processes waiting for the other frame and could not
+  measure current builds.
+
+## Experiment 13: encoder latency profile and MLX 0.32
+
+Status: MLX upgrade adopted
+
+- Whisper profiling attributed about 876 ms of a 938 ms request to the audio
+  encoder. Mel generation was about 2 ms and decoding about 60 ms, so Python,
+  the protocol, and decoder tuning cannot produce a 2x end-to-end win.
+- Upgraded MLX from 0.31.2 to 0.32.0. On the same three-case smoke corpus,
+  mean inference fell from roughly 938 ms to 881 ms while the 535.1 MB MLX
+  peak and transcripts stayed unchanged.
+- Independently compiling each encoder transformer block reduced the smoke
+  mean by only another ~1%. Fusing the three quantized Q/K/V projections into
+  one projection was also essentially latency-neutral. Neither experimental
+  patch was retained because each added model-internal coupling for a marginal
+  result.
+
+Conclusion:
+
+- The full-length encoder's repeated quantized matrix multiplies are the hard
+  latency floor. Fused SDPA is already active; `MLX_SDPA_BLOCKS` only tunes the
+  short-query two-pass kernel and therefore does not affect the full-sequence
+  encoder path.
+
+## Experiment 14: duration-aware Whisper encoder context
+
+Status: retained as an experiment; not enabled by default
+
+Change tested:
+
+- Stock Whisper pads every utterance to 30 seconds before running all 32
+  encoder blocks. A three-second command therefore paid almost the same encoder
+  cost as a 30-second recording.
+- The encoder can process the real mel frames plus a configurable trailing
+  silence/context tail. `SPOKE_STT_DYNAMIC_PADDING_FRAMES=700` retains seven
+  seconds beyond the actual utterance; `0` uses the stock 30-second context and
+  remains the production default. At Whisper's 10 ms mel hop, the experimental
+  tail caps at the original 30-second limit.
+- The positional embedding is sliced to the resulting encoder length. No model
+  weights, decoder limits, or audio content are removed.
+
+Safety-tail sweep (MLX 0.32, ten cases, one measured pass):
+
+| Extra mel frames | Mean inference | Max MLX peak | WER | Strict WER |
+|---:|---:|---:|---:|---:|
+| 100 | 260.0 ms | 520.0 MB | 25.8% | 29.7% |
+| 300 | 313.2 ms | 523.7 MB | 11.4% | 15.2% |
+| 500 | 371.0 ms | 527.5 MB | 11.4% | 15.2% |
+| 700 | 425.8 ms | 531.4 MB | 11.4% | 15.2% |
+| 900 | 484.9 ms | 535.1 MB | 11.4% | 15.2% |
+
+Final experimental repeat (ten cases x two):
+
+| Mode | Mean wall | Mean inference | Median inference | P95 inference | WER | Strict WER | Max MLX peak |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Previous memory-optimized default | 988.45 ms | 973.05 ms | 969.0 ms | 1093 ms | 10.2% | 16.2% | 535.64 MB |
+| Experimental dynamic 700 + MLX 0.32 | 429.8 ms | 414.6 ms | 368.5 ms | 804 ms | 11.4% | 15.2% | 531.4 MB |
+
+Report:
+
+- `local-stt/benchmarks/runs/20260715T051040Z-latency-final-default-full/report.md`
+- Rebuilt the 252 MB PyInstaller onedir bundle with MLX 0.32 and verified the
+  packaged executable. A repeat launch was ready in 680 ms and transcribed the
+  short command in 280 ms at 491.7 MB peak:
+  `local-stt/benchmarks/runs/20260715T051404Z-packaged-mlx032-second-launch/report.md`.
+
+Quality notes:
+
+- Mean inference improved by 57.4% and the maximum MLX peak decreased by about
+  4 MB, proving the 2x mean-latency target is computationally available, but
+  the changed outputs prevent enabling this mode by default.
+- The 18.6-second dictation remained word-for-word identical and completed in
+  804-814 ms. The normal 3-9 second cases completed in 283-461 ms.
+- Normalized WER regressed 1.2 percentage points, while punctuation/case-aware
+  strict WER improved 1.0 point. Differences were concentrated in synthetic
+  proper-noun/numeric formatting (`Maya`/`myya`, `megabytes`/`MB`) rather than
+  omissions in the long dictation. A 300-900 frame tail produced the same
+  corpus outputs, so 700 was selected as a more conservative real-audio safety
+  margin instead of taking the fastest point on the synthetic sweep.
+
+## Engine comparison: active Parakeet model
+
+- Generalized `benchmark.py` with `--family` so Whisper, Parakeet, and Cohere
+  use the same protocol, corpus, WER, and memory accounting.
+- The installed 6-bit Parakeet model averaged 156.25 ms inference, but reached
+  1001.7 MB peak MLX memory and 17.1% WER. It is the speed ceiling, not a valid
+  replacement for this optimization because it nearly doubles peak memory and
+  scored worse on this corpus.
+- Report: `local-stt/benchmarks/runs/20260715T050813Z-parakeet-active-full/report.md`.
+
+Research conclusion:
+
+- `whisper.cpp` and Apple's Core ML/ANE encoder path remain the credible route
+  to a lossless further step-change. `whisper.cpp` supports flash attention,
+  quantization, and a Core ML encoder, but combining its Core ML encoder weights
+  with a separate decoder can increase the resident footprint. That path needs
+  an actual end-to-end memory benchmark before replacing this MLX default.
