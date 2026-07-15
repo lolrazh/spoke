@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Benchmark the Spoke local Whisper sidecar.
+Benchmark the Spoke local STT sidecar.
 
 Runs the same length-prefixed daemon protocol used by Electron, computes WER
 against a reference corpus, and writes JSON + Markdown reports.
@@ -34,13 +34,25 @@ DEFAULT_OUTPUT_DIR = LOCAL_STT_DIR / "benchmarks"
 DEFAULT_WEIGHTS_DIR = (
     Path.home() / "Library" / "Application Support" / "Spoke" / "local-stt" / "weights"
 )
-REQUIRED_MODEL_FILES = ("config.json", "weights.safetensors", "multilingual.tiktoken")
+REQUIRED_MODEL_FILES = {
+    "whisper": ("config.json", "weights.safetensors", "multilingual.tiktoken"),
+    "parakeet": ("config.json", "model.safetensors", "mel_filters.npy"),
+    "cohere": (
+        "config.json",
+        "model.safetensors",
+        "tokenizer.json",
+        "tokenizer.model",
+    ),
+}
 REPORT_ENV_KEYS = (
     "SPOKE_STT_FAST_ATTENTION",
     "SPOKE_STT_SAMPLE_LEN",
     "SPOKE_STT_PROFILE",
     "SPOKE_STT_WARMUP",
     "SPOKE_STT_CLEAR_CACHE",
+    "SPOKE_STT_ENCODER_EVAL_INTERVAL",
+    "SPOKE_STT_ENCODER_ATTENTION_CHUNK_SIZE",
+    "SPOKE_STT_DYNAMIC_PADDING_FRAMES",
 )
 TIMING_METRIC_KEYS = (
     "audio_analysis_ms",
@@ -60,7 +72,7 @@ class CorpusCase:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark Spoke local Whisper")
+    parser = argparse.ArgumentParser(description="Benchmark Spoke local STT")
     parser.add_argument("--label", default="baseline", help="Run label for output files.")
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
@@ -70,6 +82,12 @@ def parse_args() -> argparse.Namespace:
         help="Directory for generated/converted PCM corpus audio shared across benchmark runs.",
     )
     parser.add_argument("--weights-dir", type=Path, default=DEFAULT_WEIGHTS_DIR)
+    parser.add_argument(
+        "--family",
+        choices=tuple(REQUIRED_MODEL_FILES),
+        default="whisper",
+        help="Sidecar engine family (default: whisper).",
+    )
     parser.add_argument("--language", default="en")
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
@@ -105,8 +123,10 @@ def require(condition: bool, message: str) -> None:
         raise SystemExit(message)
 
 
-def ensure_weights(weights_dir: Path) -> None:
-    missing = [name for name in REQUIRED_MODEL_FILES if not (weights_dir / name).exists()]
+def ensure_weights(weights_dir: Path, family: str) -> None:
+    missing = [
+        name for name in REQUIRED_MODEL_FILES[family] if not (weights_dir / name).exists()
+    ]
     require(
         not missing,
         f"Missing model files in {weights_dir}: {', '.join(missing)}. Install the local model first.",
@@ -227,6 +247,8 @@ def make_sidecar_command(args: argparse.Namespace) -> list[str]:
         require(args.binary.exists(), f"Sidecar binary not found: {args.binary}")
         return [
             str(args.binary),
+            "--family",
+            args.family,
             "--weights-dir",
             str(args.weights_dir),
             "--language",
@@ -238,6 +260,8 @@ def make_sidecar_command(args: argparse.Namespace) -> list[str]:
     return [
         str(args.python),
         str(args.sidecar),
+        "--family",
+        args.family,
         "--weights-dir",
         str(args.weights_dir),
         "--language",
@@ -410,7 +434,10 @@ def process_rss_mb(pid: int) -> float:
 def transcribe_pcm(proc: subprocess.Popen[bytes], pcm_path: Path) -> dict[str, Any]:
     assert proc.stdin is not None and proc.stdout is not None
     data = pcm_path.read_bytes()
+    metadata = b"{}"
     start = time.perf_counter()
+    proc.stdin.write(struct.pack("<I", len(metadata)))
+    proc.stdin.write(metadata)
     proc.stdin.write(struct.pack("<I", len(data)))
     proc.stdin.write(data)
     proc.stdin.flush()
@@ -569,7 +596,7 @@ def write_markdown(report: dict[str, Any], path: Path) -> None:
 
 
 def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
-    ensure_weights(args.weights_dir.expanduser())
+    ensure_weights(args.weights_dir.expanduser(), args.family)
     require_tools(generate_tts=not args.no_tts)
 
     timestamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
