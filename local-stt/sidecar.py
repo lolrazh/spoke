@@ -119,6 +119,9 @@ PARAKEET_ENCODER_EVAL_INTERVAL = os.environ.get(
 PARAKEET_FUSED_QKV_MODE = os.environ.get(
     "SPOKE_STT_PARAKEET_FUSED_QKV", "1"
 ).strip().lower()
+PARAKEET_FAST_DECODE_MODE = os.environ.get(
+    "SPOKE_STT_PARAKEET_FAST_DECODE", "1"
+).strip().lower()
 WARMUP_SAMPLE_LEN = 8
 
 
@@ -1190,6 +1193,8 @@ def _import_parakeet(mel_filters_path: Path) -> None:
 
     import mlx.nn as nn
     import mlx.utils
+    from parakeet_mlx import tokenizer as parakeet_tokenizer
+    from parakeet_mlx.alignment import AlignedToken
     from parakeet_mlx.audio import get_logmel
     from parakeet_mlx.conformer import (
         Conformer,
@@ -1203,6 +1208,8 @@ def _import_parakeet(mel_filters_path: Path) -> None:
         tree_flatten=mlx.utils.tree_flatten,
         tree_unflatten=mlx.utils.tree_unflatten,
         get_logmel=get_logmel,
+        parakeet_tokenizer=parakeet_tokenizer,
+        AlignedToken=AlignedToken,
         from_config=from_config,
         Conformer=Conformer,
         DwStridingSubsampling=DwStridingSubsampling,
@@ -1390,6 +1397,89 @@ def install_parakeet_fused_qkv_patch(model) -> None:
     log(f"sidecar: fused Parakeet QKV projections in {fused_count} blocks")
 
 
+def install_parakeet_fast_decode_patch(model) -> None:
+    """Remove unused confidence work and synchronize TDT decisions together."""
+    if not is_enabled(PARAKEET_FAST_DECODE_MODE):
+        log("sidecar: fast Parakeet decoder disabled")
+        return
+
+    aligned_token = _p["AlignedToken"]
+    tokenizer = _p["parakeet_tokenizer"]
+
+    def decode_greedy(
+        self,
+        features,
+        lengths=None,
+        last_token=None,
+        hidden_state=None,
+        *,
+        config=None,
+    ):
+        del config
+        batch_size, sequence_length, *_ = features.shape
+        hidden_state = hidden_state or [None] * batch_size
+        last_token = last_token or [None] * batch_size
+        if lengths is None:
+            lengths = mx.array([sequence_length] * batch_size)
+
+        blank_token = len(self.vocabulary)
+        results = []
+        for batch in range(batch_size):
+            hypothesis = []
+            feature = features[batch : batch + 1]
+            length = int(lengths[batch])
+            step = 0
+            new_symbols = 0
+
+            while step < length:
+                decoder_out, (hidden, cell) = self.decoder(
+                    mx.array([[last_token[batch]]])
+                    if last_token[batch] is not None
+                    else None,
+                    hidden_state[batch],
+                )
+                decoder_out = decoder_out.astype(feature.dtype)
+                decoder_hidden = (
+                    hidden.astype(feature.dtype),
+                    cell.astype(feature.dtype),
+                )
+                joint_out = self.joint(feature[:, step : step + 1], decoder_out)
+
+                pred_token = mx.argmax(joint_out[0, 0, :, : blank_token + 1])
+                decision = mx.argmax(joint_out[0, 0, :, blank_token + 1 :])
+                mx.eval(pred_token, decision)
+                pred_token = int(pred_token)
+                decision = int(decision)
+
+                if pred_token != blank_token:
+                    hypothesis.append(
+                        aligned_token(
+                            pred_token,
+                            start=step * self.time_ratio,
+                            duration=self.durations[decision] * self.time_ratio,
+                            text=tokenizer.decode([pred_token], self.vocabulary),
+                        )
+                    )
+                    last_token[batch] = pred_token
+                    hidden_state[batch] = decoder_hidden
+
+                duration = self.durations[decision]
+                step += duration
+                new_symbols += 1
+                if duration != 0:
+                    new_symbols = 0
+                elif self.max_symbols is not None and self.max_symbols <= new_symbols:
+                    step += 1
+                    new_symbols = 0
+
+            results.append(hypothesis)
+
+        return results, hidden_state
+
+    model.decode_greedy = types.MethodType(decode_greedy, model)
+    log("sidecar: reduced Parakeet greedy decoder synchronization")
+
+
 class ParakeetEngine(Engine):
     def __init__(self, weights_dir: Path, language: str | None) -> None:
         self.weights_dir = weights_dir
@@ -1431,6 +1521,7 @@ class ParakeetEngine(Engine):
         )
         mx.eval(model.parameters())
         install_parakeet_fused_qkv_patch(model)
+        install_parakeet_fast_decode_patch(model)
 
         if model.preprocessor_config.sample_rate != SAMPLE_RATE:
             raise RuntimeError(
