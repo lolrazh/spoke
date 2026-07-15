@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_STT_DIR = Path(__file__).resolve().parent
 DEFAULT_CORPUS = LOCAL_STT_DIR / "benchmark_corpus.json"
 DEFAULT_OUTPUT_DIR = LOCAL_STT_DIR / "benchmarks"
-DEFAULT_WEIGHTS_DIR = (
+DEFAULT_WEIGHTS_ROOT = (
     Path.home() / "Library" / "Application Support" / "Spoke" / "local-stt" / "weights"
 )
 REQUIRED_MODEL_FILES = {
@@ -74,7 +74,7 @@ class CorpusCase:
     audio_path: Path | None
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark Spoke local STT")
     parser.add_argument("--label", default="baseline", help="Run label for output files.")
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
@@ -84,7 +84,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Directory for generated/converted PCM corpus audio shared across benchmark runs.",
     )
-    parser.add_argument("--weights-dir", type=Path, default=DEFAULT_WEIGHTS_DIR)
+    parser.add_argument(
+        "--weights-dir",
+        type=Path,
+        help="Model weights directory (default: installed directory for --family).",
+    )
     parser.add_argument(
         "--family",
         choices=tuple(REQUIRED_MODEL_FILES),
@@ -118,7 +122,10 @@ def parse_args() -> argparse.Namespace:
         default=LOCAL_STT_DIR / "sidecar.py",
         help="Sidecar script for dev sidecar mode.",
     )
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    if args.weights_dir is None:
+        args.weights_dir = DEFAULT_WEIGHTS_ROOT / args.family
+    return args
 
 
 def require(condition: bool, message: str) -> None:
