@@ -236,6 +236,7 @@ declare global {
         pcmBuffer: ArrayBuffer,
         prompt?: string,
       ) => Promise<LocalTranscribeResult>;
+      cancelLocalTranscription: () => Promise<void>;
       transcribeApiKeyProvider: (
         providerId: ApiKeyTranscriptionProviderId,
         payload: {

@@ -34,7 +34,18 @@ import {
 import { playToggleOff } from "../utils/audioFeedback";
 import { addTranscription } from "../state/transcriptionHistory";
 import { setAudioLevel } from "../state/audioLevel";
-import { POST_ROLL_MS } from "../config/audio";
+import {
+  POST_ROLL_MS,
+  LOCAL_DICTATION_MAX_DURATION_MS,
+  LOCAL_STT_CHUNK_FORCED_MS,
+  LOCAL_STT_CHUNK_MIN_NATURAL_MS,
+  LOCAL_STT_CHUNK_OVERLAP_MS,
+  TARGET_SAMPLE_RATE_HZ,
+} from "../config/audio";
+import {
+  LocalChunkedDictation,
+  mergeLocalChunkTexts,
+} from "../core/transcription/localChunkedDictation";
 import {
   ENABLE_SCREEN_CONTEXT,
   ENABLE_TRANSCRIPT_ENHANCEMENT,
@@ -86,6 +97,8 @@ export function useTranscription(
     null,
   );
   const streamingVadRef = useRef<StreamingVadSessionHandle | null>(null);
+  const localChunkedDictationRef = useRef<LocalChunkedDictation | null>(null);
+  const requestStopRef = useRef<() => void>(() => undefined);
   const stopInFlightRef = useRef(false);
   // Incremented by cancel(); an in-flight stop() pipeline compares against the
   // value it captured at entry and bails out once they differ.
@@ -206,14 +219,48 @@ export function useTranscription(
     void prewarmVad().catch((err) => vadLog.warn("Start prewarm failed:", err));
 
     const providerId = await resolveActiveProviderId();
-    defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+    const provider =
+      defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
     try {
       await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
         context: buildTranscriptionContext(),
       });
 
-      const streamingVadSession = createStreamingVadSession();
+      let localChunkedDictation: LocalChunkedDictation | null = null;
+      if (provider.descriptor.kind === "local") {
+        localChunkedDictation = new LocalChunkedDictation({
+          sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+          minNaturalChunkMs: LOCAL_STT_CHUNK_MIN_NATURAL_MS,
+          forcedChunkMs: LOCAL_STT_CHUNK_FORCED_MS,
+          overlapMs: LOCAL_STT_CHUNK_OVERLAP_MS,
+          maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
+          transcribe: (audio) => {
+            // Until this first chunk, PcmCaptureSession keeps the legacy
+            // short-recording fallback intact. Once a bounded request is
+            // safely sealed, release its duplicate capture copy.
+            recorderRef.current?.discardBufferedPcm();
+            return defaultTranscriptionSessionOrchestrator.transcribe(
+              providerId,
+              {
+                audio,
+                context: buildTranscriptionContext(),
+              },
+            );
+          },
+          onLimitReached: () => {
+            window.notifications?.send(
+              "Sorry — Spoke has a five-minute recording limit. Finishing your transcription now…",
+            );
+            requestStopRef.current();
+          },
+        });
+        localChunkedDictationRef.current = localChunkedDictation;
+      }
+
+      const streamingVadSession = createStreamingVadSession({
+        onSpeechEnd: () => localChunkedDictation?.requestNaturalBoundary(),
+      });
       streamingVadRef.current = streamingVadSession;
 
       const recorderPromise = (async () => {
@@ -229,7 +276,10 @@ export function useTranscription(
             reportTranscriptionError(err.message);
             setRecording(false);
           },
-          onPcmFrame: (frame) => streamingVadSession.pushFrame(frame),
+          onPcmFrame: (frame) => {
+            streamingVadSession.pushFrame(frame);
+            localChunkedDictation?.pushFrame(frame);
+          },
         });
         await recorder.start(stream);
         return recorder;
@@ -275,6 +325,7 @@ export function useTranscription(
       recorderStartPromiseRef.current = null;
       streamingVadRef.current?.dispose();
       streamingVadRef.current = null;
+      localChunkedDictationRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -449,6 +500,77 @@ export function useTranscription(
       recorderRef.current = null;
       recorderStartPromiseRef.current = null;
       timing.pcmStopStartedAt = performance.now();
+
+      const localChunkedDictation = localChunkedDictationRef.current;
+      if (
+        provider.descriptor.kind === "local" &&
+        localChunkedDictation?.hasDispatchedChunks
+      ) {
+        // recorder.stop() flushes the last worklet frame into the chunker and
+        // then releases audio resources. The completed chunk promises may
+        // already be running while the user was still dictating.
+        await recorder.stop();
+        localChunkedDictationRef.current = null;
+        timing.pcmReadyAt = performance.now();
+        if (isCancelled()) return;
+
+        timing.vadStartedAt = performance.now();
+        timing.vadDoneAt = timing.vadStartedAt;
+        timing.sttStartedAt = timing.stopStartedAt;
+        const chunkResults = await localChunkedDictation.finish();
+        timing.sttDoneAt = performance.now();
+        if (isCancelled()) return;
+
+        const finalText = mergeLocalChunkTexts(chunkResults);
+        const capturedAudioMs = Math.round(localChunkedDictation.durationMs);
+        const vadResult: VadAudioResult = {
+          // The chunker never creates a whole-recording PCM buffer. This is
+          // telemetry-only; the actual audio has already been sent and freed.
+          audio: {
+            format: "pcm16",
+            sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+            channelCount: 1,
+            pcm16: new Int16Array(),
+            durationMs: 0,
+          },
+          speechDetected: finalText.length > 0,
+          segments: [],
+          trimRange: { startSample: 0, endSample: 0 },
+          leadingTrimmedMs: 0,
+          trailingTrimmedMs: 0,
+          vadMs: 0,
+        };
+
+        if (!finalText) {
+          log.info(
+            "No speech detected across local dictation chunks; skipping publish",
+          );
+          logTranscriptionLatency({
+            providerKind: provider.descriptor.kind,
+            status: "no_speech",
+            timing,
+            capturedAudioMs,
+            vadResult,
+          });
+          setText("");
+          return;
+        }
+
+        const result: TranscriptionResult = {
+          text: finalText,
+          metrics: chunkResults.at(-1)?.metrics,
+        };
+        await finishTranscription({
+          result,
+          timing,
+          providerKind: provider.descriptor.kind,
+          capturedAudioMs,
+          vadResult,
+          isCancelled,
+        });
+        return;
+      }
+
       let capturedAudio: CapturedAudio | null = await recorder.stop();
       timing.pcmReadyAt = performance.now();
       if (isCancelled()) return;
@@ -558,6 +680,7 @@ export function useTranscription(
         setProcessing(false);
         ocrWordsRef.current = [];
         ocrPromiseRef.current = null;
+        localChunkedDictationRef.current = null;
       }
     }
   }, [
@@ -568,6 +691,15 @@ export function useTranscription(
     reportTranscriptionError,
     resolveActiveProviderId,
   ]);
+
+  // A chunker reaches the five-minute guard from the audio worklet callback.
+  // Keep the stop action in a ref so that hot-path callback never depends on
+  // React state or waits for a render before it can finalize the dictation.
+  useEffect(() => {
+    requestStopRef.current = () => {
+      void stop();
+    };
+  }, [stop]);
 
   // Cancel recording
   const cancel = useCallback(() => {
@@ -585,6 +717,10 @@ export function useTranscription(
     if (recorderRef.current) {
       recorderRef.current.cancel();
       recorderRef.current = null;
+    }
+    localChunkedDictationRef.current = null;
+    if (activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID) {
+      void window.stt?.cancelLocalTranscription?.();
     }
     // If a stop() pipeline is mid-flight it already took ownership of the
     // streaming VAD session (nulled this ref) and is responsible for

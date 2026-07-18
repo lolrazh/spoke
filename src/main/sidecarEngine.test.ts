@@ -201,5 +201,25 @@ describe("sidecarEngine", () => {
         prompt,
       });
     });
+
+    it("rejects oversized requests before they reach the sidecar", async () => {
+      const { engine } = await startReadySidecar();
+
+      await expect(
+        engine.transcribeLocal(
+          Buffer.alloc(engine.LOCAL_STT_MAX_REQUEST_BYTES + 1),
+        ),
+      ).rejects.toThrow("30-second safety limit");
+    });
+
+    it("kills the process when transcription is explicitly aborted", async () => {
+      const { engine } = await startReadySidecar();
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      engine.abortLocalTranscription();
+
+      expect(kill).toHaveBeenCalledWith(12345, "SIGKILL");
+      kill.mockRestore();
+    });
   });
 });

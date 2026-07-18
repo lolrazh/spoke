@@ -15,6 +15,10 @@ import { getActiveModelId } from "./modelManager";
 import { getModelFamily } from "./localModelContract";
 import { bootTimeline } from "./bootTimeline";
 
+// 16 kHz, mono, signed PCM16. Keep this below Parakeet's problematic
+// full-attention region; renderer chunking normally sends 25-second requests.
+export const LOCAL_STT_MAX_REQUEST_BYTES = 30 * 1000 * 16_000 * 2;
+
 // ── Internal state ─────────────────────────────────────────────────────
 
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
@@ -189,12 +193,39 @@ export function killSidecar(): void {
   sidecarReady = false;
 }
 
+/**
+ * Abort the current inference and discard anything queued behind it. A timeout
+ * must reclaim the ML process itself; rejecting only the renderer promise
+ * leaves Parakeet allocating in the background.
+ */
+export function abortLocalTranscription(): void {
+  autoRestartEnabled = false;
+  sidecarTranscribeQueue = Promise.resolve();
+  const proc = sidecarProcess;
+  sidecarProcess = null;
+  sidecarReady = false;
+  if (!proc) return;
+  console.warn("[STT] Aborting local transcription and killing sidecar");
+  try {
+    if (proc.pid) process.kill(proc.pid, "SIGKILL");
+  } catch {
+    // The process may have exited between the state check and kill.
+  }
+}
+
 // ── Transcription ──────────────────────────────────────────────────────
 
 export function transcribeLocal(
   pcmBuffer: Buffer,
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
+  if (pcmBuffer.length > LOCAL_STT_MAX_REQUEST_BYTES) {
+    return Promise.reject(
+      new Error(
+        "Local transcription request exceeds the 30-second safety limit",
+      ),
+    );
+  }
   // Sidecar stdout is a shared stream. Serialize requests so "done" events
   // cannot be consumed by the wrong in-flight caller.
   const queued = sidecarTranscribeQueue.then(
@@ -269,10 +300,13 @@ function transcribeLocalOnce(
 
     proc.stdout?.on("data", onData);
 
-    // Timeout after 60s
+    // Timeout after 60s. Unlike the old behavior, the timeout immediately
+    // terminates the worker so a runaway model cannot continue consuming RAM.
     timeout = setTimeout(() => {
       if (!resolved) {
+        resolved = true;
         cleanup();
+        abortLocalTranscription();
         reject(new Error("Local transcription timed out"));
       }
     }, 60000);

@@ -42,6 +42,7 @@ import {
   setActiveModelAndResync,
   syncLocalSidecarForCurrentProvider,
   transcribeWithLocalSidecar,
+  abortLocalSidecarTranscription,
 } from "../localSttLifecycle";
 import {
   getModelStatus,
@@ -114,6 +115,10 @@ export function registerSttIpc(): void {
       });
     },
   );
+
+  ipcMain.handle("stt:cancel-local-transcription", () => {
+    abortLocalSidecarTranscription();
+  });
 
   ipcMain.handle("stt:extract-ocr", async (_event, imageBase64: string) => {
     const providerId = resolveEnhancementProvider(getPreferredProviderId());

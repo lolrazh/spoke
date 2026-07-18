@@ -9,6 +9,7 @@ import {
 } from "./modelManager";
 import {
   isSidecarRunning,
+  abortLocalTranscription as abortSidecarTranscription,
   killSidecar,
   setAutoRestart,
   spawnSidecar,
@@ -111,6 +112,12 @@ export function stopLocalSidecar(): void {
   clearIdleTimer();
   setAutoRestart(false);
   killSidecar();
+}
+
+/** Cancel uses this instead of merely invalidating renderer state. */
+export function abortLocalSidecarTranscription(): void {
+  clearIdleTimer();
+  abortSidecarTranscription();
 }
 
 export async function syncLocalSidecarForCurrentProvider(): Promise<void> {
