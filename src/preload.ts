@@ -157,6 +157,8 @@ contextBridge.exposeInMainWorld("stt", {
       new Uint8Array(pcmBuffer),
       prompt,
     ),
+  cancelLocalTranscription: () =>
+    ipcRenderer.invoke("stt:cancel-local-transcription"),
   transcribeApiKeyProvider: (
     providerId: string,
     payload: {

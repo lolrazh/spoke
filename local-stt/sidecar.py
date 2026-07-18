@@ -1669,6 +1669,12 @@ def read_length_prefixed(stream) -> bytes | None:
     return read_exact(stream, length)
 
 
+# Parakeet's full relative-attention implementation is intentionally never
+# given arbitrarily long audio. This mirrors the main-process guard so a bad or
+# old renderer cannot feed one huge request directly to the model.
+MAX_AUDIO_REQUEST_BYTES = 30 * 16_000 * 2
+
+
 def parse_request_metadata(raw: bytes) -> dict[str, Any]:
     """Best-effort parse of the JSON metadata frame. Malformed or non-object
     metadata is treated as empty rather than failing the request."""
@@ -1716,6 +1722,18 @@ def daemon_mode(engine: Engine) -> int:
             # read it directly rather than via read_length_prefixed().
             audio_length_bytes = read_exact(sys.stdin.buffer, 4)
             audio_length = struct.unpack("<I", audio_length_bytes)[0]
+            if audio_length > MAX_AUDIO_REQUEST_BYTES:
+                # Consume the frame before continuing so the stream remains
+                # aligned for the next request, but never materialize it as a
+                # model input.
+                while audio_length:
+                    chunk = read_exact(sys.stdin.buffer, min(audio_length, 64 * 1024))
+                    audio_length -= len(chunk)
+                emit_error(
+                    "Local transcription request exceeds the 30-second safety limit",
+                    "audio_too_long",
+                )
+                continue
             raw = read_exact(sys.stdin.buffer, audio_length)
 
             engine.transcribe(pcm16_to_float32(raw), prompt=prompt)

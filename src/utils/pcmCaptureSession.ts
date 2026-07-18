@@ -21,6 +21,8 @@ export interface PcmCaptureSessionOptions {
    * capture behaves exactly as before.
    */
   onPcmFrame?: (frame: Int16Array) => void;
+  /** Set false when another consumer drains frames incrementally. */
+  retainPcm?: boolean;
 }
 
 type WorkletAudioMessage = {
@@ -46,6 +48,7 @@ export class PcmCaptureSession {
   private readonly onAudioLevel?: (level: number) => void;
   private readonly onError?: (error: Error) => void;
   private readonly onPcmFrame?: (frame: Int16Array) => void;
+  private readonly retainPcm: boolean;
   private readonly chunks: Int16Array[] = [];
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -60,6 +63,7 @@ export class PcmCaptureSession {
     this.onAudioLevel = options.onAudioLevel;
     this.onError = options.onError;
     this.onPcmFrame = options.onPcmFrame;
+    this.retainPcm = options.retainPcm ?? true;
   }
 
   async start(stream: MediaStream): Promise<void> {
@@ -122,10 +126,15 @@ export class PcmCaptureSession {
     });
   }
 
+  /** Drop retained audio after an incremental consumer has safely sealed it. */
+  discardBufferedPcm(): void {
+    this.chunks.length = 0;
+  }
+
   private handleWorkletMessage(message: WorkletMessage): void {
     if (message.type === "audio") {
       const frame = new Int16Array(message.samples);
-      this.chunks.push(frame);
+      if (this.retainPcm) this.chunks.push(frame);
       this.onAudioLevel?.(calculatePcm16Level(frame));
       this.onPcmFrame?.(frame);
       return;

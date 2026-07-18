@@ -84,6 +84,11 @@ export interface StreamingVadSessionHandle {
   dispose(): void;
 }
 
+export interface StreamingVadSessionOptions {
+  /** Invoked after the VAD confirms a speech segment ended. */
+  onSpeechEnd?: () => void;
+}
+
 // The shared frameProcessor is a single mutable resource reused across
 // recording sessions. Every access to it (process/endSegment/reset) is
 // funneled through this module-level queue so a slow-to-drain previous
@@ -99,8 +104,10 @@ function enqueue<T>(fn: () => Promise<T> | T): Promise<T> {
   return run;
 }
 
-export function createStreamingVadSession(): StreamingVadSessionHandle {
-  return new StreamingVadSession();
+export function createStreamingVadSession(
+  options: StreamingVadSessionOptions = {},
+): StreamingVadSessionHandle {
+  return new StreamingVadSession(undefined, undefined, options.onSpeechEnd);
 }
 
 class StreamingVadSession implements StreamingVadSessionHandle {
@@ -136,6 +143,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   constructor(
     private readonly preSpeechPadMs = VAD_PRE_SPEECH_PAD_MS,
     private readonly redemptionMs = VAD_REDEMPTION_MS,
+    private readonly onSpeechEnd?: () => void,
   ) {
     this.initializePromise = this.initialize();
   }
@@ -266,6 +274,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         this.segments.push({ startMs, endMs });
         this.speaking = false;
         this.speechEndAtMs = endMs;
+        this.onSpeechEnd?.();
         break;
       }
       case Message.VADMisfire:
