@@ -54,14 +54,20 @@ describe("LocalChunkedDictation", () => {
     expect(chunker.hasDispatchedChunks).toBe(true);
   });
 
-  it("notifies once at the user-facing maximum duration", async () => {
-    const { chunker, onLimitReached } = createChunker();
+  it("notifies once and rejects audio beyond the maximum duration", async () => {
+    const { chunker, onLimitReached, transcribe } = createChunker();
     chunker.pushFrame(new Int16Array(500));
     chunker.pushFrame(new Int16Array(10));
     await chunker.finish();
 
     expect(onLimitReached).toHaveBeenCalledTimes(1);
-    expect(chunker.durationMs).toBe(5100);
+    expect(chunker.durationMs).toBe(5000);
+    expect(
+      transcribe.mock.calls.reduce(
+        (durationMs, [audio]) => durationMs + audio.durationMs,
+        0,
+      ),
+    ).toBe(5000);
   });
 
   it("removes repeated boundary words from overlapping chunks", () => {

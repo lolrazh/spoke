@@ -17,7 +17,7 @@ import { bootTimeline } from "./bootTimeline";
 
 // 16 kHz, mono, signed PCM16. Keep this below Parakeet's problematic
 // full-attention region; renderer chunking normally sends 25-second requests.
-export const LOCAL_STT_MAX_REQUEST_BYTES = 30 * 1000 * 16_000 * 2;
+export const LOCAL_STT_MAX_REQUEST_BYTES = 30 * 16_000 * 2;
 
 // ── Internal state ─────────────────────────────────────────────────────
 
@@ -134,8 +134,12 @@ function spawnSidecarOnce(): Promise<void> {
     proc.once("exit", (code) => {
       console.log(`[STT] Sidecar exited with code ${code}`);
       clearTimeout(timeout);
-      sidecarProcess = null;
-      sidecarReady = false;
+      // A hard cancellation can be followed immediately by a new recording.
+      // Do not let the old process's delayed exit clear its replacement.
+      if (sidecarProcess === proc) {
+        sidecarProcess = null;
+        sidecarReady = false;
+      }
       if (!settled) {
         settle(() =>
           reject(new Error(`Sidecar exited before ready with code ${code}`)),
@@ -159,8 +163,10 @@ function spawnSidecarOnce(): Promise<void> {
 
     proc.once("error", (err) => {
       console.error("[STT] Sidecar spawn error:", err);
-      sidecarProcess = null;
-      sidecarReady = false;
+      if (sidecarProcess === proc) {
+        sidecarProcess = null;
+        sidecarReady = false;
+      }
       settle(() => reject(err));
     });
   });

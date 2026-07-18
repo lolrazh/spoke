@@ -38,10 +38,20 @@ export class LocalChunkedDictation {
   pushFrame(frame: Int16Array): void {
     if (this.finished || frame.length === 0) return;
 
-    this.chunks.push(frame);
-    this.pendingSamples += frame.length;
-    this.freshSamples += frame.length;
-    this.totalSamples += frame.length;
+    const maxSamples = Math.round(
+      (this.options.maxDurationMs * this.options.sampleRateHz) / 1000,
+    );
+    const remainingSamples = maxSamples - this.totalSamples;
+    if (remainingSamples <= 0) return;
+
+    const acceptedFrame =
+      frame.length <= remainingSamples
+        ? frame
+        : frame.slice(0, remainingSamples);
+    this.chunks.push(acceptedFrame);
+    this.pendingSamples += acceptedFrame.length;
+    this.freshSamples += acceptedFrame.length;
+    this.totalSamples += acceptedFrame.length;
 
     if (
       !this.limitReached &&

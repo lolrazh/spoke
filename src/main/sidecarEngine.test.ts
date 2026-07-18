@@ -22,7 +22,7 @@ vi.mock("./sidecarPaths", () => ({
   getSidecarArgs: () => ["sidecar.py"],
 }));
 
-function createSidecarProcess() {
+function createSidecarProcess(pid = 12345) {
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
@@ -34,7 +34,7 @@ function createSidecarProcess() {
   proc.stderr = new EventEmitter();
   proc.stdin = { write: vi.fn() };
   proc.killed = false;
-  proc.pid = 12345;
+  proc.pid = pid;
   return proc;
 }
 
@@ -204,11 +204,12 @@ describe("sidecarEngine", () => {
 
     it("rejects oversized requests before they reach the sidecar", async () => {
       const { engine } = await startReadySidecar();
+      const thirtySecondsOfPcm16 = 30 * 16_000 * 2;
+
+      expect(engine.LOCAL_STT_MAX_REQUEST_BYTES).toBe(thirtySecondsOfPcm16);
 
       await expect(
-        engine.transcribeLocal(
-          Buffer.alloc(engine.LOCAL_STT_MAX_REQUEST_BYTES + 1),
-        ),
+        engine.transcribeLocal(Buffer.alloc(thirtySecondsOfPcm16 + 1)),
       ).rejects.toThrow("30-second safety limit");
     });
 
@@ -219,6 +220,25 @@ describe("sidecarEngine", () => {
       engine.abortLocalTranscription();
 
       expect(kill).toHaveBeenCalledWith(12345, "SIGKILL");
+      kill.mockRestore();
+    });
+
+    it("does not let an aborted process clear its replacement on exit", async () => {
+      const { proc: abortedProc, engine } = await startReadySidecar();
+      const replacementProc = createSidecarProcess(54321);
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      engine.abortLocalTranscription();
+      mocks.spawn.mockReturnValue(replacementProc);
+      const replacementStartup = engine.spawnSidecar();
+      replacementProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+      await replacementStartup;
+
+      abortedProc.emit("exit", 1);
+
+      expect(engine.isSidecarRunning()).toBe(true);
+      await engine.spawnSidecar();
+      expect(mocks.spawn).toHaveBeenCalledTimes(2);
       kill.mockRestore();
     });
   });

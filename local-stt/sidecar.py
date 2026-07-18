@@ -1672,7 +1672,7 @@ def read_length_prefixed(stream) -> bytes | None:
 # Parakeet's full relative-attention implementation is intentionally never
 # given arbitrarily long audio. This mirrors the main-process guard so a bad or
 # old renderer cannot feed one huge request directly to the model.
-MAX_AUDIO_REQUEST_BYTES = 30 * 1000 * 16_000 * 2
+MAX_AUDIO_REQUEST_BYTES = 30 * 16_000 * 2
 
 
 def parse_request_metadata(raw: bytes) -> dict[str, Any]:
