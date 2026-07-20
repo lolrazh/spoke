@@ -117,6 +117,13 @@ Object.defineProperty(window, "clipboard", {
   writable: true,
 });
 
+Object.defineProperty(window, "notifications", {
+  value: {
+    send: vi.fn(),
+  },
+  writable: true,
+});
+
 Object.defineProperty(window, "stt", {
   value: {
     getPreferredProvider: vi.fn(() => Promise.resolve("local-stt")),
@@ -234,6 +241,35 @@ describe("useTranscription", () => {
     expect(window.stt.extractOcr).not.toHaveBeenCalled();
     expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows Boo after a completed Bloody Mary invocation", async () => {
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Bloody Mary, bloody mary, BLOODY MARY",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+
+    await waitFor(() => {
+      expect(window.notifications.send).toHaveBeenCalledWith("Boo");
+    });
+    expect(result.current.text).toBe("Bloody Mary, bloody mary, BLOODY MARY");
   });
 
   it("resolves the stored local provider before the first start call", async () => {
