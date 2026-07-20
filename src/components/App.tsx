@@ -334,7 +334,7 @@ const AppInner: React.FC = () => {
       if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
         // Clear any pending hide state and reset to IDLE
         setPendingHideAfterCollapse({ active: false, message: "" });
-        pillDispatch({ type: "ANIM_DONE" }); // Reset to IDLE state
+        pillDispatch({ type: "DISMISS_NOTIFICATION" });
       }
     };
 
@@ -439,7 +439,7 @@ const AppInner: React.FC = () => {
           ? PERMISSION_NOTIFICATION_DURATION_MS
           : DEFAULT_NOTIFICATION_DURATION_MS;
       const timeout = setTimeout(async () => {
-        pillDispatch({ type: "ANIM_DONE" });
+        pillDispatch({ type: "DISMISS_NOTIFICATION" });
 
         // If we need to hide after notification, add a small delay to ensure
         // pill state machine completes its transition to IDLE cleanly
@@ -490,7 +490,7 @@ const AppInner: React.FC = () => {
         default:
           logPermissionsDebug("notification:action-unknown", { actionId });
       }
-      pillDispatch({ type: "ANIM_DONE" });
+      pillDispatch({ type: "DISMISS_NOTIFICATION" });
     },
     [pillDispatch, pushTrace, schedulePermissionNotification],
   );
@@ -552,10 +552,6 @@ const AppInner: React.FC = () => {
     [pillDispatch],
   );
 
-  const handleAnimDone = useCallback(() => {
-    pillDispatch({ type: "ANIM_DONE" });
-  }, [pillDispatch]);
-
   const handleExpand = useCallback(() => {
     // Check if paste shortcut was pressed within last 5 seconds
     const pasteTs = lastPasteShortcutTsRef.current;
@@ -586,7 +582,7 @@ const AppInner: React.FC = () => {
         }
         // Ensure pill is in clean IDLE state when showing the floating bar
         if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
-          pillDispatch({ type: "ANIM_DONE" }); // Reset to IDLE state
+          pillDispatch({ type: "DISMISS_NOTIFICATION" });
         }
         try {
           await window.electron?.showFloatingBar?.();
@@ -694,7 +690,6 @@ const AppInner: React.FC = () => {
         dims={dims}
         onHoverChange={handleHoverChange}
         onMetrics={handlePillMetrics}
-        onAnimDone={handleAnimDone}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onExpand={handleExpand}

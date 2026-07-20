@@ -15,6 +15,7 @@ export type PillEvent =
   | { type: "CANCEL" }
   | { type: "NOTIFY"; msg: string; actionId?: string | null }
   | { type: "ANIM_DONE" }
+  | { type: "DISMISS_NOTIFICATION" }
   | { type: "HOVER_ENTER" }
   | { type: "HOVER_LEAVE" }
   | { type: "PROCESSING_COMPLETE" }
@@ -115,7 +116,7 @@ export const pillReducer = (
             pendingNotifAction: state.context.notifAction ?? null,
           },
         };
-      if (event.type === "ANIM_DONE")
+      if (event.type === "DISMISS_NOTIFICATION")
         return {
           ...state,
           state: "IDLE",

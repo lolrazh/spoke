@@ -117,8 +117,14 @@ describe("pillStateMachine", () => {
       context: { notifMsg: "hello" },
     };
 
-    it("transitions to IDLE on ANIM_DONE and clears message", () => {
-      const next = dispatch(notification, { type: "ANIM_DONE" });
+    it("ignores stale animation completion", () => {
+      expect(dispatch(notification, { type: "ANIM_DONE" })).toEqual(
+        notification,
+      );
+    });
+
+    it("transitions to IDLE on explicit dismissal and clears message", () => {
+      const next = dispatch(notification, { type: "DISMISS_NOTIFICATION" });
       expect(next.state).toBe("IDLE");
       expect(next.context.notifMsg).toBeUndefined();
     });

@@ -59,7 +59,6 @@ interface PillProps {
   };
   onHoverChange: (hovering: boolean) => void;
   onMetrics: (metrics: PillMetrics) => void;
-  onAnimDone: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   onExpand: () => void;
@@ -77,7 +76,6 @@ const Pill: React.FC<PillProps> = ({
   pillContext,
   onHoverChange,
   onMetrics,
-  onAnimDone,
   notifWidth,
   isTextTruncated,
   dims,
@@ -291,12 +289,6 @@ const Pill: React.FC<PillProps> = ({
         initial={false}
         animate={animateWithImpact}
         transition={transitionWithImpact}
-        onAnimationComplete={() => {
-          // Only advance the FSM when the *shrink back to idle* finishes
-          if (pillState !== "NOTIFICATION") {
-            onAnimDone();
-          }
-        }}
       >
         {/* Afterglow overlay: subtle fade right after state changes */}
         {!isExpanded && shouldImpactPulse && (
