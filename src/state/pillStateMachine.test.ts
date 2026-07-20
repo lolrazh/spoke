@@ -106,6 +106,14 @@ describe("pillStateMachine", () => {
       expect(next.context.pendingNotif).toBeUndefined();
     });
 
+    it("queues notifications until processing completes", () => {
+      const queued = dispatch(processing, { type: "NOTIFY", msg: "Boo" });
+      const next = dispatch(queued, { type: "PROCESSING_COMPLETE" });
+
+      expect(next.state).toBe("NOTIFICATION");
+      expect(next.context.notifMsg).toBe("Boo");
+    });
+
     it("transitions to IDLE on CANCEL", () => {
       expect(dispatch(processing, { type: "CANCEL" }).state).toBe("IDLE");
     });

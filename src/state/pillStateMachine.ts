@@ -91,6 +91,16 @@ export const pillReducer = (
       return state;
     case "PROCESSING":
       if (event.type === "CANCEL") return { ...state, state: "IDLE" };
+      if (event.type === "NOTIFY") {
+        return {
+          ...state,
+          context: {
+            ...state.context,
+            pendingNotif: event.msg,
+            pendingNotifAction: event.actionId ?? null,
+          },
+        };
+      }
       if (event.type === "PROCESSING_COMPLETE") {
         if (state.context.pendingNotif) {
           return {

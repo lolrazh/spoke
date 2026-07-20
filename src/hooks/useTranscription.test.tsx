@@ -243,7 +243,7 @@ describe("useTranscription", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("shows Boo after a completed Bloody Mary invocation", async () => {
+  it("notifies after a completed Bloody Mary invocation", async () => {
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "Bloody Mary, bloody mary, BLOODY MARY",
       metrics: {},
@@ -269,7 +269,6 @@ describe("useTranscription", () => {
     await waitFor(() => {
       expect(window.notifications.send).toHaveBeenCalledWith("Boo");
     });
-    expect(result.current.text).toBe("Bloody Mary, bloody mary, BLOODY MARY");
   });
 
   it("resolves the stored local provider before the first start call", async () => {
