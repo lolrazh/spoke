@@ -32,6 +32,7 @@ import {
   type StreamingVadSessionHandle,
 } from "../utils/streamingVad";
 import { playToggleOff } from "../utils/audioFeedback";
+import { invokedBloodyMary } from "../utils/easterEggs";
 import { addTranscription } from "../state/transcriptionHistory";
 import { setAudioLevel } from "../state/audioLevel";
 import { POST_ROLL_MS } from "../config/audio";
@@ -339,6 +340,10 @@ export function useTranscription(
       }
 
       setText(finalText);
+
+      if (invokedBloodyMary(finalText)) {
+        window.notifications?.send?.("Boo");
+      }
 
       // Add to history (fire-and-forget)
       addTranscription(finalText, DICTATION_MODE).catch((err) =>
