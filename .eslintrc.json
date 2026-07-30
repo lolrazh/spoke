@@ -13,10 +13,7 @@
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/eslint-recommended",
-    "plugin:@typescript-eslint/recommended",
-    "plugin:import/recommended",
-    "plugin:import/electron",
-    "plugin:import/typescript"
+    "plugin:@typescript-eslint/recommended"
   ],
   "rules": {
     "no-empty": ["error", { "allowEmptyCatch": true }]
@@ -37,20 +34,12 @@
         "@typescript-eslint/no-explicit-any": "off",
         "@typescript-eslint/no-non-null-assertion": "off",
         "@typescript-eslint/no-unused-vars": "off",
-        "no-empty": "off",
-        "import/no-unresolved": "off"
-      }
-    },
-    {
-      "files": ["vitest.config.ts"],
-      "rules": {
-        "import/no-unresolved": "off"
+        "no-empty": "off"
       }
     },
     {
       "files": ["worker/**"],
       "rules": {
-        "import/no-unresolved": "off",
         "@typescript-eslint/no-explicit-any": "off",
         "@typescript-eslint/no-unused-vars": "off"
       }

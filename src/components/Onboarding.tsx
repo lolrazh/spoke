@@ -42,7 +42,6 @@ import {
   panelCascadeContainer,
   panelCascadeItem,
 } from "./shared/panelMotion";
-// eslint-disable-next-line import/no-unresolved
 import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
