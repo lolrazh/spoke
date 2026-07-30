@@ -1535,6 +1535,38 @@ body {
     left: 150%;
   }
 
+  /* The Radix select portal only needs a small local enter/exit transition.
+     Keep it independent from the app-wide Framer Motion choreography. */
+  .select-content-motion[data-state="open"] {
+    animation: select-content-in 150ms var(--ease-standard) both;
+  }
+
+  .select-content-motion[data-state="closed"] {
+    animation: select-content-out 100ms var(--ease-standard) both;
+  }
+
+  @keyframes select-content-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes select-content-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
   /* Switch (glass-aligned) */
   .switch-track {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));

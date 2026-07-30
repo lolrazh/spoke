@@ -1,6 +1,5 @@
-import React, { lazy, Suspense } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { HashRouter, Routes, Route } from "react-router-dom";
 import { LazyMotion, MotionConfig } from "framer-motion";
 import "./index.css";
 
@@ -28,22 +27,39 @@ const Onboarding = lazy(() => {
   });
 });
 
+function readHashRoute(): string {
+  const route = window.location.hash.replace(/^#/, "");
+  return route || "/";
+}
+
+function useHashRoute(): string {
+  const [route, setRoute] = useState(readHashRoute);
+
+  useEffect(() => {
+    const handleHashChange = () => setRoute(readHashRoute());
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  return route.split("?", 1)[0] || "/";
+}
+
 function mountReact(root: HTMLElement) {
   window.electron?.bootMark?.("react-render:start");
   const reactRoot = createRoot(root);
+  const RoutedApp = () => {
+    const route = useHashRoute();
+    return route === "/onboarding" ? <Onboarding /> : <App />;
+  };
+
   reactRoot.render(
     // Non-strict LazyMotion: if any `motion.` usage is missed it still renders
     // (loading the full features) instead of throwing.
     <LazyMotion features={loadMotionFeatures} strict={false}>
       <MotionConfig reducedMotion="user">
-        <HashRouter>
-          <Suspense fallback={null}>
-            <Routes>
-              <Route path="/" element={<App />} />
-              <Route path="/onboarding" element={<Onboarding />} />
-            </Routes>
-          </Suspense>
-        </HashRouter>
+        <Suspense fallback={null}>
+          <RoutedApp />
+        </Suspense>
       </MotionConfig>
     </LazyMotion>,
   );
