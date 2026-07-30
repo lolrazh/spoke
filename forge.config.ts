@@ -5,8 +5,30 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { FusesPlugin } from "@electron-forge/plugin-fuses";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { PublisherGithub } from "@electron-forge/publisher-github";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
-import { execa } from "execa";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+
+function runInherited(command: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: "inherit" });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(
+        new Error(
+          `${command} exited with ${signal ? `signal ${signal}` : `code ${code ?? "unknown"}`}`,
+        ),
+      );
+    });
+  });
+}
 
 // Signing identity (no fallback). Must be Developer ID Application.
 // Intentionally no Apple Development fallback to avoid accidental dev-signed releases.
@@ -57,7 +79,7 @@ async function assertPackagedSidecarReady(platform: string, arch: string) {
     );
   }
 
-  const { stdout } = await execa("file", [packagedSidecarBinary]);
+  const { stdout } = await execFileAsync("file", [packagedSidecarBinary]);
   if (arch === "arm64" && !stdout.includes("arm64")) {
     throw new Error(
       `Packaged STT sidecar must be arm64 for this build. file(1): ${stdout}`,
@@ -288,40 +310,36 @@ const config: ForgeConfig = {
             const signingIdentity = process.env.APPLE_IDENTITY;
             if (signingIdentity) {
               console.log(`[DMG Sign] Signing: ${dmg}`);
-              await execa(
-                "codesign",
-                ["--force", "--sign", signingIdentity, "--timestamp", dmg],
-                { stdio: "inherit" },
-              );
+              await runInherited("codesign", [
+                "--force",
+                "--sign",
+                signingIdentity,
+                "--timestamp",
+                dmg,
+              ]);
             } else {
               console.log("[DMG Sign] Skipped (APPLE_IDENTITY unset)");
             }
 
             console.log(`[DMG Notarize] Submitting: ${dmg}`);
-            await execa(
-              "xcrun",
-              [
-                "notarytool",
-                "submit",
-                dmg,
-                "--apple-id",
-                appleIdEnv as string,
-                "--password",
-                applePasswordEnv as string,
-                "--team-id",
-                appleTeamIdEnv as string,
-                "--wait",
-              ],
-              { stdio: "inherit" },
-            );
+            await runInherited("xcrun", [
+              "notarytool",
+              "submit",
+              dmg,
+              "--apple-id",
+              appleIdEnv as string,
+              "--password",
+              applePasswordEnv as string,
+              "--team-id",
+              appleTeamIdEnv as string,
+              "--wait",
+            ]);
 
             console.log(`[DMG Staple] Stapling: ${dmg}`);
-            await execa("xcrun", ["stapler", "staple", dmg], {
-              stdio: "inherit",
-            });
+            await runInherited("xcrun", ["stapler", "staple", dmg]);
 
             try {
-              const { stdout } = await execa("xcrun", [
+              const { stdout } = await execFileAsync("xcrun", [
                 "stapler",
                 "validate",
                 dmg,
