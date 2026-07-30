@@ -4,37 +4,38 @@
  * Covers the bounded, cache-backed history store: the cap is enforced on save,
  * legacy oversized files are truncated once on first read, and reads are served
  * from the validated in-memory cache without re-reading or re-validating the
- * whole file. electron-store is mocked with an in-memory backing array.
+ * whole file. The file system is mocked with an in-memory backing array.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MAX_TRANSCRIPTION_HISTORY } from "../types/shared";
 import type { TranscriptionItem } from "../types/shared";
 
-// ── Mock electron-store with an in-memory backing array ───────────────
+// ── Mock the JSON file with an in-memory backing array ─────────────────
 
 const mocks = vi.hoisted(() => {
-  const storeState: { transcriptions: unknown[] } = { transcriptions: [] };
+  const fileState: { transcriptions: unknown[] } = { transcriptions: [] };
   return {
-    storeState,
-    getSpy: vi.fn(),
-    setSpy: vi.fn((key: string, value: unknown) => {
-      if (key === "transcriptions") storeState.transcriptions = value as unknown[];
+    fileState,
+    getPath: vi.fn(() => "/test-user-data"),
+    readFileSync: vi.fn(() =>
+      JSON.stringify({ transcriptions: fileState.transcriptions }),
+    ),
+    writeFileSync: vi.fn((_path: string, raw: string) => {
+      fileState.transcriptions = JSON.parse(raw).transcriptions;
     }),
+    mkdirSync: vi.fn(),
   };
 });
 
-vi.mock("electron-store", () => ({
-  default: class MockStore {
-    get(key: string, defaultValue: unknown) {
-      mocks.getSpy(key);
-      if (key === "transcriptions") return mocks.storeState.transcriptions;
-      return defaultValue;
-    }
-    set(key: string, value: unknown) {
-      mocks.setSpy(key, value);
-    }
-  },
+vi.mock("electron", () => ({
+  app: { getPath: mocks.getPath },
+}));
+
+vi.mock("node:fs", () => ({
+  readFileSync: mocks.readFileSync,
+  writeFileSync: mocks.writeFileSync,
+  mkdirSync: mocks.mkdirSync,
 }));
 
 function makeItems(count: number): TranscriptionItem[] {
@@ -48,9 +49,10 @@ function makeItems(count: number): TranscriptionItem[] {
 
 // Fresh module instance (and fresh cache) seeded from the given store contents.
 async function loadModuleWith(transcriptions: unknown[]) {
-  mocks.storeState.transcriptions = transcriptions;
-  mocks.getSpy.mockClear();
-  mocks.setSpy.mockClear();
+  mocks.fileState.transcriptions = transcriptions;
+  mocks.readFileSync.mockClear();
+  mocks.writeFileSync.mockClear();
+  mocks.mkdirSync.mockClear();
   vi.resetModules();
   return import("./transcriptionStorage");
 }
@@ -86,11 +88,15 @@ describe("transcriptionStorage", () => {
     expect(all).toHaveLength(MAX_TRANSCRIPTION_HISTORY);
     // The most-recent-first order is preserved: the head survives, the tail is cut.
     expect(all[0].id).toBe("item-0");
-    expect(all[all.length - 1].id).toBe(`item-${MAX_TRANSCRIPTION_HISTORY - 1}`);
+    expect(all[all.length - 1].id).toBe(
+      `item-${MAX_TRANSCRIPTION_HISTORY - 1}`,
+    );
 
     // The truncation is persisted exactly once.
-    expect(mocks.setSpy).toHaveBeenCalledTimes(1);
-    const [, persisted] = mocks.setSpy.mock.calls[0];
+    expect(mocks.writeFileSync).toHaveBeenCalledTimes(1);
+    const persisted = JSON.parse(
+      mocks.writeFileSync.mock.calls[0][1] as string,
+    ).transcriptions;
     expect(persisted).toHaveLength(MAX_TRANSCRIPTION_HISTORY);
   });
 
@@ -102,13 +108,10 @@ describe("transcriptionStorage", () => {
 
     // Same cached array instance handed back on both reads.
     expect(second).toBe(first);
-    // The store was read exactly once for the transcriptions key.
-    const transcriptionReads = mocks.getSpy.mock.calls.filter(
-      ([key]) => key === "transcriptions",
-    );
-    expect(transcriptionReads).toHaveLength(1);
+    // The file was read exactly once.
+    expect(mocks.readFileSync).toHaveBeenCalledTimes(1);
     // A clean, within-cap file is never rewritten on read.
-    expect(mocks.setSpy).not.toHaveBeenCalled();
+    expect(mocks.writeFileSync).not.toHaveBeenCalled();
   });
 
   it("drops corrupted items and persists the cleaned list once", async () => {
@@ -121,6 +124,6 @@ describe("transcriptionStorage", () => {
     const all = getTranscriptions();
     expect(all).toHaveLength(1);
     expect(all[0].id).toBe("good");
-    expect(mocks.setSpy).toHaveBeenCalledTimes(1);
+    expect(mocks.writeFileSync).toHaveBeenCalledTimes(1);
   });
 });
