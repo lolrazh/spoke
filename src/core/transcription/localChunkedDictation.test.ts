@@ -47,7 +47,7 @@ describe("LocalChunkedDictation", () => {
   it("keeps short recordings on the single-shot path", async () => {
     const { chunker, transcribe } = createChunker({
       naturalChunkingStartMs: 2_500,
-      naturalBoundaryDelayMs: 500,
+      naturalBoundaryDelayMs: 1_200,
     });
     chunker.pushFrame(new Int16Array(1_000 / 10));
     chunker.requestNaturalBoundary();
@@ -62,12 +62,12 @@ describe("LocalChunkedDictation", () => {
     try {
       const { chunker, transcribe } = createChunker({
         naturalChunkingStartMs: 0,
-        naturalBoundaryDelayMs: 500,
+        naturalBoundaryDelayMs: 1_200,
       });
       chunker.pushFrame(new Int16Array(200));
       chunker.requestNaturalBoundary();
 
-      await vi.advanceTimersByTimeAsync(499);
+      await vi.advanceTimersByTimeAsync(1_199);
       expect(transcribe).not.toHaveBeenCalled();
 
       chunker.cancelNaturalBoundary();
