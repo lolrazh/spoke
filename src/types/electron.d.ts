@@ -298,6 +298,16 @@ declare global {
       onSelectedChanged: (cb: (payload: { id: string }) => void) => () => void;
       onRefreshRequest: (cb: () => void) => () => void;
     };
+    audioCapture?: {
+      isAvailable: () => Promise<boolean>;
+      listDevices: () => Promise<Array<{ id: string; label: string }>>;
+      start: () => Promise<{ ok: boolean }>;
+      stop: () => Promise<{ ok: boolean }>;
+      cancel: () => Promise<{ ok: boolean }>;
+      onFrame: (cb: (payload: Uint8Array) => void) => () => void;
+      onStopped: (cb: () => void) => () => void;
+      onError: (cb: (message: string) => void) => () => void;
+    };
     transcriptions: {
       getAll: () => Promise<TranscriptionItem[]>;
       save: (payload: {

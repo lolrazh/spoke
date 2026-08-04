@@ -63,6 +63,8 @@ import { registerWindowIpc } from "./main/ipc/windowIpc";
 import { registerSttIpc } from "./main/ipc/sttIpc";
 import { registerSettingsIpc } from "./main/ipc/settingsIpc";
 import { registerMiscIpc } from "./main/ipc/miscIpc";
+import { registerAudioCaptureIpc } from "./main/ipc/audioCaptureIpc";
+import { shutdownNativeAudioCapture } from "./main/audioCapture";
 
 bootTimeline.configure({
   enabled: !app.isPackaged || process.env.SF_BOOT_TIMELINE === "1",
@@ -366,6 +368,7 @@ app.whenReady().then(async () => {
   registerTranscriptIpc();
   registerSttIpc();
   registerMiscIpc();
+  registerAudioCaptureIpc();
 
   // Permission IPC handlers (check/request AX, IM, mic, screen recording)
   registerPermissionHandlers({
@@ -467,6 +470,9 @@ app.on("before-quit", () => {
 
   // Clean up local Whisper sidecar
   stopLocalSidecar();
+
+  // Clean up the native macOS audio capture helper
+  shutdownNativeAudioCapture();
 
   // Clean up pre-spawned paste helper
   killPasteDaemon();

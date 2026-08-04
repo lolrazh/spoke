@@ -7,6 +7,7 @@ import {
   PCM_CAPTURE_FRAME_SAMPLES,
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
+import type { AudioCaptureSession } from "./audioCaptureSession";
 
 export interface PcmCaptureSessionOptions {
   targetSampleRateHz?: number;
@@ -42,7 +43,7 @@ type WorkletMessage = WorkletAudioMessage | WorkletFlushedMessage;
 
 const FLUSH_TIMEOUT_MS = 500;
 
-export class PcmCaptureSession {
+export class PcmCaptureSession implements AudioCaptureSession {
   private readonly targetSampleRateHz: number;
   private readonly frameSamples: number;
   private readonly onAudioLevel?: (level: number) => void;
@@ -66,7 +67,7 @@ export class PcmCaptureSession {
     this.retainPcm = options.retainPcm ?? true;
   }
 
-  async start(stream: MediaStream): Promise<void> {
+  async start(stream?: MediaStream): Promise<void> {
     if (this.audioContext) {
       throw new Error("PCM capture session is already started.");
     }
@@ -209,7 +210,10 @@ export class PcmCaptureSession {
     }
   }
 
-  private assertLiveAudioStream(stream: MediaStream): void {
+  private assertLiveAudioStream(stream?: MediaStream): asserts stream is MediaStream {
+    if (!stream) {
+      throw new Error("A browser audio stream is required for PCM capture.");
+    }
     const tracks = stream.getAudioTracks();
     if (tracks.length === 0) {
       throw new Error("MediaStream has no audio tracks.");

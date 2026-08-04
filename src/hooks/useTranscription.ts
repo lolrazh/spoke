@@ -22,6 +22,8 @@ import { isTranscriptionSessionError } from "../core/transcription/sessionErrors
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
+import type { AudioCaptureSession } from "../utils/audioCaptureSession";
+import { NativePcmCaptureSession } from "../utils/nativePcmCaptureSession";
 import {
   prewarmVad,
   trimCapturedAudioWithVad,
@@ -95,8 +97,8 @@ export function useTranscription(
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
 
-  const recorderRef = useRef<PcmCaptureSession | null>(null);
-  const recorderStartPromiseRef = useRef<Promise<PcmCaptureSession> | null>(
+  const recorderRef = useRef<AudioCaptureSession | null>(null);
+  const recorderStartPromiseRef = useRef<Promise<AudioCaptureSession> | null>(
     null,
   );
   const streamingVadRef = useRef<StreamingVadSessionHandle | null>(null);
@@ -107,6 +109,7 @@ export function useTranscription(
   // value it captured at entry and bails out once they differ.
   const stopGenerationRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const nativeCaptureAvailableRef = useRef(false);
   const ocrWordsRef = useRef<string[]>([]);
   const ocrPromiseRef = useRef<Promise<void> | null>(null);
   const activeProviderIdRef = useRef<string | null>(null);
@@ -119,9 +122,19 @@ export function useTranscription(
     setErrorId((value) => value + 1);
   }, []);
 
-  // Initialize microphone stream
+  // Initialize the native capture capability when available. The browser
+  // stream remains a development/non-macOS fallback only.
   const initStream = useCallback(async () => {
     try {
+      if (window.audioCapture) {
+        const nativeAvailable = await window.audioCapture.isAvailable();
+        nativeCaptureAvailableRef.current = nativeAvailable;
+        if (nativeAvailable) {
+          setReady(true);
+          return null;
+        }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -167,6 +180,7 @@ export function useTranscription(
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
+      recorderRef.current?.cancel();
     };
   }, [initStream, options.autoInitStream]);
 
@@ -272,11 +286,25 @@ export function useTranscription(
 
       const recorderPromise = (async () => {
         let stream = streamRef.current;
-        if (!stream) {
+        if (!nativeCaptureAvailableRef.current && !stream) {
           stream = await initStream();
         }
 
-        const recorder = new PcmCaptureSession({
+        const recorder: AudioCaptureSession = nativeCaptureAvailableRef.current
+          ? new NativePcmCaptureSession({
+              targetSampleRateHz: TARGET_SAMPLE_RATE_HZ,
+              onAudioLevel: setAudioLevel,
+              onError: (err) => {
+                log.error("Native PCM capture error:", err);
+                reportTranscriptionError(err.message);
+                setRecording(false);
+              },
+              onPcmFrame: (frame) => {
+                streamingVadSession.pushFrame(frame);
+                localChunkedDictation?.pushFrame(frame);
+              },
+            })
+          : new PcmCaptureSession({
           onAudioLevel: setAudioLevel,
           onError: (err) => {
             log.error("PCM capture error:", err);
@@ -287,8 +315,8 @@ export function useTranscription(
             streamingVadSession.pushFrame(frame);
             localChunkedDictation?.pushFrame(frame);
           },
-        });
-        await recorder.start(stream);
+            });
+        await recorder.start(stream ?? undefined);
         return recorder;
       })();
       recorderStartPromiseRef.current = recorderPromise;
