@@ -19,6 +19,10 @@ import {
   panelCascadeContainer,
   panelCascadeItem,
 } from "./shared/panelMotion";
+import {
+  DEFAULT_MICROPHONE,
+  discoverMicrophoneDevices,
+} from "../utils/microphoneDevices";
 
 type SettingsPanelTab = "settings" | "models" | "dictionary" | "history";
 type SettingsPanelInitialTab = Extract<
@@ -26,7 +30,7 @@ type SettingsPanelInitialTab = Extract<
   "settings" | "history"
 >;
 
-const DEFAULT_MIC_DEVICE = { id: "default", label: "System Default" };
+const DEFAULT_MIC_DEVICE = DEFAULT_MICROPHONE;
 
 type UpdatePanelState = {
   status:
@@ -672,18 +676,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   useEffect(() => {
     const updateDeviceList = async () => {
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices
-          .filter((device) => device.kind === "audioinput")
-          .map((device) => ({
-            id: device.deviceId,
-            label: device.label || `Microphone ${device.deviceId.slice(0, 8)}`,
-          }));
-
-        setMicDevices([
-          DEFAULT_MIC_DEVICE,
-          ...audioInputs.filter((device) => device.id !== DEFAULT_MIC_DEVICE.id),
-        ]);
+        const devices = await discoverMicrophoneDevices();
+        setMicDevices(devices);
+        window.mic?.updateDevices?.(devices);
       } catch (err) {
         console.error("[SettingsPanel] Failed to enumerate devices:", err);
         setMicDevices([DEFAULT_MIC_DEVICE]);

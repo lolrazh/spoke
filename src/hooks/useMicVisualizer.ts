@@ -9,6 +9,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
+import {
+  DEFAULT_MICROPHONE,
+  discoverMicrophoneDevices,
+} from "../utils/microphoneDevices";
 
 export function useMicVisualizer(options: {
   /** Whether the visualizer is currently active (e.g., on the mic-check step) */
@@ -20,7 +24,7 @@ export function useMicVisualizer(options: {
 
   const [micDevices, setMicDevices] = useState<
     Array<{ id: string; label: string }>
-  >([{ id: "default", label: "System Default" }]);
+  >([DEFAULT_MICROPHONE]);
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   const stopMic = useCallback(() => {
@@ -41,15 +45,28 @@ export function useMicVisualizer(options: {
   const startMic = useCallback(async () => {
     try {
       stopMic();
+      let browserDeviceId: string | null = null;
+      if (selectedMicId && selectedMicId !== DEFAULT_MICROPHONE.id) {
+        const selectedDevice = micDevices.find(
+          (device) => device.id === selectedMicId,
+        );
+        const browserDevices = await navigator.mediaDevices.enumerateDevices();
+        browserDeviceId =
+          browserDevices.find(
+            (device) =>
+              device.kind === "audioinput" &&
+              (device.deviceId === selectedMicId ||
+                (!!selectedDevice && device.label === selectedDevice.label)),
+          )?.deviceId ?? null;
+      }
       const constraints: MediaStreamConstraints = {
         video: false,
-        audio:
-          selectedMicId && selectedMicId !== "default"
-            ? {
-                deviceId: { exact: selectedMicId },
-                ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
-              }
-            : { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
+        audio: browserDeviceId
+          ? {
+              deviceId: { exact: browserDeviceId },
+              ...AUDIO_PROCESSING_TRACK_CONSTRAINTS,
+            }
+          : { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       micStreamRef.current = stream;
@@ -69,7 +86,17 @@ export function useMicVisualizer(options: {
         (import.meta as any).env?.MODE === "development";
       if (isDev) console.error("[MicVisualizer] startMic failed:", e);
     }
-  }, [selectedMicId, stopMic]);
+  }, [micDevices, selectedMicId, stopMic]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void discoverMicrophoneDevices().then((devices) => {
+      if (!cancelled) setMicDevices(devices);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Start/stop based on active flag
   useEffect(() => {
