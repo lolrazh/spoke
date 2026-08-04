@@ -8,6 +8,11 @@ import {
 } from "../config/audio";
 import type { AudioCaptureSession } from "./audioCaptureSession";
 
+// Native AVAudioEngine capture bypasses the browser's WebRTC auto-gain control.
+// Keep the PCM sent to STT untouched, but calibrate the pill-only meter so a
+// normal unprocessed speaking level has comparable visual intensity.
+const NATIVE_VISUAL_LEVEL_GAIN = 3;
+
 export interface NativePcmCaptureSessionOptions {
   targetSampleRateHz?: number;
   onAudioLevel?: (level: number) => void;
@@ -129,7 +134,9 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
     }
 
     if (this.retainPcm) this.chunks.push(pcm16);
-    this.onAudioLevel?.(calculatePcm16Level(pcm16));
+    this.onAudioLevel?.(
+      Math.min(1, calculatePcm16Level(pcm16) * NATIVE_VISUAL_LEVEL_GAIN),
+    );
     this.onPcmFrame?.(pcm16);
   }
 

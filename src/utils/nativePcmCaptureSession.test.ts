@@ -46,19 +46,25 @@ describe("NativePcmCaptureSession", () => {
     };
 
     const received: Int16Array[] = [];
+    const levels: number[] = [];
     const session = new NativePcmCaptureSession({
       onPcmFrame: (frame) => received.push(frame),
+      onAudioLevel: (level) => levels.push(level),
     });
 
     await session.start();
     onFrame(new Uint8Array([0, 0, 0xff, 0x7f]));
+    onFrame(new Uint8Array([0x33, 0x03, 0x33, 0x03]));
     const captured = await session.stop();
 
     expect(start).toHaveBeenCalledOnce();
     expect(stop).toHaveBeenCalledOnce();
-    expect(received).toHaveLength(1);
+    expect(received).toHaveLength(2);
     expect(Array.from(received[0])).toEqual([0, 32767]);
-    expect(Array.from(captured.pcm16)).toEqual([0, 32767]);
+    expect(Array.from(received[1])).toEqual([819, 819]);
+    expect(levels).toHaveLength(2);
+    expect(levels[1]).toBeCloseTo((819 / 32768) * 4 * 3, 6);
+    expect(Array.from(captured.pcm16)).toEqual([0, 32767, 819, 819]);
     expect(captured.sampleRateHz).toBe(16000);
     expect(onError).toBeNull();
   });
