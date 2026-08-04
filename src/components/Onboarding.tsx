@@ -9,6 +9,9 @@ import IntroExperience from "./intro/IntroExperience";
 import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
+import {
+  discoverMicrophoneDevices,
+} from "../utils/microphoneDevices";
 import { MicBars } from "./MicBars";
 import { m, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
@@ -452,16 +455,7 @@ const Onboarding: React.FC = () => {
           const res = await window.mic?.getSelected?.();
           seedId = res?.id ?? null;
         } catch {}
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const inputs = devices
-          .filter((d) => d.kind === "audioinput")
-          .map((d) => ({
-            id: d.deviceId || "default",
-            label: d.label || "Microphone",
-          }));
-        const deduped = inputs.length
-          ? inputs
-          : [{ id: "default", label: "System Default" }];
+        const deduped = await discoverMicrophoneDevices();
         if (!cancelled) {
           setMicDevices(deduped);
           const next =

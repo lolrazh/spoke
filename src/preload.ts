@@ -149,6 +149,38 @@ contextBridge.exposeInMainWorld("mic", {
   },
 });
 
+// Native macOS audio capture bridge. Frames are forwarded as raw little-endian
+// PCM16 bytes; the renderer converts them to Int16Array before VAD/chunking.
+contextBridge.exposeInMainWorld("audioCapture", {
+  isAvailable: (): Promise<boolean> =>
+    ipcRenderer.invoke("audio-capture:is-available"),
+  listDevices: (): Promise<MicDevice[]> =>
+    ipcRenderer.invoke("audio-capture:list-devices"),
+  start: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("audio-capture:start"),
+  stop: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("audio-capture:stop"),
+  cancel: (): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("audio-capture:cancel"),
+  onFrame: (cb: (payload: Uint8Array) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: Uint8Array) =>
+      cb(payload);
+    ipcRenderer.on("audio-capture:frame", listener);
+    return () => ipcRenderer.removeListener("audio-capture:frame", listener);
+  },
+  onStopped: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on("audio-capture:stopped", listener);
+    return () => ipcRenderer.removeListener("audio-capture:stopped", listener);
+  },
+  onError: (cb: (message: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: string) =>
+      cb(message);
+    ipcRenderer.on("audio-capture:error", listener);
+    return () => ipcRenderer.removeListener("audio-capture:error", listener);
+  },
+});
+
 // Local Whisper bridge
 contextBridge.exposeInMainWorld("stt", {
   transcribeLocal: (pcmBuffer: ArrayBuffer, prompt?: string) =>

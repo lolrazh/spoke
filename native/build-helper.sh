@@ -63,3 +63,29 @@ if [ -f "$NOTCH_SOURCE_FILE" ]; then
     echo "$NOTCH_EXECUTABLE_NAME built successfully at $NOTCH_OUTPUT_PATH (will be signed by Forge)"
   fi
 fi
+
+# --- Compile native audio capture helper ---
+AUDIO_EXECUTABLE_NAME="Spoke Audio Capture"
+AUDIO_SOURCE_FILE="$SOURCE_DIR/audio-capture.swift"
+AUDIO_APP_NAME="Spoke Audio Capture.app"
+AUDIO_APP_PATH="$DEST_DIR/$AUDIO_APP_NAME"
+AUDIO_EXECUTABLE_PATH="$AUDIO_APP_PATH/Contents/MacOS/$AUDIO_EXECUTABLE_NAME"
+AUDIO_INFO_PLIST="$SOURCE_DIR/AudioCaptureInfo.plist"
+
+rm -rf "$AUDIO_APP_PATH"
+
+if [ -f "$AUDIO_SOURCE_FILE" ]; then
+  if ! command -v swiftc >/dev/null 2>&1; then
+    echo "Warning: swiftc not found. Skipping native audio capture build." >&2
+  else
+    echo "Compiling $AUDIO_EXECUTABLE_NAME (AVAudioEngine + AVAudioConverter)..."
+    mkdir -p "$AUDIO_APP_PATH/Contents/MacOS" "$AUDIO_APP_PATH/Contents/Resources"
+    swiftc -O -parse-as-library -target arm64-apple-macos13 \
+      -framework AVFAudio -framework CoreAudio \
+      -o "$AUDIO_EXECUTABLE_PATH" \
+      "$AUDIO_SOURCE_FILE"
+    cp "$AUDIO_INFO_PLIST" "$AUDIO_APP_PATH/Contents/Info.plist"
+    chmod +x "$AUDIO_EXECUTABLE_PATH"
+    echo "$AUDIO_APP_NAME built successfully at $AUDIO_APP_PATH (will be signed by Forge)"
+  fi
+fi

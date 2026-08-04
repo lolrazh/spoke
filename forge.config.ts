@@ -109,6 +109,7 @@ const config: ForgeConfig = {
       "./public/assets/TrayTemplate@2x.png",
       "./public/assets/Assets.car",
       "./native/bin/Spoke Helper.app",
+      "./native/bin/Spoke Audio Capture.app",
       "./native/bin/notch-reporter",
       packagedSidecarResource,
     ],
@@ -124,6 +125,8 @@ const config: ForgeConfig = {
       binaries: [
         "Contents/Resources/Spoke Helper.app",
         "Contents/Resources/Spoke Helper.app/Contents/MacOS/Spoke Helper",
+        "Contents/Resources/Spoke Audio Capture.app",
+        "Contents/Resources/Spoke Audio Capture.app/Contents/MacOS/Spoke Audio Capture",
         "Contents/Resources/notch-reporter",
         "Contents/Resources/spoke-stt/spoke-stt",
       ],
@@ -156,6 +159,15 @@ const config: ForgeConfig = {
           return {
             ...base,
             entitlements: "./build/entitlements/inherit.plist",
+          };
+        }
+        if (
+          filePath.endsWith("/Spoke Audio Capture.app") ||
+          filePath.endsWith("/Spoke Audio Capture")
+        ) {
+          return {
+            ...base,
+            entitlements: "./build/entitlements/main.plist",
           };
         }
         return base;
