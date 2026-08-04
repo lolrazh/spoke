@@ -8,8 +8,10 @@ import type { TranscriptionResult } from "./sessionTypes";
 export interface LocalChunkedDictationOptions {
   sampleRateHz: number;
   minNaturalChunkMs: number;
+  naturalChunkingStartMs?: number;
   forcedChunkMs: number;
   overlapMs: number;
+  naturalBoundaryDelayMs?: number;
   maxDurationMs: number;
   transcribe: (audio: CapturedAudio) => Promise<TranscriptionResult>;
   onLimitReached: () => void;
@@ -29,6 +31,8 @@ export class LocalChunkedDictation {
   private freshSamples = 0;
   private totalSamples = 0;
   private naturalBoundaryRequested = false;
+  private naturalBoundaryReady = false;
+  private naturalBoundaryTimer: ReturnType<typeof setTimeout> | null = null;
   private limitReached = false;
   private finished = false;
   private dispatchedChunkCount = 0;
@@ -64,7 +68,7 @@ export class LocalChunkedDictation {
     if (this.pendingDurationMs() >= this.options.forcedChunkMs) {
       this.seal();
     } else if (
-      this.naturalBoundaryRequested &&
+      this.naturalBoundaryReady &&
       this.pendingDurationMs() >= this.options.minNaturalChunkMs
     ) {
       this.seal();
@@ -73,16 +77,53 @@ export class LocalChunkedDictation {
 
   /** Called by streaming VAD after it confirms a speech segment ended. */
   requestNaturalBoundary(): void {
-    if (this.finished) return;
-    this.naturalBoundaryRequested = true;
-    if (this.pendingDurationMs() >= this.options.minNaturalChunkMs) {
-      this.seal();
+    if (
+      this.finished ||
+      this.totalDurationMs() < (this.options.naturalChunkingStartMs ?? 0)
+    ) {
+      return;
     }
+
+    if (this.naturalBoundaryRequested) return;
+    this.naturalBoundaryRequested = true;
+
+    const delayMs = this.options.naturalBoundaryDelayMs ?? 0;
+    if (delayMs <= 0) {
+      this.naturalBoundaryReady = true;
+      this.trySealNaturalBoundary();
+      return;
+    }
+
+    this.naturalBoundaryTimer = setTimeout(() => {
+      this.naturalBoundaryTimer = null;
+      this.naturalBoundaryReady = true;
+      this.trySealNaturalBoundary();
+    }, delayMs);
+  }
+
+  /** Called by streaming VAD when speech resumes during the pause guard. */
+  cancelNaturalBoundary(): void {
+    this.clearNaturalBoundaryTimer();
+    this.naturalBoundaryRequested = false;
+    this.naturalBoundaryReady = false;
+  }
+
+  /** Stop future chunk dispatches when the caller is using single-shot audio. */
+  discardPendingAudio(): void {
+    if (this.finished) return;
+    this.finished = true;
+    this.clearNaturalBoundaryTimer();
+    this.naturalBoundaryRequested = false;
+    this.naturalBoundaryReady = false;
+    this.chunks.length = 0;
+    this.pendingSamples = 0;
+    this.freshSamples = 0;
   }
 
   async finish(): Promise<TranscriptionResult[]> {
     if (!this.finished) {
       this.finished = true;
+      this.clearNaturalBoundaryTimer();
       if (this.freshSamples > 0) {
         this.seal();
       }
@@ -109,6 +150,7 @@ export class LocalChunkedDictation {
   private seal(): void {
     if (this.freshSamples === 0) return;
 
+    this.clearNaturalBoundaryTimer();
     const pcm16 = concatPcm16(this.chunks);
     const overlapSamples = Math.min(
       pcm16.length,
@@ -120,6 +162,7 @@ export class LocalChunkedDictation {
     this.pendingSamples = overlap?.length ?? 0;
     this.freshSamples = 0;
     this.naturalBoundaryRequested = false;
+    this.naturalBoundaryReady = false;
 
     const audio = createCapturedAudio(pcm16, {
       sampleRateHz: this.options.sampleRateHz,
@@ -134,6 +177,23 @@ export class LocalChunkedDictation {
         (error: unknown) => ({ error }),
       ),
     );
+  }
+
+  private trySealNaturalBoundary(): void {
+    if (
+      !this.finished &&
+      this.naturalBoundaryReady &&
+      this.pendingDurationMs() >= this.options.minNaturalChunkMs
+    ) {
+      this.seal();
+    }
+  }
+
+  private clearNaturalBoundaryTimer(): void {
+    if (this.naturalBoundaryTimer !== null) {
+      clearTimeout(this.naturalBoundaryTimer);
+      this.naturalBoundaryTimer = null;
+    }
   }
 
   private pendingDurationMs(): number {

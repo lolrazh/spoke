@@ -85,6 +85,8 @@ export interface StreamingVadSessionHandle {
 }
 
 export interface StreamingVadSessionOptions {
+  /** Invoked when VAD detects speech resuming after a pause. */
+  onSpeechStart?: () => void;
   /** Invoked after the VAD confirms a speech segment ended. */
   onSpeechEnd?: () => void;
 }
@@ -107,7 +109,12 @@ function enqueue<T>(fn: () => Promise<T> | T): Promise<T> {
 export function createStreamingVadSession(
   options: StreamingVadSessionOptions = {},
 ): StreamingVadSessionHandle {
-  return new StreamingVadSession(undefined, undefined, options.onSpeechEnd);
+  return new StreamingVadSession(
+    undefined,
+    undefined,
+    options.onSpeechStart,
+    options.onSpeechEnd,
+  );
 }
 
 class StreamingVadSession implements StreamingVadSessionHandle {
@@ -143,6 +150,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   constructor(
     private readonly preSpeechPadMs = VAD_PRE_SPEECH_PAD_MS,
     private readonly redemptionMs = VAD_REDEMPTION_MS,
+    private readonly onSpeechStart?: () => void,
     private readonly onSpeechEnd?: () => void,
   ) {
     this.initializePromise = this.initialize();
@@ -265,6 +273,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         this.speaking = true;
         this.everSpoke = true;
         this.speechStartFrameIndex = frameIndex;
+        this.onSpeechStart?.();
         break;
       case Message.SpeechEnd: {
         const startMs = (this.speechStartFrameIndex * MODEL_FRAME_SAMPLES) /
