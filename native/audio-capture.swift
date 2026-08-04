@@ -151,7 +151,7 @@ private final class AudioCaptureController {
             guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else {
                 throw AudioCaptureError.invalidHardwareFormat(
                     sampleRate: hardwareFormat.sampleRate,
-                    channels: hardwareFormat.channelCount,
+                    channels: hardwareFormat.channelCount
                 )
             }
 
@@ -159,12 +159,12 @@ private final class AudioCaptureController {
                 commonFormat: .pcmFormatFloat32,
                 sampleRate: hardwareFormat.sampleRate,
                 channels: 1,
-                interleaved: false,
+                interleaved: false
             ), let targetFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
                 sampleRate: targetSampleRate,
                 channels: 1,
-                interleaved: false,
+                interleaved: false
             ), let converter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
                 throw AudioCaptureError.converterCreationFailed
             }
@@ -203,8 +203,8 @@ private final class AudioCaptureController {
                 value: StartedPayload(
                     inputSampleRateHz: hardwareFormat.sampleRate,
                     inputChannelCount: hardwareFormat.channelCount,
-                    deviceId: deviceId ?? "default",
-                ),
+                    deviceId: deviceId ?? "default"
+                )
             )
         } catch {
             isCapturing = false
@@ -311,7 +311,7 @@ private final class AudioCaptureController {
 
         guard let inputBuffer = AVAudioPCMBuffer(
             pcmFormat: sourceFormat,
-            frameCapacity: AVAudioFrameCount(samples.count),
+            frameCapacity: AVAudioFrameCount(samples.count)
         ) else {
             emitter.emitError("Could not allocate the native audio converter input buffer.")
             return
@@ -326,11 +326,11 @@ private final class AudioCaptureController {
         }
 
         let outputCapacity = AVAudioFrameCount(
-            max(1, Int(ceil(Double(samples.count) * targetSampleRate / sourceFormat.sampleRate)) + 64),
+            max(1, Int(ceil(Double(samples.count) * targetSampleRate / sourceFormat.sampleRate)) + 64)
         )
         guard let outputBuffer = AVAudioPCMBuffer(
             pcmFormat: targetFormat,
-            frameCapacity: outputCapacity,
+            frameCapacity: outputCapacity
         ) else {
             emitter.emitError("Could not allocate the native audio converter output buffer.")
             return
@@ -368,7 +368,7 @@ private final class AudioCaptureController {
         while shouldContinue {
             guard let outputBuffer = AVAudioPCMBuffer(
                 pcmFormat: targetFormat,
-                frameCapacity: AVAudioFrameCount(outputFrameSamples * 2),
+                frameCapacity: AVAudioFrameCount(outputFrameSamples * 2)
             ) else {
                 emitter.emitError("Could not allocate the native converter flush buffer.")
                 return
@@ -436,7 +436,7 @@ private final class AudioCaptureController {
             kAudioUnitScope_Global,
             0,
             &audioDeviceId,
-            UInt32(MemoryLayout<AudioDeviceID>.size),
+            UInt32(MemoryLayout<AudioDeviceID>.size)
         )
         guard status == noErr else {
             throw AudioCaptureError.deviceSelectionFailed(status)
@@ -495,7 +495,7 @@ private func audioInputDevices() -> [(audioDeviceId: AudioDeviceID, id: String, 
     var address = AudioObjectPropertyAddress(
         mSelector: kAudioHardwarePropertyDevices,
         mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain,
+        mElement: kAudioObjectPropertyElementMain
     )
     var dataSize: UInt32 = 0
     guard AudioObjectGetPropertyDataSize(
@@ -503,7 +503,7 @@ private func audioInputDevices() -> [(audioDeviceId: AudioDeviceID, id: String, 
         &address,
         0,
         nil,
-        &dataSize,
+        &dataSize
     ) == noErr else {
         return []
     }
@@ -516,7 +516,7 @@ private func audioInputDevices() -> [(audioDeviceId: AudioDeviceID, id: String, 
         0,
         nil,
         &dataSize,
-        &deviceIds,
+        &deviceIds
     ) == noErr else {
         return []
     }
@@ -535,7 +535,7 @@ private func inputChannelCount(for deviceId: AudioDeviceID) -> UInt32 {
     var address = AudioObjectPropertyAddress(
         mSelector: kAudioDevicePropertyStreamConfiguration,
         mScope: kAudioObjectPropertyScopeInput,
-        mElement: kAudioObjectPropertyElementMain,
+        mElement: kAudioObjectPropertyElementMain
     )
     var dataSize: UInt32 = 0
     guard AudioObjectGetPropertyDataSize(deviceId, &address, 0, nil, &dataSize) == noErr else {
@@ -544,7 +544,7 @@ private func inputChannelCount(for deviceId: AudioDeviceID) -> UInt32 {
 
     let raw = UnsafeMutableRawPointer.allocate(
         byteCount: Int(dataSize),
-        alignment: MemoryLayout<AudioBufferList>.alignment,
+        alignment: MemoryLayout<AudioBufferList>.alignment
     )
     defer { raw.deallocate() }
 
@@ -560,12 +560,12 @@ private func inputChannelCount(for deviceId: AudioDeviceID) -> UInt32 {
 
 private func audioDeviceString(
     _ deviceId: AudioDeviceID,
-    selector: AudioObjectPropertySelector,
+    selector: AudioObjectPropertySelector
 ) -> String? {
     var address = AudioObjectPropertyAddress(
         mSelector: selector,
         mScope: kAudioObjectPropertyScopeGlobal,
-        mElement: kAudioObjectPropertyElementMain,
+        mElement: kAudioObjectPropertyElementMain
     )
     var value: Unmanaged<CFString>?
     var dataSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
