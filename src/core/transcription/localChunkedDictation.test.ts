@@ -21,8 +21,10 @@ function createChunker(
     chunker: new LocalChunkedDictation({
       sampleRateHz: 100,
       minNaturalChunkMs: 800,
+      naturalChunkingStartMs: 0,
       forcedChunkMs: 2_500,
       overlapMs: 100,
+      naturalBoundaryDelayMs: 0,
       maxDurationMs: 5_000,
       transcribe,
       onLimitReached,
@@ -40,6 +42,43 @@ describe("LocalChunkedDictation", () => {
 
     expect(transcribe).toHaveBeenCalledTimes(1);
     expect(transcribe.mock.calls[0][0].durationMs).toBe(800);
+  });
+
+  it("keeps short recordings on the single-shot path", async () => {
+    const { chunker, transcribe } = createChunker({
+      naturalChunkingStartMs: 2_500,
+      naturalBoundaryDelayMs: 1_200,
+    });
+    chunker.pushFrame(new Int16Array(1_000 / 10));
+    chunker.requestNaturalBoundary();
+    await chunker.finish();
+
+    expect(transcribe).toHaveBeenCalledTimes(1);
+    expect(transcribe.mock.calls[0][0].durationMs).toBe(1_000);
+  });
+
+  it("waits through the sentence pause and cancels when speech resumes", async () => {
+    vi.useFakeTimers();
+    try {
+      const { chunker, transcribe } = createChunker({
+        naturalChunkingStartMs: 0,
+        naturalBoundaryDelayMs: 1_200,
+      });
+      chunker.pushFrame(new Int16Array(200));
+      chunker.requestNaturalBoundary();
+
+      await vi.advanceTimersByTimeAsync(1_199);
+      expect(transcribe).not.toHaveBeenCalled();
+
+      chunker.cancelNaturalBoundary();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(transcribe).not.toHaveBeenCalled();
+
+      await chunker.finish();
+      expect(transcribe).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("forces a bounded request and carries only the configured overlap", async () => {

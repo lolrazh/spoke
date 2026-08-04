@@ -96,6 +96,32 @@ describe("streamingVad", () => {
     expect(fp.process.mock.calls[2][0]).toHaveLength(1536);
   });
 
+  it("notifies boundary consumers when speech starts and ends", async () => {
+    let windowIndex = 0;
+    const fp = createManualFrameProcessor((frame, handleEvent) => {
+      if (windowIndex === 0) {
+        handleEvent({ msg: Message.SpeechStart });
+      } else if (windowIndex === 1) {
+        handleEvent({ msg: Message.SpeechEnd, audio: frame });
+      }
+      windowIndex += 1;
+    });
+    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+
+    const onSpeechStart = vi.fn();
+    const onSpeechEnd = vi.fn();
+    const session = createStreamingVadSession({ onSpeechStart, onSpeechEnd });
+    await flush();
+
+    session.pushFrame(new Int16Array(1536));
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    expect(onSpeechStart).toHaveBeenCalledTimes(1);
+    expect(onSpeechEnd).toHaveBeenCalledTimes(1);
+    session.dispose();
+  });
+
   it("drops a trailing partial window at finish(), matching NonRealTimeVAD.run()", async () => {
     const fp = createManualFrameProcessor();
     vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);

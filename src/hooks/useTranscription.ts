@@ -38,9 +38,11 @@ import { setAudioLevel } from "../state/audioLevel";
 import {
   POST_ROLL_MS,
   LOCAL_DICTATION_MAX_DURATION_MS,
+  LOCAL_STT_CHUNK_NATURAL_START_MS,
   LOCAL_STT_CHUNK_FORCED_MS,
   LOCAL_STT_CHUNK_MIN_NATURAL_MS,
   LOCAL_STT_CHUNK_OVERLAP_MS,
+  LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
 import {
@@ -232,9 +234,12 @@ export function useTranscription(
       if (provider.descriptor.kind === "local") {
         localChunkedDictation = new LocalChunkedDictation({
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+          naturalChunkingStartMs: LOCAL_STT_CHUNK_NATURAL_START_MS,
           minNaturalChunkMs: LOCAL_STT_CHUNK_MIN_NATURAL_MS,
           forcedChunkMs: LOCAL_STT_CHUNK_FORCED_MS,
           overlapMs: LOCAL_STT_CHUNK_OVERLAP_MS,
+          naturalBoundaryDelayMs:
+            LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
           maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
           transcribe: (audio) => {
             // Until this first chunk, PcmCaptureSession keeps the legacy
@@ -260,6 +265,7 @@ export function useTranscription(
       }
 
       const streamingVadSession = createStreamingVadSession({
+        onSpeechStart: () => localChunkedDictation?.cancelNaturalBoundary(),
         onSpeechEnd: () => localChunkedDictation?.requestNaturalBoundary(),
       });
       streamingVadRef.current = streamingVadSession;
@@ -326,6 +332,7 @@ export function useTranscription(
       recorderStartPromiseRef.current = null;
       streamingVadRef.current?.dispose();
       streamingVadRef.current = null;
+      localChunkedDictationRef.current?.discardPendingAudio();
       localChunkedDictationRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
@@ -501,23 +508,29 @@ export function useTranscription(
       if (!recorder) {
         throw new Error("Recording stopped before audio capture was ready.");
       }
-      // Clear once the pending recorder is resolved so duplicate stop calls no-op.
-      recorderRef.current = null;
+      // Clear the pending start promise now, but keep recorderRef populated
+      // until recorder.stop() flushes its final worklet frame. A chunk can be
+      // sealed by that final frame, and the chunk callback may still need to
+      // release the recorder's retained PCM copy.
       recorderStartPromiseRef.current = null;
       timing.pcmStopStartedAt = performance.now();
 
       const localChunkedDictation = localChunkedDictationRef.current;
+      let capturedAudio: CapturedAudio | null = await recorder.stop();
+      recorderRef.current = null;
+      timing.pcmReadyAt = performance.now();
+      if (isCancelled()) return;
+
       if (
         provider.descriptor.kind === "local" &&
         localChunkedDictation?.hasDispatchedChunks
       ) {
-        // recorder.stop() flushes the last worklet frame into the chunker and
-        // then releases audio resources. The completed chunk promises may
-        // already be running while the user was still dictating.
-        await recorder.stop();
+        // The completed chunk promises may already be running while the user
+        // was still dictating. The CapturedAudio returned above is only a
+        // transient tail (or an empty buffer after the chunker released the
+        // recorder's retained PCM), so it is not used on this path.
+        capturedAudio = null;
         localChunkedDictationRef.current = null;
-        timing.pcmReadyAt = performance.now();
-        if (isCancelled()) return;
 
         timing.vadStartedAt = performance.now();
         timing.vadDoneAt = timing.vadStartedAt;
@@ -576,9 +589,14 @@ export function useTranscription(
         return;
       }
 
-      let capturedAudio: CapturedAudio | null = await recorder.stop();
-      timing.pcmReadyAt = performance.now();
-      if (isCancelled()) return;
+      // No bounded request was dispatched. Keep this recording on the
+      // single-shot path and prevent a delayed natural-boundary callback from
+      // dispatching the same audio after we begin VAD trimming.
+      localChunkedDictation?.discardPendingAudio();
+      localChunkedDictationRef.current = null;
+      if (!capturedAudio) {
+        throw new Error("PCM capture did not produce audio.");
+      }
       const capturedAudioMs = Math.round(capturedAudio.durationMs);
       log.info(
         `PCM captured: ${capturedAudio.pcm16.length} samples, ${capturedAudioMs}ms`,
@@ -723,6 +741,7 @@ export function useTranscription(
       recorderRef.current.cancel();
       recorderRef.current = null;
     }
+    localChunkedDictationRef.current?.discardPendingAudio();
     localChunkedDictationRef.current = null;
     if (activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID) {
       void window.stt?.cancelLocalTranscription?.();
