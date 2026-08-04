@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Spoke Audio Capture</string>
+	<key>CFBundleExecutable</key>
+	<string>Spoke Audio Capture</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.spoke.app.audio-capture</string>
+	<key>CFBundleName</key>
+	<string>Spoke Audio Capture</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1.0</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Spoke uses your microphone to transcribe dictation locally.</string>
+</dict>
+</plist>
