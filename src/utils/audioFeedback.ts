@@ -1,9 +1,7 @@
 // src/utils/audioFeedback.ts
 // lightweight HTMLAudioElement wrapper – no external libs
 
-// eslint-disable-next-line import/no-unresolved
 import toggleOnUrl from "/assets/toggle_on7.wav?url";
-// eslint-disable-next-line import/no-unresolved
 import toggleOffUrl from "/assets/toggle_off7.wav?url";
 
 // Construct the audio elements lazily on first play rather than at module

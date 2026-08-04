@@ -1,4 +1,6 @@
-import Store from "electron-store";
+import { app } from "electron";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
   MAX_TRANSCRIPTION_HISTORY,
   type TranscriptionItem,
@@ -8,12 +10,44 @@ interface TranscriptionStoreSchema {
   transcriptions: TranscriptionItem[];
 }
 
-const store = new Store<TranscriptionStoreSchema>({
-  name: "transcription-history",
-  defaults: {
-    transcriptions: [],
-  },
-});
+// Keep the same filename and envelope used by electron-store so existing
+// histories are read in place without a migration step.
+const storagePath = path.join(
+  app.getPath("userData"),
+  "transcription-history.json",
+);
+
+function readStore(): TranscriptionStoreSchema {
+  try {
+    const raw = fs.readFileSync(storagePath, "utf8");
+    const parsed = JSON.parse(raw) as Partial<TranscriptionStoreSchema>;
+    return {
+      transcriptions: Array.isArray(parsed.transcriptions)
+        ? parsed.transcriptions
+        : [],
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn(
+        "[TranscriptionStorage] Failed to read history; starting empty:",
+        error,
+      );
+    }
+    return { transcriptions: [] };
+  }
+}
+
+function writeStore(transcriptions: TranscriptionItem[]): void {
+  fs.mkdirSync(path.dirname(storagePath), { recursive: true });
+  fs.writeFileSync(
+    storagePath,
+    JSON.stringify(
+      { transcriptions } satisfies TranscriptionStoreSchema,
+      null,
+      2,
+    ),
+  );
+}
 
 // Cleaned, capped mirror of the persisted list. Validated once on first access
 // and kept in sync on every write, so reads never re-validate the whole file.
@@ -60,7 +94,7 @@ function validateItem(item: unknown): TranscriptionItem | null {
 function ensureCache(): TranscriptionItem[] {
   if (cache) return cache;
 
-  const raw = store.get("transcriptions", []);
+  const raw = readStore().transcriptions;
   const validated = raw
     .map(validateItem)
     .filter((item): item is TranscriptionItem => item !== null);
@@ -80,7 +114,7 @@ function ensureCache(): TranscriptionItem[] {
 
   // Persist once if either cleaning or capping changed the list.
   if (cleaned.length !== raw.length) {
-    store.set("transcriptions", cleaned);
+    writeStore(cleaned);
   }
 
   cache = cleaned;
@@ -117,7 +151,7 @@ export function saveTranscription(
     transcriptions.length = MAX_TRANSCRIPTION_HISTORY;
   }
 
-  store.set("transcriptions", transcriptions);
+  writeStore(transcriptions);
 
   return newItem;
 }
@@ -134,7 +168,7 @@ export function deleteTranscription(id: string): boolean {
   }
 
   transcriptions.splice(index, 1);
-  store.set("transcriptions", transcriptions);
+  writeStore(transcriptions);
 
   return true;
 }
@@ -144,5 +178,5 @@ export function deleteTranscription(id: string): boolean {
  */
 export function clearTranscriptions(): void {
   cache = [];
-  store.set("transcriptions", []);
+  writeStore([]);
 }

@@ -1,52 +1,15 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { join } from "node:path";
-import { viteStaticCopy } from "vite-plugin-static-copy";
 
 // https://vitejs.dev/config/
 // The Forge Vite plugin passes mode "production" on package/make and
 // "development" on dev start, so gate sourcemaps to keep them out of releases.
 export default defineConfig(({ mode }) => ({
   base: "./",
-  plugins: [
-    react(),
-    viteStaticCopy({
-      targets: [
-        {
-          src: [
-            join(__dirname, "public/assets/icon.*"),
-            join(__dirname, "public/assets/TrayTemplate.*"),
-          ],
-          dest: "assets", // copies icon files to dist/assets/
-        },
-        {
-          // Ensure AudioWorklet scripts are available in packaged builds
-          src: [join(__dirname, "public/worklets/*")],
-          dest: "worklets",
-        },
-        {
-          // Copy any self-hosted fonts into the packaged renderer
-          src: [join(__dirname, "public/fonts/*")],
-          dest: "fonts",
-        },
-        {
-          // Copy VAD model
-          src: [join(__dirname, "public/vad/silero_vad_legacy.onnx")],
-          dest: "vad",
-        },
-        {
-          // Copy the ORT Web WASM binary for VAD. NonRealTimeVAD (the only
-          // vad-web API we use) resolves onnxruntime-web to its `ort.min`
-          // build, which loads the jsep pair; the non-jsep CPU pair is only
-          // reachable via MicVAD, which we never touch, so it isn't vendored.
-          src: [
-            join(__dirname, "public/vad/ort-wasm/ort-wasm-simd-threaded.jsep.*"),
-          ],
-          dest: "vad/ort-wasm",
-        },
-      ],
-    }),
-  ],
+  // Vite copies public/ to the renderer root by default. Keep those assets
+  // there instead of maintaining a second copy pipeline.
+  plugins: [react()],
   resolve: {
     alias: {
       "@": join(__dirname, "src"), // Example alias

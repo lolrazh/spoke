@@ -14,7 +14,7 @@ LOG_FILE="$LOG_DIR/forge-make-$(date +%Y%m%d_%H%M%S).log"
 echo "[clean-dmg] Starting electron-forge make (logging to $LOG_FILE)"
 
 # Always enable DEBUG namespaces; harmless if APPLE_NOTARIZE=0
-# Use npm script so node_modules/.bin is on PATH and dotenv-cli is applied
+# Use the npm script so node_modules/.bin is on PATH and .env is loaded
 DEBUG="electron-forge:*,electron-osx-sign:*,@electron/osx-sign:*,electron-notarize:*" \
   npm run --silent make:env -- --verbose 2>&1 | tee "$LOG_FILE"
 
