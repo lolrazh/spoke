@@ -137,11 +137,20 @@ class NativeAudioCaptureManager {
 
   cancel(): void {
     if (!this.process || !this.active) return;
+
+    const cancellationError = new Error("Native audio capture was cancelled.");
+    const pendingStart = this.pendingStart;
+    const pendingStop = this.pendingStop;
+
     this.active = false;
     this.target = null;
     this.pendingStart = null;
     this.pendingStop = null;
-    this.stopPromise = null;
+    pendingStart?.reject(cancellationError);
+    // A stop interrupted by cancellation still has to settle so the renderer
+    // can finish its cleanup pipeline. Leave stopPromise for stop()'s finally
+    // block to clear after its waiter observes this resolution.
+    pendingStop?.resolve();
     try {
       this.sendCommand({ action: "cancel" });
     } catch {
