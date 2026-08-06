@@ -15,7 +15,7 @@ import fs from "node:fs";
 import { getHelperPath } from "./helperPaths";
 import { bootTimeline } from "./bootTimeline";
 import { spawnHelper } from "./helperProcess";
-import { preSpawnPasteHelper, killPasteDaemon } from "./pasteDaemon";
+import { preSpawnPasteHelper } from "./pasteDaemon";
 import { prewarmLocalSidecar } from "./localSttLifecycle";
 import { state } from "./windowState";
 
@@ -195,7 +195,8 @@ export function startFnListener() {
             mirrorWindow.webContents.send("ptt-down");
         } else if (trimmedLine === "optR-up") {
           // End of PTT press-and-hold
-          killPasteDaemon();
+          // Keep the paste daemon alive: transcription and native paste run
+          // after key-up, so killing it here defeats the pre-spawn path.
           targetWindow?.webContents.send("ptt-up");
           if (
             state.pttTarget === "main" &&
