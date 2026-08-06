@@ -497,7 +497,8 @@ export function useTranscription(
     };
 
     const streamingVadSession = streamingVadRef.current;
-    streamingVadRef.current = null;
+    // Keep the shared reference until stop() finishes so cancel() can dispose
+    // a session while its async finish() is still finalizing.
 
     try {
       setProcessing(true);
@@ -631,6 +632,7 @@ export function useTranscription(
         vadResult = await streamingVadSession.finish(capturedAudio);
       }
       if (!vadResult) {
+        if (isCancelled()) return;
         // Streaming VAD never became usable (model init failed, or it
         // failed mid-recording) — fall back to the post-hoc full-clip pass.
         vadLog.warn("Streaming VAD unavailable; falling back to post-hoc VAD");
@@ -711,6 +713,9 @@ export function useTranscription(
       // above exited — mirrors how `recorder.stop()` always runs. dispose()
       // is a no-op if finish() already completed it.
       streamingVadSession?.dispose();
+      if (streamingVadRef.current === streamingVadSession) {
+        streamingVadRef.current = null;
+      }
       // If cancel() interrupted this pipeline it already performed the
       // cleanup below and a new session may have started since; leave it be.
       if (!isCancelled()) {
@@ -768,9 +773,8 @@ export function useTranscription(
     if (activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID) {
       void window.stt?.cancelLocalTranscription?.();
     }
-    // If a stop() pipeline is mid-flight it already took ownership of the
-    // streaming VAD session (nulled this ref) and is responsible for
-    // disposing it itself; only dispose here when cancel() got to it first.
+    // Keep this reference reachable while stop() is finalizing VAD so cancel
+    // can terminate the worker instead of letting finish() return it warm.
     if (streamingVadRef.current) {
       streamingVadRef.current.dispose();
       streamingVadRef.current = null;

@@ -239,6 +239,36 @@ describe("streamingVad", () => {
     await second.finish(audio);
   });
 
+  it("terminates an in-flight finish instead of returning its worker warm", async () => {
+    const fp = createManualFrameProcessor();
+    const worker = useFrameProcessor(fp);
+    let resolveFinish: ((events: never[]) => void) | null = null;
+    worker.finish = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveFinish = resolve as (events: never[]) => void;
+        }),
+    );
+    const audio = createCapturedAudio(new Int16Array(1600));
+    const session = createStreamingVadSession();
+
+    await flush();
+    const finishing = session.finish(audio);
+    await vi.waitFor(() => {
+      expect(worker.finish).toHaveBeenCalledTimes(1);
+    });
+
+    session.dispose();
+    expect(worker.dispose).toHaveBeenCalledTimes(1);
+
+    resolveFinish?.([]);
+    await expect(finishing).resolves.toBeNull();
+
+    const replacement = createStreamingVadSession();
+    expect(mocks.createVadWorkerClient).toHaveBeenCalledTimes(2);
+    replacement.dispose();
+  });
+
   it("evicts the warm worker after its idle timeout", async () => {
     vi.useFakeTimers();
     try {

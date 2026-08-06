@@ -217,7 +217,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   }
 
   isUsable(): boolean {
-    return this.status !== "failed";
+    return !this.cancelled && this.status !== "failed";
   }
 
   pushFrame(pcm16: Int16Array): void {
@@ -282,9 +282,11 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         const events = await this.worker.processFrame(window, indexForWindow);
         for (const event of events) this.handleEvent(event);
       } catch (error) {
-        this.status = "failed";
-        this.disposeWorker();
-        log.warn("Streaming VAD frame processing failed:", error);
+        if (!this.cancelled) {
+          this.status = "failed";
+          this.disposeWorker();
+          log.warn("Streaming VAD frame processing failed:", error);
+        }
       } finally {
         this.queueDepth = Math.max(0, this.queueDepth - 1);
       }
@@ -322,6 +324,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   }
 
   private isQuietEnough(): boolean {
+    if (this.cancelled) return true;
     if (this.status !== "ready") return false;
     if (this.queueDepth > 0) return false;
     if (this.speaking) return false;
@@ -358,14 +361,16 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       // Await the single init attempt kicked off in the constructor. The
       // worker client bounds initialization and terminates itself on timeout.
       await this.initializePromise;
-      if (this.status !== "ready") {
+      if (this.cancelled || this.status !== "ready") {
         return null;
       }
 
       this.drainPendingWindows();
       const finalFrameIndex = this.frameIndex;
       await this.processingQueue;
+      if (this.cancelled) return null;
       const events = await this.worker.finish(Math.max(0, finalFrameIndex - 1));
+      if (this.cancelled) return null;
       for (const event of events) this.handleEvent(event);
 
       const result = trimCapturedAudioToSpeech(capturedAudio, this.segments, {
@@ -379,7 +384,12 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         vadMs: Math.round(performance.now() - startedAt),
       };
     } catch (error) {
-      log.warn("Streaming VAD finish failed, falling back to post-hoc VAD:", error);
+      if (!this.cancelled) {
+        log.warn(
+          "Streaming VAD finish failed, falling back to post-hoc VAD:",
+          error,
+        );
+      }
       this.status = "failed";
       return null;
     } finally {
@@ -389,7 +399,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   }
 
   dispose(): void {
-    if (this.disposed) return;
+    if (this.cancelled || this.workerReleased) return;
     this.disposed = true;
     this.cancelled = true;
     this.pendingWindows = [];

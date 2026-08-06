@@ -101,12 +101,6 @@ async function handle(request: VadWorkerRequest): Promise<void> {
         const boundary = boundaryEvent(event.msg, request.frameIndex);
         if (boundary) events.push(boundary);
       });
-      const frameProcessor = vad.frameProcessor as unknown as {
-        reset(): void;
-        resume(): void;
-      };
-      frameProcessor.reset();
-      frameProcessor.resume();
       post({ id: request.id, type: "result", result: events });
       return;
     }
