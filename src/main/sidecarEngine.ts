@@ -26,6 +26,8 @@ let sidecarReady = false;
 let sidecarSpawnPromise: Promise<void> | null = null;
 let sidecarModelId: string | null = null;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
+let sidecarGeneration = 0;
+let sidecarStoppingPromise: Promise<void> | null = null;
 let autoRestartEnabled = false;
 const processExitPromises = new WeakMap<object, Promise<void>>();
 const exitedProcesses = new WeakSet<object>();
@@ -50,6 +52,15 @@ export function setAutoRestart(enabled: boolean): void {
 export function spawnSidecar(modelId = getActiveModelId()): Promise<void> {
   if (sidecarProcess && sidecarReady && sidecarModelId === modelId) {
     return Promise.resolve();
+  }
+  if (sidecarStoppingPromise) {
+    const stopping = sidecarStoppingPromise;
+    return stopping.then(() => {
+      if (sidecarStoppingPromise === stopping) {
+        sidecarStoppingPromise = null;
+      }
+      return spawnSidecar(modelId);
+    });
   }
   if (sidecarSpawnPromise) {
     if (sidecarModelId !== modelId) {
@@ -99,6 +110,7 @@ function spawnSidecarOnce(modelId: string): Promise<void> {
       detached: false,
     });
 
+    sidecarGeneration += 1;
     sidecarProcess = proc;
     sidecarModelId = modelId;
     sidecarReady = false;
@@ -267,11 +279,20 @@ export async function killSidecar(): Promise<void> {
 export function abortLocalTranscription(): void {
   autoRestartEnabled = false;
   sidecarTranscribeQueue = Promise.resolve();
+  sidecarGeneration += 1;
   const proc = sidecarProcess;
-  sidecarProcess = null;
-  sidecarModelId = null;
   sidecarReady = false;
   if (!proc) return;
+
+  if (!sidecarStoppingPromise) {
+    const exitPromise = processExitPromises.get(proc) ?? Promise.resolve();
+    const startupPromise = sidecarSpawnPromise ?? Promise.resolve();
+    sidecarStoppingPromise = Promise.allSettled([
+      exitPromise,
+      startupPromise,
+    ]).then(() => undefined);
+  }
+
   console.warn("[STT] Aborting local transcription and killing sidecar");
   try {
     if (proc.pid) process.kill(proc.pid, "SIGKILL");
@@ -295,9 +316,23 @@ export function transcribeLocal(
   }
   // Sidecar stdout is a shared stream. Serialize requests so "done" events
   // cannot be consumed by the wrong in-flight caller.
+  const requestGeneration = sidecarGeneration;
+  const requestProcess = sidecarProcess;
   const queued = sidecarTranscribeQueue.then(
-    () => transcribeLocalOnce(pcmBuffer, prompt),
-    () => transcribeLocalOnce(pcmBuffer, prompt),
+    () =>
+      transcribeLocalOnce(
+        pcmBuffer,
+        requestProcess,
+        requestGeneration,
+        prompt,
+      ),
+    () =>
+      transcribeLocalOnce(
+        pcmBuffer,
+        requestProcess,
+        requestGeneration,
+        prompt,
+      ),
   );
   sidecarTranscribeQueue = queued.then(
     (): undefined => undefined,
@@ -308,15 +343,24 @@ export function transcribeLocal(
 
 function transcribeLocalOnce(
   pcmBuffer: Buffer,
+  expectedProcess: ReturnType<typeof spawn> | null,
+  expectedGeneration: number,
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
   return new Promise((resolve, reject) => {
-    if (!sidecarProcess || !sidecarReady) {
+    if (
+      expectedGeneration !== sidecarGeneration ||
+      expectedProcess !== sidecarProcess
+    ) {
+      reject(new Error("Local transcription cancelled before it started"));
+      return;
+    }
+    if (!expectedProcess || !sidecarReady) {
       reject(new Error("Sidecar not running"));
       return;
     }
 
-    const proc = sidecarProcess;
+    const proc = expectedProcess;
     let stdoutBuffer = "";
     let resolved = false;
     let timeout: NodeJS.Timeout | null = null;
