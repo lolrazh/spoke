@@ -34,6 +34,7 @@ export const SIDECAR_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 let idleTimer: NodeJS.Timeout | null = null;
 let transcriptionsInFlight = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
+let latestRequestedModelId: string | null = null;
 const transcriptionDrainWaiters = new Set<() => void>();
 
 function buildWhisperPrompt(
@@ -110,7 +111,7 @@ function armIdleTimer(): void {
 }
 
 async function ensureLocalSidecarRunningOnce(modelId: string): Promise<void> {
-  if (getModelInstallState() !== "ready") {
+  if (getModelInstallState(modelId) !== "ready") {
     throw new Error(LOCAL_MODEL_NOT_INSTALLED_MESSAGE);
   }
 
@@ -222,20 +223,25 @@ export async function removeLocalModelAndStopSidecar(
  * could leave no sidecar running after a rapid switch.
  */
 export async function setActiveModelAndResync(modelId: string): Promise<void> {
-  setActiveModelId(modelId);
+  latestRequestedModelId = modelId;
   clearIdleTimer();
   setAutoRestart(false);
   await enqueueLifecycle(async () => {
     await waitForTranscriptionsToDrain();
     // A later click superseded this transition while it waited in the queue.
-    if (getActiveModelId() !== modelId) return;
+    if (latestRequestedModelId !== modelId) return;
     await killSidecar();
     if (
-      getActiveModelId() === modelId &&
+      latestRequestedModelId === modelId &&
       isPreferredProviderLocal() &&
       getModelInstallState(modelId) === "ready"
     ) {
       await ensureLocalSidecarRunningOnce(modelId);
+    }
+    // Persist only once readiness succeeds. If spawn throws, the previous
+    // model remains selected and the renderer refreshes back to truthful state.
+    if (latestRequestedModelId === modelId) {
+      setActiveModelId(modelId);
     }
   });
 }

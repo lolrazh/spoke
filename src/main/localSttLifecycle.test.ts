@@ -315,6 +315,17 @@ describe("localSttLifecycle", () => {
     expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
   });
 
+  it("keeps the previous model selected when the replacement fails to load", async () => {
+    mocks.spawnSidecar.mockRejectedValue(new Error("model load failed"));
+    const { setActiveModelAndResync } = await importLifecycle();
+
+    await expect(setActiveModelAndResync("model-b")).rejects.toThrow(
+      "model load failed",
+    );
+
+    expect(mocks.setActiveModelId).not.toHaveBeenCalled();
+  });
+
   it("waits for an active transcription before replacing its model", async () => {
     let active = "model-a";
     let resolveTranscribe: (value: {
