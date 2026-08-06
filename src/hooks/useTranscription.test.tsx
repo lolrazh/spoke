@@ -21,7 +21,6 @@ vi.mock("../utils/audioFeedback", () => ({
 }));
 
 vi.mock("../utils/vadTrimmer", () => ({
-  prewarmVad: vi.fn(() => Promise.resolve()),
   trimCapturedAudioWithVad: vi.fn(),
 }));
 

@@ -1,5 +1,5 @@
 /**
- * Streaming VAD: feeds PCM16 frames into the shared Silero model
+ * Streaming VAD: feeds PCM16 frames into a session-owned Silero worker
  * incrementally, as they arrive during capture, instead of waiting for
  * recording to stop and re-scanning the whole clip (see vadTrimmer.ts for
  * that post-hoc path, kept as a fallback).
@@ -10,16 +10,10 @@
  * needed. If speech is still active (or the model hasn't caught up yet), we
  * keep capturing until it settles, capped at POST_ROLL_MS.
  *
- * API used from @ricky0123/vad-web: `NonRealTimeVAD.new()` builds the model
- * and wires it into a `FrameProcessor` (the same frame-by-frame state
- * machine `NonRealTimeVAD.run()` drives internally). `frameProcessor` is a
- * public field on the instance, so instead of calling `.run()` over a
- * complete Float32Array we call `frameProcessor.process()` ourselves, one
- * fixed-size window at a time, and `frameProcessor.endSegment()` to flush
- * whatever's left at stop time. We never touch MicVAD (it grabs its own mic)
- * or reimplement the frame-processor state machine.
+ * The worker owns both onnxruntime-web and its WASM heap. Finishing or
+ * cancelling terminates that worker, which makes reclamation deterministic
+ * and prevents inference work from blocking the renderer's UI thread.
  */
-import { Message, type FrameProcessor } from "@ricky0123/vad-web";
 import { pcm16ToFloat32, type CapturedAudio } from "../core/transcription/capturedAudio";
 import {
   trimCapturedAudioToSpeech,
@@ -27,11 +21,11 @@ import {
   type VadSpeechSegment,
 } from "../core/transcription/vadTrim";
 import {
-  VAD_INIT_TIMEOUT_MS,
   VAD_PRE_SPEECH_PAD_MS,
   VAD_REDEMPTION_MS,
 } from "../config/vad";
-import { resolveVadModel } from "./vadModel";
+import { createVadWorkerClient, type VadWorkerClient } from "./vadWorkerClient";
+import type { VadWorkerEvent } from "./vadWorkerProtocol";
 import { createLogger } from "./logger";
 
 const log = createLogger("StreamingVAD");
@@ -45,21 +39,6 @@ const MODEL_SAMPLES_PER_MS = 16; // 16,000 Hz / 1000 ms
 const QUIET_POLL_INTERVAL_MS = 20;
 
 type SessionStatus = "pending" | "ready" | "failed";
-
-// @ricky0123/vad-web only exports `FrameProcessorEvent` from its internal
-// frame-processor module, not from the package's public entry point.
-// Mirrored here (using the exported `Message` enum for the discriminant, so
-// values stay in sync) rather than importing an internal path.
-type FrameProcessorEventLike =
-  | { msg: Message.VADMisfire }
-  | { msg: Message.SpeechStart }
-  | { msg: Message.SpeechRealStart }
-  | { msg: Message.SpeechEnd; audio: Float32Array }
-  | {
-      msg: Message.FrameProcessed;
-      probs: { notSpeech: number; isSpeech: number };
-      frame: Float32Array;
-    };
 
 export interface StreamingVadSessionHandle {
   /** False once the model has failed to load; callers should use the
@@ -91,21 +70,6 @@ export interface StreamingVadSessionOptions {
   onSpeechEnd?: () => void;
 }
 
-// The shared frameProcessor is a single mutable resource reused across
-// recording sessions. Every access to it (process/endSegment/reset) is
-// funneled through this module-level queue so a slow-to-drain previous
-// session can never interleave with the next one's calls.
-let sharedQueue: Promise<void> = Promise.resolve();
-
-function enqueue<T>(fn: () => Promise<T> | T): Promise<T> {
-  const run = sharedQueue.then(fn, fn);
-  sharedQueue = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
-}
-
 export function createStreamingVadSession(
   options: StreamingVadSessionOptions = {},
 ): StreamingVadSessionHandle {
@@ -119,7 +83,8 @@ export function createStreamingVadSession(
 
 class StreamingVadSession implements StreamingVadSessionHandle {
   private status: SessionStatus = "pending";
-  private frameProcessor: FrameProcessor | null = null;
+  private readonly worker: VadWorkerClient = createVadWorkerClient();
+  private processingQueue: Promise<void> = Promise.resolve();
   private disposed = false;
 
   // Persistent scratch for samples that don't yet fill a model window. Sized
@@ -162,29 +127,18 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   // whatever was buffered before the session was disposed.
   private async initialize(): Promise<void> {
     try {
-      const vad = await resolveVadModel(VAD_INIT_TIMEOUT_MS, 0);
-      const frameProcessor = vad.frameProcessor as unknown as FrameProcessor;
-      await enqueue(() => {
-        frameProcessor.reset();
-        frameProcessor.resume();
-      });
+      await this.worker.ready();
       if (this.cancelled) {
-        // The recording was cancelled while the model was still loading.
-        // Leave the shared processor clean and discard whatever was
-        // buffered; there's no result to produce for a cancelled session.
         this.pendingWindows = [];
-        await enqueue(() => {
-          frameProcessor.endSegment(() => {
-            // Discard events.
-          });
-        });
+        this.queueDepth = 0;
         return;
       }
-      this.frameProcessor = frameProcessor;
       this.status = "ready";
       this.drainPendingWindows();
     } catch (error) {
       this.status = "failed";
+      this.pendingWindows = [];
+      this.queueDepth = 0;
       log.warn("Model init failed, streaming VAD unavailable:", error);
     }
   }
@@ -204,9 +158,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private appendSamples(float32: Float32Array): void {
     // Emit as many full MODEL_FRAME_SAMPLES windows as carry + this frame can
     // fill, without materializing a `combined` buffer per frame. Each window is
-    // still its own Float32Array because the frame processor retains it (it
-    // buffers frames to build the eventual speech segment), so those copies are
-    // load-bearing; only the transient per-frame `combined`/carry slices are gone.
+    // still its own Float32Array because it is transferred to the worker; only
+    // the transient per-frame `combined`/carry slices are gone.
     let inputOffset = 0;
     while (this.carryLen + (float32.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
       const window = new Float32Array(MODEL_FRAME_SAMPLES);
@@ -233,7 +186,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
 
   private enqueueWindow(window: Float32Array): void {
     this.queueDepth++;
-    if (this.status === "ready" && this.frameProcessor) {
+    if (this.status === "ready") {
       this.submitWindow(window);
     } else {
       this.pendingWindows.push(window);
@@ -251,34 +204,33 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private submitWindow(window: Float32Array): void {
     const indexForWindow = this.frameIndex;
     this.frameIndex += 1;
-    void enqueue(async () => {
-      const frameProcessor = this.frameProcessor;
-      if (!frameProcessor) return;
+    const processWindow = async () => {
       try {
-        await frameProcessor.process(window, (event) =>
-          this.handleEvent(event, indexForWindow),
-        );
+        const events = await this.worker.processFrame(window, indexForWindow);
+        for (const event of events) this.handleEvent(event);
       } catch (error) {
         this.status = "failed";
+        this.worker.dispose();
         log.warn("Streaming VAD frame processing failed:", error);
       } finally {
         this.queueDepth = Math.max(0, this.queueDepth - 1);
       }
-    });
+    };
+    this.processingQueue = this.processingQueue.then(processWindow, processWindow);
   }
 
-  private handleEvent(event: FrameProcessorEventLike, frameIndex: number): void {
-    switch (event.msg) {
-      case Message.SpeechStart:
+  private handleEvent(event: VadWorkerEvent): void {
+    switch (event.type) {
+      case "speech-start":
         this.speaking = true;
         this.everSpoke = true;
-        this.speechStartFrameIndex = frameIndex;
+        this.speechStartFrameIndex = event.frameIndex;
         this.onSpeechStart?.();
         break;
-      case Message.SpeechEnd: {
+      case "speech-end": {
         const startMs = (this.speechStartFrameIndex * MODEL_FRAME_SAMPLES) /
           MODEL_SAMPLES_PER_MS;
-        const endMs = ((frameIndex + 1) * MODEL_FRAME_SAMPLES) /
+        const endMs = ((event.frameIndex + 1) * MODEL_FRAME_SAMPLES) /
           MODEL_SAMPLES_PER_MS;
         this.segments.push({ startMs, endMs });
         this.speaking = false;
@@ -286,9 +238,9 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         this.onSpeechEnd?.();
         break;
       }
-      case Message.VADMisfire:
+      case "misfire":
         this.speaking = false;
-        this.speechEndAtMs = ((frameIndex + 1) * MODEL_FRAME_SAMPLES) /
+        this.speechEndAtMs = ((event.frameIndex + 1) * MODEL_FRAME_SAMPLES) /
           MODEL_SAMPLES_PER_MS;
         break;
       default:
@@ -329,29 +281,18 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     const startedAt = performance.now();
 
     try {
-      // Await the single init attempt kicked off in the constructor; it's
-      // bounded by resolveVadModel's own timeout, so this can't hang.
+      // Await the single init attempt kicked off in the constructor. The
+      // worker client bounds initialization and terminates itself on timeout.
       await this.initializePromise;
-      if (this.status !== "ready" || !this.frameProcessor) {
+      if (this.status !== "ready") {
         return null;
       }
 
       this.drainPendingWindows();
       const finalFrameIndex = this.frameIndex;
-      const frameProcessor = this.frameProcessor;
-
-      await enqueue(() => {
-        frameProcessor.endSegment((event) => {
-          if (event.msg === Message.SpeechEnd) {
-            const startMs =
-              (this.speechStartFrameIndex * MODEL_FRAME_SAMPLES) /
-              MODEL_SAMPLES_PER_MS;
-            const endMs =
-              (finalFrameIndex * MODEL_FRAME_SAMPLES) / MODEL_SAMPLES_PER_MS;
-            this.segments.push({ startMs, endMs });
-          }
-        });
-      });
+      await this.processingQueue;
+      const events = await this.worker.finish(Math.max(0, finalFrameIndex - 1));
+      for (const event of events) this.handleEvent(event);
 
       const result = trimCapturedAudioToSpeech(capturedAudio, this.segments, {
         preSpeechPadMs: this.preSpeechPadMs,
@@ -366,6 +307,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       log.warn("Streaming VAD finish failed, falling back to post-hoc VAD:", error);
       this.status = "failed";
       return null;
+    } finally {
+      this.worker.dispose();
     }
   }
 
@@ -373,20 +316,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     if (this.disposed) return;
     this.disposed = true;
     this.cancelled = true;
-    const frameProcessor = this.frameProcessor;
-    // If init hasn't resolved yet, `initialize()` sees `cancelled` and
-    // cleans up itself once the model is ready.
-    if (!frameProcessor) return;
-    // Reset via the shared queue so this can't race a still-draining
-    // process() call, corrupting state for the next session.
-    void enqueue(() => {
-      try {
-        frameProcessor.endSegment(() => {
-          // Discard events; this recording was cancelled.
-        });
-      } catch (error) {
-        log.warn("Streaming VAD dispose cleanup failed:", error);
-      }
-    });
+    this.pendingWindows = [];
+    this.queueDepth = 0;
+    this.worker.dispose();
   }
 }

@@ -25,7 +25,6 @@ import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
 import { NativePcmCaptureSession } from "../utils/nativePcmCaptureSession";
 import {
-  prewarmVad,
   trimCapturedAudioWithVad,
   type VadAudioResult,
 } from "../utils/vadTrimmer";
@@ -171,11 +170,8 @@ export function useTranscription(
       window.electron?.bootMark?.("transcription-hook:get-provider:done");
     });
 
-    // No boot-time VAD prewarm: the model is warmed on dictation intent
-    // (start(), the PTT key-down) instead, so its onnxruntime-web WASM heap
-    // never goes resident in the always-open pill window if the user never
-    // dictates. After a stretch of inactivity it's released again (see
-    // VAD_IDLE_RELEASE_MS / resolveVadModel's idle watchdog).
+    // No boot-time VAD prewarm: each dictation owns a short-lived worker, so
+    // the ONNX/WASM heap never becomes permanent renderer state.
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -232,8 +228,6 @@ export function useTranscription(
   // Start recording
   const start = useCallback(async () => {
     if (recording || processing || stopInFlightRef.current) return;
-
-    void prewarmVad().catch((err) => vadLog.warn("Start prewarm failed:", err));
 
     const providerId = await resolveActiveProviderId();
     const provider =

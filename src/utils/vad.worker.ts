@@ -1,0 +1,133 @@
+/// <reference lib="webworker" />
+
+import { Message, NonRealTimeVAD } from "@ricky0123/vad-web";
+import {
+  VAD_INIT_TIMEOUT_MS,
+  VAD_MIN_SPEECH_MS,
+  VAD_NEGATIVE_SPEECH_THRESHOLD,
+  VAD_POSITIVE_SPEECH_THRESHOLD,
+  VAD_PRE_SPEECH_PAD_MS,
+  VAD_REDEMPTION_MS,
+} from "../config/vad";
+import type {
+  VadWorkerEvent,
+  VadWorkerRequest,
+  VadWorkerResponse,
+  VadWorkerSegment,
+} from "./vadWorkerProtocol";
+
+type VadInstance = Awaited<ReturnType<typeof NonRealTimeVAD.new>>;
+
+let vad: VadInstance | null = null;
+let operationQueue: Promise<void> = Promise.resolve();
+
+function post(response: VadWorkerResponse): void {
+  self.postMessage(response);
+}
+
+async function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to load VAD asset ${url}: HTTP ${response.status}`);
+  }
+  return response.arrayBuffer();
+}
+
+async function initialize(
+  modelUrl: string,
+  wasmBaseUrl: string,
+): Promise<void> {
+  vad = await NonRealTimeVAD.new({
+    modelURL: modelUrl,
+    modelFetcher: fetchArrayBuffer,
+    positiveSpeechThreshold: VAD_POSITIVE_SPEECH_THRESHOLD,
+    negativeSpeechThreshold: VAD_NEGATIVE_SPEECH_THRESHOLD,
+    minSpeechMs: VAD_MIN_SPEECH_MS,
+    preSpeechPadMs: VAD_PRE_SPEECH_PAD_MS,
+    redemptionMs: VAD_REDEMPTION_MS,
+    submitUserSpeechOnPause: false,
+    ortConfig: (ort) => {
+      ort.env.logLevel = "error";
+      ort.env.wasm.initTimeout = VAD_INIT_TIMEOUT_MS;
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.proxy = false;
+      ort.env.wasm.wasmPaths = wasmBaseUrl;
+    },
+  });
+  const frameProcessor = vad.frameProcessor as unknown as {
+    reset(): void;
+    resume(): void;
+  };
+  frameProcessor.reset();
+  frameProcessor.resume();
+}
+
+function boundaryEvent(
+  message: Message,
+  frameIndex: number,
+): VadWorkerEvent | null {
+  if (message === Message.SpeechStart) {
+    return { type: "speech-start", frameIndex };
+  }
+  if (message === Message.SpeechEnd) {
+    return { type: "speech-end", frameIndex };
+  }
+  if (message === Message.VADMisfire) {
+    return { type: "misfire", frameIndex };
+  }
+  return null;
+}
+
+async function handle(request: VadWorkerRequest): Promise<void> {
+  switch (request.type) {
+    case "init":
+      await initialize(request.modelUrl, request.wasmBaseUrl);
+      post({ id: request.id, type: "result", result: undefined });
+      return;
+    case "process": {
+      if (!vad) throw new Error("VAD worker is not initialized");
+      const events: VadWorkerEvent[] = [];
+      await vad.frameProcessor.process(new Float32Array(request.frame), (event) => {
+        const boundary = boundaryEvent(event.msg, request.frameIndex);
+        if (boundary) events.push(boundary);
+      });
+      post({ id: request.id, type: "result", result: events });
+      return;
+    }
+    case "finish": {
+      if (!vad) throw new Error("VAD worker is not initialized");
+      const events: VadWorkerEvent[] = [];
+      vad.frameProcessor.endSegment((event) => {
+        const boundary = boundaryEvent(event.msg, request.frameIndex);
+        if (boundary) events.push(boundary);
+      });
+      post({ id: request.id, type: "result", result: events });
+      return;
+    }
+    case "run": {
+      if (!vad) throw new Error("VAD worker is not initialized");
+      const segments: VadWorkerSegment[] = [];
+      for await (const segment of vad.run(
+        new Float32Array(request.audio),
+        request.sampleRateHz,
+      )) {
+        segments.push({ startMs: segment.start, endMs: segment.end });
+      }
+      post({ id: request.id, type: "result", result: segments });
+    }
+  }
+}
+
+self.onmessage = (event: MessageEvent<VadWorkerRequest>) => {
+  const request = event.data;
+  operationQueue = operationQueue.then(
+    () => handle(request),
+    () => handle(request),
+  ).catch((error) => {
+    post({
+      id: request.id,
+      type: "error",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
+};

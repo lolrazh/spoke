@@ -9,7 +9,6 @@ import {
   type VadSpeechSegment,
 } from "../core/transcription/vadTrim";
 import {
-  VAD_INIT_TIMEOUT_MS,
   VAD_MAX_TIMEOUT_MS,
   VAD_MIN_TIMEOUT_MS,
   VAD_PRE_SPEECH_PAD_MS,
@@ -17,20 +16,9 @@ import {
   VAD_SAMPLE_RATE_HZ,
   VAD_TIMEOUT_AUDIO_MULTIPLIER,
 } from "../config/vad";
-import {
-  createVadTimeoutError,
-  invalidateVadModel,
-  prewarmVadModel,
-  resolveVadModel,
-  withVadTimeout,
-  type NonRealTimeVadInstance,
-} from "./vadModel";
+import { createVadWorkerClient } from "./vadWorkerClient";
 
 export type { VadAudioResult } from "../core/transcription/vadTrim";
-
-export async function prewarmVad(): Promise<void> {
-  await prewarmVadModel();
-}
 
 /**
  * Post-hoc VAD: runs the Silero model over the entire captured clip after
@@ -47,55 +35,28 @@ export async function trimCapturedAudioWithVad(
     );
   }
 
-  const vad = await resolveVadModel(VAD_INIT_TIMEOUT_MS, audio.durationMs);
-  const startedAt = performance.now();
-  const timeoutMs = getVadTimeoutMs(audio.durationMs);
-  const segments: VadSpeechSegment[] = [];
-  const floatAudio = pcm16ToFloat32(audio.pcm16);
-  const segmentStream = vad.run(floatAudio, CAPTURED_AUDIO_SAMPLE_RATE_HZ);
-  const iterator = segmentStream[Symbol.asyncIterator]();
+  const worker = createVadWorkerClient();
 
   try {
-    let done = false;
-    while (!done) {
-      const remainingMs = timeoutMs - (performance.now() - startedAt);
-      if (remainingMs <= 0) {
-        throw createVadTimeoutError(timeoutMs, audio.durationMs);
-      }
+    await worker.ready();
+    const startedAt = performance.now();
+    const segments: VadSpeechSegment[] = await worker.runClip(
+      pcm16ToFloat32(audio.pcm16),
+      CAPTURED_AUDIO_SAMPLE_RATE_HZ,
+      getVadTimeoutMs(audio.durationMs),
+    );
+    const result = trimCapturedAudioToSpeech(audio, segments, {
+      preSpeechPadMs: VAD_PRE_SPEECH_PAD_MS,
+      redemptionMs: VAD_REDEMPTION_MS,
+    });
 
-      const next = await nextVadSegmentWithTimeout(
-        iterator,
-        remainingMs,
-        timeoutMs,
-        audio.durationMs,
-      );
-      done = Boolean(next.done);
-      if (done) break;
-
-      segments.push({
-        startMs: next.value.start,
-        endMs: next.value.end,
-      });
-    }
-  } catch (error) {
-    invalidateVadModel();
-    try {
-      void iterator.return?.(undefined as never);
-    } catch {
-      // Ignore cleanup failures after a timed-out VAD pass.
-    }
-    throw error;
+    return {
+      ...result,
+      vadMs: Math.round(performance.now() - startedAt),
+    };
+  } finally {
+    worker.dispose();
   }
-
-  const result = trimCapturedAudioToSpeech(audio, segments, {
-    preSpeechPadMs: VAD_PRE_SPEECH_PAD_MS,
-    redemptionMs: VAD_REDEMPTION_MS,
-  });
-
-  return {
-    ...result,
-    vadMs: Math.round(performance.now() - startedAt),
-  };
 }
 
 function getVadTimeoutMs(audioDurationMs: number): number {
@@ -104,22 +65,3 @@ function getVadTimeoutMs(audioDurationMs: number): number {
     Math.min(VAD_MAX_TIMEOUT_MS, Math.max(VAD_MIN_TIMEOUT_MS, scaled)),
   );
 }
-
-function nextVadSegmentWithTimeout<T>(
-  iterator: AsyncIterator<T>,
-  timeoutMs: number,
-  totalTimeoutMs: number,
-  audioDurationMs: number,
-): Promise<IteratorResult<T>> {
-  return withVadTimeout(
-    iterator.next(),
-    timeoutMs,
-    totalTimeoutMs,
-    audioDurationMs,
-    "processing",
-  );
-}
-
-// Re-exported so downstream modules that only care about "is there a VAD
-// instance available" don't need to import vadModel.ts directly.
-export type { NonRealTimeVadInstance };
