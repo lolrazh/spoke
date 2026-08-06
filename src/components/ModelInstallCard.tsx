@@ -5,6 +5,7 @@ import { Button } from "./ui/button";
 import SettingsCard, { CardTrailing } from "./SettingsCard";
 import IconButton from "./ui/IconButton";
 import ProgressRing from "./ui/ProgressRing";
+import Spinner from "./ui/Spinner";
 import { glyphForFamily } from "./ModelGlyph";
 import { DownloadGlyph } from "./SettingsPanel";
 
@@ -79,6 +80,8 @@ interface ModelInstallCardProps {
   status: ModelStatus;
   isActive: boolean;
   loaded: boolean;
+  activationLocked?: boolean;
+  isActivating?: boolean;
   onInstall: () => void;
   onRemove: () => void;
   onCancel: () => void;
@@ -110,6 +113,8 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
   status,
   isActive,
   loaded,
+  activationLocked = false,
+  isActivating = false,
   onInstall,
   onRemove,
   onCancel,
@@ -120,7 +125,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
   // clicking a ready-but-inactive row activates it. The active row is a no-op,
   // and busy/broken rows defer to their inline controls. Only attach the click
   // once `loaded` so we never react before the real status resolves.
-  const rowClick = !loaded
+  const rowClick = !loaded || activationLocked
     ? undefined
     : status.state === "not_installed"
       ? onInstall
@@ -132,12 +137,12 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
     <SettingsCard
       title={info.displayName}
       titleAccessory={info.isDefault ? <RecommendedBadge /> : undefined}
-      description={describe(info, status)}
+      description={isActivating ? "Loading model…" : describe(info, status)}
       icon={glyphForFamily(info.family)}
       inGroup={inGroup}
       // Every loaded card highlights on hover for visual consistency; this is
       // decoupled from clickability, so the active (inert) row still lights up.
-      interactive={loaded}
+      interactive={loaded && !activationLocked}
       onClick={rowClick}
     >
       <div className="ml-2 flex items-center justify-end">
@@ -182,7 +187,19 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               <CardTrailing
                 primary={
                   <AnimatePresence mode="popLayout" initial={false}>
-                    {status.state === "ready" ? (
+                    {isActivating ? (
+                      <m.span
+                        key="activating"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="inline-flex"
+                        role="status"
+                        aria-label="Loading model"
+                      >
+                        <Spinner />
+                      </m.span>
+                    ) : status.state === "ready" ? (
                       <m.span
                         key="check"
                         initial={{ opacity: 0 }}
@@ -220,7 +237,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                   </AnimatePresence>
                 }
                 action={
-                  status.state === "ready" ? (
+                  status.state === "ready" && !activationLocked ? (
                     <TrashAction
                       onClick={onRemove}
                       title="Uninstall"
