@@ -393,6 +393,18 @@ describe("localSttLifecycle", () => {
     expect(mocks.setActiveModelId).not.toHaveBeenCalled();
   });
 
+  it("persists a ready model without touching the sidecar for a cloud provider", async () => {
+    mocks.isPreferredProviderLocal.mockReturnValue(false);
+    const { setActiveModelAndResync } = await importLifecycle();
+
+    await setActiveModelAndResync("model-b");
+
+    expect(mocks.setActiveModelId).toHaveBeenCalledWith("model-b");
+    expect(mocks.killSidecar).not.toHaveBeenCalled();
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    expect(mocks.setAutoRestart).not.toHaveBeenCalled();
+  });
+
   it("rechecks target readiness after stopping before spawning or persisting", async () => {
     let targetReady = true;
     mocks.getModelInstallState.mockImplementation((modelId?: string) =>

@@ -269,7 +269,9 @@ export async function removeLocalModelAndStopSidecar(
 }
 
 /**
- * Switch the active model and restart the sidecar so the new family is loaded.
+ * Switch the active model and resync the sidecar when the local provider is
+ * selected so the new model family is loaded. Cloud provider selection still
+ * persists a ready local model, but does not touch the local sidecar.
  *
  * The whole transition is serialized: an active request drains, the old PID
  * exits, and only the latest selected model is then allowed to start. This
@@ -278,9 +280,8 @@ export async function removeLocalModelAndStopSidecar(
  */
 export async function setActiveModelAndResync(modelId: string): Promise<void> {
   latestRequestedModelId = modelId;
-  const isTargetReady = () =>
-    isPreferredProviderLocal() && getModelInstallState(modelId) === "ready";
-  const stalePrewarmStop = isTargetReady()
+  const isTargetReady = () => getModelInstallState(modelId) === "ready";
+  const stalePrewarmStop = isTargetReady() && isPreferredProviderLocal()
     ? cancelPendingPrewarm()
     : Promise.resolve();
   await enqueueLifecycle(async () => {
@@ -290,17 +291,29 @@ export async function setActiveModelAndResync(modelId: string): Promise<void> {
     // Validate before touching the current sidecar; a direct IPC call or a
     // removal race must not leave the old process stopped for an unready model.
     if (latestRequestedModelId !== modelId || !isTargetReady()) return;
+    if (!isPreferredProviderLocal()) {
+      setActiveModelId(modelId);
+      return;
+    }
     clearIdleTimer();
     setAutoRestart(false);
     await killSidecar();
     // Recheck after shutdown as the model can be removed while the old
     // process drains. Do not spawn or persist a now-invalid selection.
     if (latestRequestedModelId !== modelId || !isTargetReady()) return;
+    if (!isPreferredProviderLocal()) {
+      setActiveModelId(modelId);
+      return;
+    }
     await ensureLocalSidecarRunningOnce(modelId);
     // Persist only after the replacement is running and readiness still holds.
     // If spawn throws, the previous model remains selected and the renderer
     // refreshes back to truthful state.
-    if (latestRequestedModelId === modelId && isTargetReady()) {
+    if (
+      latestRequestedModelId === modelId &&
+      isTargetReady() &&
+      isPreferredProviderLocal()
+    ) {
       setActiveModelId(modelId);
     }
   });
