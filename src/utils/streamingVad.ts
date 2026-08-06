@@ -10,9 +10,9 @@
  * needed. If speech is still active (or the model hasn't caught up yet), we
  * keep capturing until it settles, capped at POST_ROLL_MS.
  *
- * The worker owns both onnxruntime-web and its WASM heap. A successful finish
- * returns it to a short-lived warm pool so the next dictation can skip model
- * initialization; cancellation and failures still terminate it immediately.
+ * The worker owns both onnxruntime-web and its WASM heap. Each session owns
+ * one worker and terminates it when the session finishes or is cancelled, so
+ * no worker state or model memory is shared between recordings.
  */
 import { pcm16ToFloat32, type CapturedAudio } from "../core/transcription/capturedAudio";
 import {
@@ -24,7 +24,7 @@ import {
   VAD_PRE_SPEECH_PAD_MS,
   VAD_REDEMPTION_MS,
 } from "../config/vad";
-import { createVadWorkerClient, type VadWorkerClient } from "./vadWorkerClient";
+import { createVadWorkerClient } from "./vadWorkerClient";
 import type { VadWorkerEvent } from "./vadWorkerProtocol";
 import { createLogger } from "./logger";
 
@@ -37,76 +37,6 @@ const log = createLogger("StreamingVAD");
 const MODEL_FRAME_SAMPLES = 1536;
 const MODEL_SAMPLES_PER_MS = 16; // 16,000 Hz / 1000 ms
 const QUIET_POLL_INTERVAL_MS = 20;
-export const STREAMING_VAD_WORKER_IDLE_TIMEOUT_MS = 5_000;
-
-type VadWorkerLease = {
-  client: VadWorkerClient;
-  reusable: boolean;
-};
-
-let pooledVadWorker: VadWorkerClient | null = null;
-let pooledVadWorkerInUse = false;
-let pooledVadWorkerIdleTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearPooledVadWorkerIdleTimer(): void {
-  if (!pooledVadWorkerIdleTimer) return;
-  clearTimeout(pooledVadWorkerIdleTimer);
-  pooledVadWorkerIdleTimer = null;
-}
-
-function acquireVadWorker(): VadWorkerLease {
-  if (pooledVadWorker && !pooledVadWorkerInUse) {
-    clearPooledVadWorkerIdleTimer();
-    pooledVadWorkerInUse = true;
-    return { client: pooledVadWorker, reusable: true };
-  }
-
-  if (!pooledVadWorker) {
-    pooledVadWorker = createVadWorkerClient();
-    pooledVadWorkerInUse = true;
-    return { client: pooledVadWorker, reusable: true };
-  }
-
-  // A second active recording gets an isolated worker. The normal PTT path
-  // has one session at a time, but this keeps overlapping sessions from
-  // sharing frame state or stealing the warm worker's lease.
-  return { client: createVadWorkerClient(), reusable: false };
-}
-
-function releaseVadWorker(lease: VadWorkerLease): void {
-  if (!lease.reusable || pooledVadWorker !== lease.client) {
-    lease.client.dispose();
-    return;
-  }
-
-  pooledVadWorkerInUse = false;
-  clearPooledVadWorkerIdleTimer();
-  pooledVadWorkerIdleTimer = setTimeout(() => {
-    pooledVadWorkerIdleTimer = null;
-    if (pooledVadWorker !== lease.client || pooledVadWorkerInUse) return;
-    pooledVadWorker = null;
-    lease.client.dispose();
-  }, STREAMING_VAD_WORKER_IDLE_TIMEOUT_MS);
-  (pooledVadWorkerIdleTimer as unknown as { unref?: () => void }).unref?.();
-}
-
-function disposeVadWorker(lease: VadWorkerLease): void {
-  if (lease.reusable && pooledVadWorker === lease.client) {
-    pooledVadWorker = null;
-    pooledVadWorkerInUse = false;
-    clearPooledVadWorkerIdleTimer();
-  }
-  lease.client.dispose();
-}
-
-/** Terminates the warm worker pool, primarily for renderer/app teardown. */
-export function disposeStreamingVadWorkerPool(): void {
-  clearPooledVadWorkerIdleTimer();
-  const worker = pooledVadWorker;
-  pooledVadWorker = null;
-  pooledVadWorkerInUse = false;
-  worker?.dispose();
-}
 
 type SessionStatus = "pending" | "ready" | "failed";
 
@@ -153,8 +83,7 @@ export function createStreamingVadSession(
 
 class StreamingVadSession implements StreamingVadSessionHandle {
   private status: SessionStatus = "pending";
-  private readonly workerLease = acquireVadWorker();
-  private readonly worker: VadWorkerClient = this.workerLease.client;
+  private readonly worker = createVadWorkerClient();
   private processingQueue: Promise<void> = Promise.resolve();
   private disposed = false;
   private workerReleased = false;
@@ -355,7 +284,6 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     if (this.disposed) return null;
     this.disposed = true;
     const startedAt = performance.now();
-    let reusable = false;
 
     try {
       // Await the single init attempt kicked off in the constructor. The
@@ -368,7 +296,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       this.drainPendingWindows();
       const finalFrameIndex = this.frameIndex;
       await this.processingQueue;
-      if (this.cancelled) return null;
+      if (this.cancelled || this.status !== "ready") return null;
       const events = await this.worker.finish(Math.max(0, finalFrameIndex - 1));
       if (this.cancelled) return null;
       for (const event of events) this.handleEvent(event);
@@ -377,7 +305,6 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         preSpeechPadMs: this.preSpeechPadMs,
         redemptionMs: this.redemptionMs,
       });
-      reusable = true;
 
       return {
         ...result,
@@ -393,8 +320,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       this.status = "failed";
       return null;
     } finally {
-      if (reusable) this.releaseWorker();
-      else this.disposeWorker();
+      this.disposeWorker();
     }
   }
 
@@ -407,15 +333,9 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     this.disposeWorker();
   }
 
-  private releaseWorker(): void {
-    if (this.workerReleased) return;
-    this.workerReleased = true;
-    releaseVadWorker(this.workerLease);
-  }
-
   private disposeWorker(): void {
     if (this.workerReleased) return;
     this.workerReleased = true;
-    disposeVadWorker(this.workerLease);
+    this.worker.dispose();
   }
 }

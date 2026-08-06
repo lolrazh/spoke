@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Message } from "@ricky0123/vad-web";
-import {
-  createStreamingVadSession,
-  disposeStreamingVadWorkerPool,
-  STREAMING_VAD_WORKER_IDLE_TIMEOUT_MS,
-} from "./streamingVad";
+import { createStreamingVadSession } from "./streamingVad";
 import type { VadWorkerClient } from "./vadWorkerClient";
 import type { VadWorkerEvent } from "./vadWorkerProtocol";
 import {
@@ -120,7 +116,6 @@ describe("streamingVad", () => {
   });
 
   afterEach(() => {
-    disposeStreamingVadWorkerPool();
     vi.restoreAllMocks();
   });
 
@@ -198,7 +193,7 @@ describe("streamingVad", () => {
     // Resampler.stream() dropping a trailing partial frame in the post-hoc
     // path), so no further process() call happens at flush time.
     expect(fp.process).toHaveBeenCalledTimes(1);
-    expect(worker.dispose).not.toHaveBeenCalled();
+    expect(worker.dispose).toHaveBeenCalledOnce();
   });
 
   it("marks itself unusable when the model fails to load, and finish() returns null", async () => {
@@ -222,27 +217,35 @@ describe("streamingVad", () => {
     expect(worker.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("reuses a successfully finished worker for the next session", async () => {
-    const fp = createManualFrameProcessor();
-    const worker = useFrameProcessor(fp);
+  it("creates and terminates a new worker for each sequential session", async () => {
+    const firstWorker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    const secondWorker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    mocks.createVadWorkerClient
+      .mockReturnValueOnce(firstWorker)
+      .mockReturnValueOnce(secondWorker);
     const audio = createCapturedAudio(new Int16Array(1600));
 
     const first = createStreamingVadSession();
     await flush();
     await first.finish(audio);
 
-    expect(worker.dispose).not.toHaveBeenCalled();
+    expect(firstWorker.dispose).toHaveBeenCalledOnce();
 
     const second = createStreamingVadSession();
     await flush();
 
-    expect(mocks.createVadWorkerClient).toHaveBeenCalledOnce();
+    expect(mocks.createVadWorkerClient).toHaveBeenCalledTimes(2);
     await second.finish(audio);
+    expect(secondWorker.dispose).toHaveBeenCalledOnce();
   });
 
-  it("terminates an in-flight finish instead of returning its worker warm", async () => {
+  it("returns null when cancellation races with finish and never reuses the worker", async () => {
     const fp = createManualFrameProcessor();
-    const worker = useFrameProcessor(fp);
+    const worker = createWorkerForFrameProcessor(fp);
+    const replacement = createWorkerForFrameProcessor(createManualFrameProcessor());
+    mocks.createVadWorkerClient
+      .mockReturnValueOnce(worker)
+      .mockReturnValueOnce(replacement);
     let resolveFinish = (_events: VadWorkerEvent[]): void => {};
     worker.finish = vi.fn((_frameIndex: number): Promise<VadWorkerEvent[]> =>
       new Promise((resolve) => {
@@ -264,43 +267,20 @@ describe("streamingVad", () => {
     resolveFinish([]);
     await expect(finishing).resolves.toBeNull();
 
-    const replacement = createStreamingVadSession();
+    const replacementSession = createStreamingVadSession();
     expect(mocks.createVadWorkerClient).toHaveBeenCalledTimes(2);
-    replacement.dispose();
+    expect(mocks.createVadWorkerClient).toHaveBeenNthCalledWith(2);
+    replacementSession.dispose();
+    expect(replacement.dispose).toHaveBeenCalledOnce();
   });
 
-  it("evicts the warm worker after its idle timeout", async () => {
-    vi.useFakeTimers();
-    try {
-      const fp = createManualFrameProcessor();
-      const worker = useFrameProcessor(fp);
-      const audio = createCapturedAudio(new Int16Array(1600));
-
-      const first = createStreamingVadSession();
-      await flush();
-      await first.finish(audio);
-
-      await vi.advanceTimersByTimeAsync(
-        STREAMING_VAD_WORKER_IDLE_TIMEOUT_MS,
-      );
-      expect(worker.dispose).toHaveBeenCalledOnce();
-
-      const second = createStreamingVadSession();
-      await flush();
-
-      expect(mocks.createVadWorkerClient).toHaveBeenCalledTimes(2);
-      second.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("stops accepting frames once disposed", async () => {
+  it("terminates a cancelled worker exactly once and stops accepting frames", async () => {
     const fp = createManualFrameProcessor();
     const worker = useFrameProcessor(fp);
 
     const session = createStreamingVadSession();
     await flush();
+    session.dispose();
     session.dispose();
 
     session.pushFrame(new Int16Array(1536));
@@ -308,6 +288,34 @@ describe("streamingVad", () => {
 
     expect(fp.process).not.toHaveBeenCalled();
     expect(worker.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("terminates the worker when frame processing fails", async () => {
+    const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    worker.processFrame = vi.fn().mockRejectedValue(new Error("process failed"));
+    mocks.createVadWorkerClient.mockReturnValue(worker);
+
+    const session = createStreamingVadSession();
+    await flush();
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    expect(worker.dispose).toHaveBeenCalledOnce();
+    await expect(session.finish(createCapturedAudio(new Int16Array(1600)))).resolves.toBeNull();
+    expect(worker.finish).not.toHaveBeenCalled();
+    expect(worker.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("terminates the worker when finalization fails", async () => {
+    const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    worker.finish = vi.fn().mockRejectedValue(new Error("finish failed"));
+    mocks.createVadWorkerClient.mockReturnValue(worker);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    await expect(session.finish(createCapturedAudio(new Int16Array(1600)))).resolves.toBeNull();
+    expect(worker.dispose).toHaveBeenCalledOnce();
   });
 
   describe("adaptive post-roll decision (waitForQuiet)", () => {
