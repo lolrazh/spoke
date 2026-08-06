@@ -2,6 +2,7 @@ import type { LocalTranscribeResult } from "../types/shared";
 import { isPreferredProviderLocal } from "./providerStore";
 import {
   getActiveModelId,
+  getModelStatus,
   getModelInstallState,
   installModel,
   removeModel,
@@ -17,7 +18,9 @@ import {
 } from "./sidecarEngine";
 import { bootTimeline } from "./bootTimeline";
 import { correctTranscript } from "./dictionaryCorrection";
+import { getVocabularyDictionary } from "./vocabularyService";
 import { state } from "./windowState";
+import { buildSTTPrompt } from "../../shared/sttPrompt";
 
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
@@ -30,6 +33,24 @@ export const SIDECAR_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 let prewarmInFlight: Promise<void> | null = null;
 let idleTimer: NodeJS.Timeout | null = null;
 let transcriptionsInFlight = 0;
+
+function buildWhisperPrompt(prompt?: string): string | undefined {
+  if (getModelStatus().family !== "whisper") {
+    return undefined;
+  }
+
+  const dictionary = getVocabularyDictionary();
+  // Preserve the old no-metadata request when neither the caller nor the
+  // dictionary has anything to add.
+  if (!prompt && dictionary.length === 0) {
+    return undefined;
+  }
+
+  return buildSTTPrompt({
+    basePrompt: prompt,
+    extraVocab: dictionary,
+  });
+}
 
 function clearIdleTimer(): void {
   if (idleTimer) {
@@ -188,7 +209,10 @@ export async function transcribeWithLocalSidecar(
   // guard blocks the stop.
   armIdleTimer();
   try {
-    const result = await transcribeLocal(pcmBuffer, prompt);
+    const result = await transcribeLocal(
+      pcmBuffer,
+      buildWhisperPrompt(prompt),
+    );
     const dictionary = state.appPreferences.vocabularyDictionary ?? [];
     return { ...result, text: correctTranscript(result.text, dictionary) };
   } finally {

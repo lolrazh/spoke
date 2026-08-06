@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getActiveModelId: vi.fn(),
+  getModelStatus: vi.fn(),
   getModelInstallState: vi.fn(),
   installModel: vi.fn(),
   removeModel: vi.fn(),
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./modelManager", () => ({
   getActiveModelId: mocks.getActiveModelId,
+  getModelStatus: mocks.getModelStatus,
   getModelInstallState: mocks.getModelInstallState,
   installModel: mocks.installModel,
   removeModel: mocks.removeModel,
@@ -45,6 +47,7 @@ describe("localSttLifecycle", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    mocks.getModelStatus.mockReturnValue({ family: "whisper" });
     mocks.getModelInstallState.mockReturnValue("ready");
     mocks.installModel.mockResolvedValue(undefined);
     mocks.removeModel.mockResolvedValue(undefined);
@@ -90,6 +93,38 @@ describe("localSttLifecycle", () => {
     await transcribeWithLocalSidecar(pcmBuffer, prompt);
 
     expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer, prompt);
+  });
+
+  it("adds the saved dictionary to the Whisper prompt", async () => {
+    mocks.state.appPreferences = {
+      vocabularyDictionary: ["GitHub", "MacBook Pro"],
+    };
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const pcmBuffer = Buffer.from([1, 2, 3]);
+    const prompt = "Your vocabulary includes: Spoke";
+
+    await transcribeWithLocalSidecar(pcmBuffer, prompt);
+
+    expect(mocks.transcribeLocal).toHaveBeenCalledWith(
+      pcmBuffer,
+      "Your vocabulary includes: Spoke, GitHub, MacBook Pro",
+    );
+  });
+
+  it("does not pass a prompt to non-Whisper local models", async () => {
+    mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
+    mocks.state.appPreferences = {
+      vocabularyDictionary: ["GitHub"],
+    };
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const pcmBuffer = Buffer.from([1, 2, 3]);
+
+    await transcribeWithLocalSidecar(
+      pcmBuffer,
+      "Your vocabulary includes: Spoke, OCRWord",
+    );
+
+    expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer, undefined);
   });
 
   it("applies dictionary correction to the transcript", async () => {
