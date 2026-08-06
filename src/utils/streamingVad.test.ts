@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Message } from "@ricky0123/vad-web";
-import { createStreamingVadSession } from "./streamingVad";
+import {
+  createStreamingVadSession,
+  disposeStreamingVadWorkerPool,
+  STREAMING_VAD_WORKER_IDLE_TIMEOUT_MS,
+} from "./streamingVad";
 import type { VadWorkerClient } from "./vadWorkerClient";
 import {
   createCapturedAudio,
@@ -115,6 +119,7 @@ describe("streamingVad", () => {
   });
 
   afterEach(() => {
+    disposeStreamingVadWorkerPool();
     vi.restoreAllMocks();
   });
 
@@ -192,7 +197,7 @@ describe("streamingVad", () => {
     // Resampler.stream() dropping a trailing partial frame in the post-hoc
     // path), so no further process() call happens at flush time.
     expect(fp.process).toHaveBeenCalledTimes(1);
-    expect(worker.dispose).toHaveBeenCalledTimes(1);
+    expect(worker.dispose).not.toHaveBeenCalled();
   });
 
   it("marks itself unusable when the model fails to load, and finish() returns null", async () => {
@@ -214,6 +219,50 @@ describe("streamingVad", () => {
     const result = await session.finish(createCapturedAudio(new Int16Array(1600)));
     expect(result).toBeNull();
     expect(worker.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses a successfully finished worker for the next session", async () => {
+    const fp = createManualFrameProcessor();
+    const worker = useFrameProcessor(fp);
+    const audio = createCapturedAudio(new Int16Array(1600));
+
+    const first = createStreamingVadSession();
+    await flush();
+    await first.finish(audio);
+
+    expect(worker.dispose).not.toHaveBeenCalled();
+
+    const second = createStreamingVadSession();
+    await flush();
+
+    expect(mocks.createVadWorkerClient).toHaveBeenCalledOnce();
+    await second.finish(audio);
+  });
+
+  it("evicts the warm worker after its idle timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const fp = createManualFrameProcessor();
+      const worker = useFrameProcessor(fp);
+      const audio = createCapturedAudio(new Int16Array(1600));
+
+      const first = createStreamingVadSession();
+      await flush();
+      await first.finish(audio);
+
+      await vi.advanceTimersByTimeAsync(
+        STREAMING_VAD_WORKER_IDLE_TIMEOUT_MS,
+      );
+      expect(worker.dispose).toHaveBeenCalledOnce();
+
+      const second = createStreamingVadSession();
+      await flush();
+
+      expect(mocks.createVadWorkerClient).toHaveBeenCalledTimes(2);
+      second.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stops accepting frames once disposed", async () => {
