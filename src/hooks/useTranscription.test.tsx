@@ -596,7 +596,9 @@ describe("useTranscription", () => {
     const latencyCall = consoleInfoSpy.mock.calls.find(
       (call) => call[0] === "[Latency]",
     );
-    const payload = latencyCall?.[2] as { post_roll_ms: number } | undefined;
+    const payload = latencyCall?.[2]
+      ? (JSON.parse(String(latencyCall[2])) as { post_roll_ms: number })
+      : undefined;
     expect(payload?.post_roll_ms).toBeLessThan(50);
     consoleInfoSpy.mockRestore();
   });

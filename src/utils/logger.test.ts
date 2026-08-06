@@ -26,4 +26,15 @@ describe("logger", () => {
     expect(console.warn).toHaveBeenCalledWith("[TestScope]", "warned");
     expect(console.error).toHaveBeenCalledWith("[TestScope]", "failed");
   });
+
+  it("serializes structured arguments before they cross the console boundary", () => {
+    const log = createLogger("TestScope");
+    log.info("Transcription", { post_roll_ms: 12, status: "done" });
+
+    expect(console.info).toHaveBeenCalledWith(
+      "[TestScope]",
+      "Transcription",
+      '{"post_roll_ms":12,"status":"done"}',
+    );
+  });
 });
