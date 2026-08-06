@@ -6,6 +6,7 @@ import {
   STREAMING_VAD_WORKER_IDLE_TIMEOUT_MS,
 } from "./streamingVad";
 import type { VadWorkerClient } from "./vadWorkerClient";
+import type { VadWorkerEvent } from "./vadWorkerProtocol";
 import {
   createCapturedAudio,
   pcm16ToFloat32,
@@ -242,12 +243,11 @@ describe("streamingVad", () => {
   it("terminates an in-flight finish instead of returning its worker warm", async () => {
     const fp = createManualFrameProcessor();
     const worker = useFrameProcessor(fp);
-    let resolveFinish: ((events: never[]) => void) | null = null;
-    worker.finish = vi.fn(
-      () =>
-        new Promise((resolve) => {
-          resolveFinish = resolve as (events: never[]) => void;
-        }),
+    let resolveFinish = (_events: VadWorkerEvent[]): void => {};
+    worker.finish = vi.fn((_frameIndex: number): Promise<VadWorkerEvent[]> =>
+      new Promise((resolve) => {
+        resolveFinish = resolve;
+      }),
     );
     const audio = createCapturedAudio(new Int16Array(1600));
     const session = createStreamingVadSession();
@@ -261,7 +261,7 @@ describe("streamingVad", () => {
     session.dispose();
     expect(worker.dispose).toHaveBeenCalledTimes(1);
 
-    resolveFinish?.([]);
+    resolveFinish([]);
     await expect(finishing).resolves.toBeNull();
 
     const replacement = createStreamingVadSession();
