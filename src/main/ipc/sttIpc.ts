@@ -74,7 +74,6 @@ export function registerSttIpc(): void {
 
   ipcMain.handle("stt:set-active-model", async (_event, modelId: string) => {
     await setActiveModelAndResync(modelId);
-    scheduleLocalSidecarPrewarm("active-model-change", 250);
   });
 
   ipcMain.handle("stt:prewarm-local", () => {

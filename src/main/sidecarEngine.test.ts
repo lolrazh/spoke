@@ -82,6 +82,46 @@ describe("sidecarEngine", () => {
     expect(mocks.spawn).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a different model while the current model is still starting", async () => {
+    const proc = createSidecarProcess();
+    mocks.spawn.mockReturnValue(proc);
+    const { spawnSidecar } = await importEngine();
+
+    const startup = spawnSidecar("model-a");
+    await expect(spawnSidecar("model-b")).rejects.toThrow(
+      "still stopping or starting",
+    );
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+    proc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+    await startup;
+  });
+
+  it("does not permit a replacement spawn until the old process exits", async () => {
+    const oldProc = createSidecarProcess();
+    const replacementProc = createSidecarProcess(54321);
+    mocks.spawn.mockReturnValueOnce(oldProc).mockReturnValueOnce(replacementProc);
+    const { killSidecar, spawnSidecar } = await importEngine();
+
+    const startup = spawnSidecar("model-a");
+    oldProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+    await startup;
+
+    const stopping = killSidecar();
+    await expect(spawnSidecar("model-b")).rejects.toThrow(
+      "must exit before",
+    );
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+    oldProc.emit("exit", 0);
+    await stopping;
+    const replacement = spawnSidecar("model-b");
+    replacementProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+    await replacement;
+
+    expect(mocks.spawn).toHaveBeenCalledTimes(2);
+  });
+
   it("clears the shared spawn promise after startup failure", async () => {
     const failedProc = createSidecarProcess();
     const readyProc = createSidecarProcess();

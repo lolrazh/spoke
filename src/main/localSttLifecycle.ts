@@ -9,6 +9,7 @@ import {
   setActiveModelId,
 } from "./modelManager";
 import {
+  getSidecarModelId,
   isSidecarRunning,
   abortLocalTranscription as abortSidecarTranscription,
   killSidecar,
@@ -30,12 +31,16 @@ export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
 // key-down re-warms it so the user rarely feels the cold start.
 export const SIDECAR_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
-let prewarmInFlight: Promise<void> | null = null;
 let idleTimer: NodeJS.Timeout | null = null;
 let transcriptionsInFlight = 0;
+let lifecycleQueue: Promise<void> = Promise.resolve();
+const transcriptionDrainWaiters = new Set<() => void>();
 
-function buildWhisperPrompt(prompt?: string): string | undefined {
-  if (getModelStatus().family !== "whisper") {
+function buildWhisperPrompt(
+  modelId: string,
+  prompt?: string,
+): string | undefined {
+  if (getModelStatus(modelId).family !== "whisper") {
     return undefined;
   }
 
@@ -50,6 +55,27 @@ function buildWhisperPrompt(prompt?: string): string | undefined {
     basePrompt: prompt,
     extraVocab: dictionary,
   });
+}
+
+function enqueueLifecycle<T>(operation: () => Promise<T>): Promise<T> {
+  const queued = lifecycleQueue.then(operation, operation);
+  lifecycleQueue = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queued;
+}
+
+function waitForTranscriptionsToDrain(): Promise<void> {
+  if (transcriptionsInFlight === 0) return Promise.resolve();
+  return new Promise((resolve) => transcriptionDrainWaiters.add(resolve));
+}
+
+function releaseTranscriptionLease(): void {
+  transcriptionsInFlight = Math.max(0, transcriptionsInFlight - 1);
+  if (transcriptionsInFlight !== 0) return;
+  for (const resolve of transcriptionDrainWaiters) resolve();
+  transcriptionDrainWaiters.clear();
 }
 
 function clearIdleTimer(): void {
@@ -77,62 +103,65 @@ function armIdleTimer(): void {
     console.log("[STT] Stopping idle local sidecar after inactivity");
     // stopLocalSidecar disables auto-restart before killing, so the engine's
     // exit handler treats this as intentional and does not respawn.
-    stopLocalSidecar();
+    void stopLocalSidecar();
   }, SIDECAR_IDLE_TIMEOUT_MS);
   // Must not keep the process alive at quit.
   idleTimer.unref?.();
 }
 
-export async function ensureLocalSidecarRunning(): Promise<void> {
+async function ensureLocalSidecarRunningOnce(modelId: string): Promise<void> {
   if (getModelInstallState() !== "ready") {
     throw new Error(LOCAL_MODEL_NOT_INSTALLED_MESSAGE);
   }
 
+  if (isSidecarRunning() && getSidecarModelId() !== modelId) {
+    setAutoRestart(false);
+    await killSidecar();
+  }
+
   if (!isSidecarRunning()) {
-    await spawnSidecar();
+    await spawnSidecar(modelId);
   }
 
   setAutoRestart(true);
   armIdleTimer();
 }
 
+export async function ensureLocalSidecarRunning(): Promise<void> {
+  await enqueueLifecycle(() =>
+    ensureLocalSidecarRunningOnce(getActiveModelId()),
+  );
+}
+
 export function prewarmLocalSidecar(reason: string): void {
-  if (!isPreferredProviderLocal() || getModelInstallState() !== "ready") {
-    return;
-  }
+  void enqueueLifecycle(async () => {
+    if (!isPreferredProviderLocal() || getModelInstallState() !== "ready") {
+      return;
+    }
 
-  if (isSidecarRunning()) {
-    setAutoRestart(true);
-    // A fresh dictation intent resets the idle countdown.
-    armIdleTimer();
-    return;
-  }
-
-  if (prewarmInFlight) {
-    return;
-  }
-
-  console.log(`[STT] Prewarming local sidecar (${reason})`);
-  bootTimeline.mark("sidecar-prewarm:start", { reason });
-  prewarmInFlight = ensureLocalSidecarRunning()
-    .then(() => {
+    if (!isSidecarRunning()) {
+      console.log(`[STT] Prewarming local sidecar (${reason})`);
+      bootTimeline.mark("sidecar-prewarm:start", { reason });
+    }
+    try {
+      await ensureLocalSidecarRunningOnce(getActiveModelId());
       console.log(`[STT] Local sidecar prewarmed (${reason})`);
       bootTimeline.mark("sidecar-prewarm:ready", { reason });
-    })
-    .catch((err) => {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[STT] Local sidecar prewarm failed (${reason}): ${msg}`);
       bootTimeline.mark("sidecar-prewarm:failed", { reason, error: msg });
-    })
-    .finally(() => {
-      prewarmInFlight = null;
-    });
+    }
+  });
 }
 
-export function stopLocalSidecar(): void {
+export function stopLocalSidecar(): Promise<void> {
   clearIdleTimer();
   setAutoRestart(false);
-  killSidecar();
+  return enqueueLifecycle(async () => {
+    await waitForTranscriptionsToDrain();
+    await killSidecar();
+  });
 }
 
 /** Cancel uses this instead of merely invalidating renderer state. */
@@ -143,7 +172,7 @@ export function abortLocalSidecarTranscription(): void {
 
 export async function syncLocalSidecarForCurrentProvider(): Promise<void> {
   if (!isPreferredProviderLocal() || getModelInstallState() !== "ready") {
-    stopLocalSidecar();
+    await stopLocalSidecar();
   }
 }
 
@@ -172,7 +201,7 @@ export async function removeLocalModelAndStopSidecar(
   // Only disturb the running sidecar if we're removing the active model.
   const wasActive = !modelId || modelId === getActiveModelId();
   if (wasActive) {
-    stopLocalSidecar();
+    await stopLocalSidecar();
   }
   await removeModel(modelId);
   // removeModel may auto-promote a different installed model to active when the
@@ -187,36 +216,52 @@ export async function removeLocalModelAndStopSidecar(
 /**
  * Switch the active model and restart the sidecar so the new family is loaded.
  *
- * We deliberately only stop the old sidecar here and do NOT prewarm — the
- * `stt:set-active-model` IPC handler schedules a single delayed prewarm. Doing
- * both an immediate prewarm here and a scheduled one in the handler briefly ran
- * two sidecars from different families at once, each holding GPU/MLX memory
- * while the old process worked through its SIGKILL grace period. Consolidating
- * to the single scheduled prewarm guarantees at most one sidecar at a time.
+ * The whole transition is serialized: an active request drains, the old PID
+ * exits, and only the latest selected model is then allowed to start. This
+ * avoids both transient double-model residency and the stale-prewarm race that
+ * could leave no sidecar running after a rapid switch.
  */
 export async function setActiveModelAndResync(modelId: string): Promise<void> {
   setActiveModelId(modelId);
-  stopLocalSidecar();
+  clearIdleTimer();
+  setAutoRestart(false);
+  await enqueueLifecycle(async () => {
+    await waitForTranscriptionsToDrain();
+    // A later click superseded this transition while it waited in the queue.
+    if (getActiveModelId() !== modelId) return;
+    await killSidecar();
+    if (
+      getActiveModelId() === modelId &&
+      isPreferredProviderLocal() &&
+      getModelInstallState(modelId) === "ready"
+    ) {
+      await ensureLocalSidecarRunningOnce(modelId);
+    }
+  });
 }
 
 export async function transcribeWithLocalSidecar(
   pcmBuffer: Buffer,
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
-  await ensureLocalSidecarRunning();
-  transcriptionsInFlight++;
+  const modelId = await enqueueLifecycle(async () => {
+    const activeModelId = getActiveModelId();
+    await ensureLocalSidecarRunningOnce(activeModelId);
+    transcriptionsInFlight++;
+    return activeModelId;
+  });
   // Reset on request; if the timer somehow elapses mid-flight the in-flight
   // guard blocks the stop.
   armIdleTimer();
   try {
     const result = await transcribeLocal(
       pcmBuffer,
-      buildWhisperPrompt(prompt),
+      buildWhisperPrompt(modelId, prompt),
     );
     const dictionary = state.appPreferences.vocabularyDictionary ?? [];
     return { ...result, text: correctTranscript(result.text, dictionary) };
   } finally {
-    transcriptionsInFlight--;
+    releaseTranscriptionLease();
     // Reset on completion so idle time is measured from the last activity.
     armIdleTimer();
   }
