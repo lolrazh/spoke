@@ -133,7 +133,10 @@ function spawnSidecarOnce(modelId: string): Promise<void> {
     // unpacking/importing before the model load log appears.
     const timeout = setTimeout(() => {
       console.error("[STT] Sidecar timed out waiting for ready signal");
-      void killSidecar();
+      void killSidecar().catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[STT] Timed-out sidecar shutdown failed: ${message}`);
+      });
       settle(() => reject(new Error("Sidecar timed out loading model")));
     }, SIDECAR_STARTUP_TIMEOUT_MS);
 

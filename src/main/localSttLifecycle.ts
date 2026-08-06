@@ -43,6 +43,11 @@ let activePrewarm: {
 } | null = null;
 const transcriptionDrainWaiters = new Set<() => void>();
 
+function logSidecarShutdownFailure(context: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[STT] ${context}: ${message}`);
+}
+
 function buildWhisperPrompt(
   modelId: string,
   prompt?: string,
@@ -131,7 +136,9 @@ function armIdleTimer(): void {
     console.log("[STT] Stopping idle local sidecar after inactivity");
     // stopLocalSidecar disables auto-restart before killing, so the engine's
     // exit handler treats this as intentional and does not respawn.
-    void stopLocalSidecar();
+    void stopLocalSidecar().catch((error) =>
+      logSidecarShutdownFailure("Idle sidecar shutdown failed", error),
+    );
   }, SIDECAR_IDLE_TIMEOUT_MS);
   // Must not keep the process alive at quit.
   idleTimer.unref?.();

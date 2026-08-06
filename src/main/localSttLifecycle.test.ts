@@ -535,5 +535,22 @@ describe("localSttLifecycle", () => {
       expect(mocks.setAutoRestart).toHaveBeenLastCalledWith(false);
       expect(disableOrder).toBeLessThan(killOrder);
     });
+
+    it("logs an idle shutdown rejection instead of leaving it unhandled", async () => {
+      const errorSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      mocks.killSidecar.mockRejectedValueOnce(new Error("shutdown timeout"));
+      const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
+        await importLifecycle();
+
+      await transcribeWithLocalSidecar(Buffer.from([1]));
+      await vi.advanceTimersByTimeAsync(SIDECAR_IDLE_TIMEOUT_MS);
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[STT] Idle sidecar shutdown failed: shutdown timeout",
+      );
+      errorSpy.mockRestore();
+    });
   });
 });
