@@ -380,6 +380,36 @@ describe("localSttLifecycle", () => {
     expect(mocks.setActiveModelId).not.toHaveBeenCalled();
   });
 
+  it("does not stop or persist an unready model selection", async () => {
+    mocks.getModelInstallState.mockImplementation((modelId?: string) =>
+      modelId === "model-b" ? "not_installed" : "ready",
+    );
+    const { setActiveModelAndResync } = await importLifecycle();
+
+    await setActiveModelAndResync("model-b");
+
+    expect(mocks.killSidecar).not.toHaveBeenCalled();
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    expect(mocks.setActiveModelId).not.toHaveBeenCalled();
+  });
+
+  it("rechecks target readiness after stopping before spawning or persisting", async () => {
+    let targetReady = true;
+    mocks.getModelInstallState.mockImplementation((modelId?: string) =>
+      modelId === "model-b" ? (targetReady ? "ready" : "not_installed") : "ready",
+    );
+    mocks.killSidecar.mockImplementation(async () => {
+      targetReady = false;
+    });
+    const { setActiveModelAndResync } = await importLifecycle();
+
+    await setActiveModelAndResync("model-b");
+
+    expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    expect(mocks.setActiveModelId).not.toHaveBeenCalled();
+  });
+
   it("waits for an active transcription before replacing its model", async () => {
     let active = "model-a";
     let resolveTranscribe: (value: {

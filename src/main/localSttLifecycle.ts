@@ -271,25 +271,29 @@ export async function removeLocalModelAndStopSidecar(
  */
 export async function setActiveModelAndResync(modelId: string): Promise<void> {
   latestRequestedModelId = modelId;
-  clearIdleTimer();
-  setAutoRestart(false);
-  const stalePrewarmStop = cancelPendingPrewarm();
+  const isTargetReady = () =>
+    isPreferredProviderLocal() && getModelInstallState(modelId) === "ready";
+  const stalePrewarmStop = isTargetReady()
+    ? cancelPendingPrewarm()
+    : Promise.resolve();
   await enqueueLifecycle(async () => {
     await stalePrewarmStop;
     await waitForTranscriptionsToDrain();
     // A later click superseded this transition while it waited in the queue.
-    if (latestRequestedModelId !== modelId) return;
+    // Validate before touching the current sidecar; a direct IPC call or a
+    // removal race must not leave the old process stopped for an unready model.
+    if (latestRequestedModelId !== modelId || !isTargetReady()) return;
+    clearIdleTimer();
+    setAutoRestart(false);
     await killSidecar();
-    if (
-      latestRequestedModelId === modelId &&
-      isPreferredProviderLocal() &&
-      getModelInstallState(modelId) === "ready"
-    ) {
-      await ensureLocalSidecarRunningOnce(modelId);
-    }
-    // Persist only once readiness succeeds. If spawn throws, the previous
-    // model remains selected and the renderer refreshes back to truthful state.
-    if (latestRequestedModelId === modelId) {
+    // Recheck after shutdown as the model can be removed while the old
+    // process drains. Do not spawn or persist a now-invalid selection.
+    if (latestRequestedModelId !== modelId || !isTargetReady()) return;
+    await ensureLocalSidecarRunningOnce(modelId);
+    // Persist only after the replacement is running and readiness still holds.
+    // If spawn throws, the previous model remains selected and the renderer
+    // refreshes back to truthful state.
+    if (latestRequestedModelId === modelId && isTargetReady()) {
       setActiveModelId(modelId);
     }
   });
