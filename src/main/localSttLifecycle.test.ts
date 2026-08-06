@@ -315,6 +315,60 @@ describe("localSttLifecycle", () => {
     expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
   });
 
+  it("cancels an in-flight prewarm before switching models", async () => {
+    let rejectStartup: ((error: Error) => void) | null = null;
+    let active = "old-model";
+    mocks.getActiveModelId.mockImplementation(() => active);
+    mocks.setActiveModelId.mockImplementation((modelId: string) => {
+      active = modelId;
+    });
+    mocks.spawnSidecar.mockImplementation((modelId: string) => {
+      if (modelId === "old-model") {
+        return new Promise<void>((_resolve, reject) => {
+          rejectStartup = reject;
+        });
+      }
+      return Promise.resolve();
+    });
+    mocks.killSidecar.mockImplementation(async () => {
+      rejectStartup?.(new Error("prewarm cancelled"));
+      rejectStartup = null;
+    });
+    const { prewarmLocalSidecar, setActiveModelAndResync } =
+      await importLifecycle();
+
+    prewarmLocalSidecar("ptt-down");
+    await flushLifecycle();
+    expect(mocks.spawnSidecar).toHaveBeenCalledWith("old-model");
+
+    await setActiveModelAndResync("model-b");
+
+    expect(mocks.spawnSidecar.mock.calls.map(([modelId]) => modelId)).toEqual([
+      "old-model",
+      "model-b",
+    ]);
+    expect(mocks.killSidecar).toHaveBeenCalled();
+    expect(mocks.killSidecar.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.spawnSidecar.mock.invocationCallOrder[1],
+    );
+  });
+
+  it("skips a queued prewarm once a model switch is requested", async () => {
+    let active = "old-model";
+    mocks.getActiveModelId.mockImplementation(() => active);
+    mocks.setActiveModelId.mockImplementation((modelId: string) => {
+      active = modelId;
+    });
+    const { prewarmLocalSidecar, setActiveModelAndResync } =
+      await importLifecycle();
+
+    prewarmLocalSidecar("ptt-down");
+    await setActiveModelAndResync("model-b");
+
+    expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
+    expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
+  });
+
   it("keeps the previous model selected when the replacement fails to load", async () => {
     mocks.spawnSidecar.mockRejectedValue(new Error("model load failed"));
     const { setActiveModelAndResync } = await importLifecycle();

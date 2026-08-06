@@ -35,6 +35,12 @@ let idleTimer: NodeJS.Timeout | null = null;
 let transcriptionsInFlight = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
 let latestRequestedModelId: string | null = null;
+let prewarmGeneration = 0;
+let activePrewarm: {
+  generation: number;
+  cancelled: boolean;
+  stopPromise: Promise<void> | null;
+} | null = null;
 const transcriptionDrainWaiters = new Set<() => void>();
 
 function buildWhisperPrompt(
@@ -77,6 +83,27 @@ function releaseTranscriptionLease(): void {
   if (transcriptionsInFlight !== 0) return;
   for (const resolve of transcriptionDrainWaiters) resolve();
   transcriptionDrainWaiters.clear();
+}
+
+/**
+ * Invalidate a prewarm before a model transition enters the lifecycle queue.
+ *
+ * A prewarm can be waiting inside spawnSidecar() for the full startup timeout.
+ * Merely enqueueing the model transition behind it would first load the old
+ * model, then tear it down, and only then load the selected model. If startup
+ * is already in progress, stop it now; the transition waits for that stop
+ * before it is allowed to start a replacement.
+ */
+function cancelPendingPrewarm(): Promise<void> {
+  prewarmGeneration += 1;
+  const task = activePrewarm;
+  if (!task) return Promise.resolve();
+
+  task.cancelled = true;
+  if (!task.stopPromise) {
+    task.stopPromise = waitForTranscriptionsToDrain().then(() => killSidecar());
+  }
+  return task.stopPromise;
 }
 
 function clearIdleTimer(): void {
@@ -135,23 +162,41 @@ export async function ensureLocalSidecarRunning(): Promise<void> {
 }
 
 export function prewarmLocalSidecar(reason: string): void {
+  const generation = prewarmGeneration;
   void enqueueLifecycle(async () => {
-    if (!isPreferredProviderLocal() || getModelInstallState() !== "ready") {
+    if (generation !== prewarmGeneration) return;
+
+    const modelId = getActiveModelId();
+    if (
+      !isPreferredProviderLocal() ||
+      getModelInstallState(modelId) !== "ready"
+    ) {
       return;
     }
 
-    if (!isSidecarRunning()) {
-      console.log(`[STT] Prewarming local sidecar (${reason})`);
-      bootTimeline.mark("sidecar-prewarm:start", { reason });
-    }
+    const task = {
+      generation,
+      cancelled: false,
+      stopPromise: null as Promise<void> | null,
+    };
+    activePrewarm = task;
     try {
-      await ensureLocalSidecarRunningOnce(getActiveModelId());
+      if (task.cancelled || generation !== prewarmGeneration) return;
+      if (!isSidecarRunning()) {
+        console.log(`[STT] Prewarming local sidecar (${reason})`);
+        bootTimeline.mark("sidecar-prewarm:start", { reason });
+      }
+      await ensureLocalSidecarRunningOnce(modelId);
+      if (task.cancelled || generation !== prewarmGeneration) return;
       console.log(`[STT] Local sidecar prewarmed (${reason})`);
       bootTimeline.mark("sidecar-prewarm:ready", { reason });
     } catch (err) {
+      if (task.cancelled) return;
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[STT] Local sidecar prewarm failed (${reason}): ${msg}`);
       bootTimeline.mark("sidecar-prewarm:failed", { reason, error: msg });
+    } finally {
+      if (activePrewarm === task) activePrewarm = null;
     }
   });
 }
@@ -159,7 +204,9 @@ export function prewarmLocalSidecar(reason: string): void {
 export function stopLocalSidecar(): Promise<void> {
   clearIdleTimer();
   setAutoRestart(false);
+  const stalePrewarmStop = cancelPendingPrewarm();
   return enqueueLifecycle(async () => {
+    await stalePrewarmStop;
     await waitForTranscriptionsToDrain();
     await killSidecar();
   });
@@ -226,7 +273,9 @@ export async function setActiveModelAndResync(modelId: string): Promise<void> {
   latestRequestedModelId = modelId;
   clearIdleTimer();
   setAutoRestart(false);
+  const stalePrewarmStop = cancelPendingPrewarm();
   await enqueueLifecycle(async () => {
+    await stalePrewarmStop;
     await waitForTranscriptionsToDrain();
     // A later click superseded this transition while it waited in the queue.
     if (latestRequestedModelId !== modelId) return;
