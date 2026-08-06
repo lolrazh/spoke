@@ -209,6 +209,7 @@ describe("streamingVad", () => {
     await flush();
 
     expect(session.isUsable()).toBe(false);
+    expect(worker.dispose).toHaveBeenCalledTimes(1);
 
     const result = await session.finish(createCapturedAudio(new Int16Array(1600)));
     expect(result).toBeNull();

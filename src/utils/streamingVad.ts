@@ -86,6 +86,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private readonly worker: VadWorkerClient = createVadWorkerClient();
   private processingQueue: Promise<void> = Promise.resolve();
   private disposed = false;
+  private workerDisposed = false;
 
   // Persistent scratch for samples that don't yet fill a model window. Sized
   // for a full window (leftover is always < MODEL_FRAME_SAMPLES), so it's
@@ -139,6 +140,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       this.status = "failed";
       this.pendingWindows = [];
       this.queueDepth = 0;
+      this.disposeWorker();
       log.warn("Model init failed, streaming VAD unavailable:", error);
     }
   }
@@ -210,7 +212,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         for (const event of events) this.handleEvent(event);
       } catch (error) {
         this.status = "failed";
-        this.worker.dispose();
+        this.disposeWorker();
         log.warn("Streaming VAD frame processing failed:", error);
       } finally {
         this.queueDepth = Math.max(0, this.queueDepth - 1);
@@ -308,7 +310,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       this.status = "failed";
       return null;
     } finally {
-      this.worker.dispose();
+      this.disposeWorker();
     }
   }
 
@@ -318,6 +320,12 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     this.cancelled = true;
     this.pendingWindows = [];
     this.queueDepth = 0;
+    this.disposeWorker();
+  }
+
+  private disposeWorker(): void {
+    if (this.workerDisposed) return;
+    this.workerDisposed = true;
     this.worker.dispose();
   }
 }
