@@ -8,7 +8,11 @@ const originalResourcesPath = process.resourcesPath;
 
 vi.mock("electron", () => ({ app: electronApp }));
 
-import { getAudioCapturePath, nativeAudioCapture } from "./audioCapture";
+import {
+  getAudioCapturePath,
+  nativeAudioCapture,
+  NATIVE_AUDIO_STOP_TIMEOUT_MS,
+} from "./audioCapture";
 
 type TestNativeAudioCaptureState = {
   process: {
@@ -16,6 +20,8 @@ type TestNativeAudioCaptureState = {
       destroyed: boolean;
       write: ReturnType<typeof vi.fn>;
     };
+    killed?: boolean;
+    kill?: ReturnType<typeof vi.fn>;
   } | null;
   active: boolean;
   target: unknown;
@@ -79,6 +85,43 @@ describe("getAudioCapturePath", () => {
       expect(write).toHaveBeenNthCalledWith(2, '{"action":"cancel"}\n');
       expect(state.stopPromise).toBeNull();
     } finally {
+      state.process = null;
+      state.active = false;
+      state.target = null;
+      state.pendingStart = null;
+      state.pendingStop = null;
+      state.stopPromise = null;
+    }
+  });
+
+  it("force-terminates a helper that never acknowledges stop", async () => {
+    vi.useFakeTimers();
+    const kill = vi.fn();
+    const state = nativeAudioCapture as unknown as TestNativeAudioCaptureState;
+    state.process = {
+      stdin: {
+        destroyed: false,
+        write: vi.fn(),
+      },
+      killed: false,
+      kill,
+    };
+    state.active = true;
+
+    try {
+      const stopping = nativeAudioCapture.stop();
+      const stopped = expect(stopping).rejects.toThrow(
+        "did not acknowledge stop",
+      );
+      await vi.advanceTimersByTimeAsync(NATIVE_AUDIO_STOP_TIMEOUT_MS);
+
+      await stopped;
+      expect(kill).toHaveBeenCalledWith("SIGKILL");
+      expect(state.process).toBeNull();
+      expect(state.active).toBe(false);
+      expect(state.stopPromise).toBeNull();
+    } finally {
+      vi.useRealTimers();
       state.process = null;
       state.active = false;
       state.target = null;
