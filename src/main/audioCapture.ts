@@ -22,11 +22,11 @@ type PendingResult<T> = {
 };
 
 export function getAudioCapturePath(): string {
-  const root = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  const root = app.isPackaged
+    ? process.resourcesPath
+    : path.join(app.getAppPath(), "native", "bin");
   return path.join(
     root,
-    "native",
-    "bin",
     AUDIO_CAPTURE_APP_NAME,
     "Contents",
     "MacOS",
