@@ -10,12 +10,6 @@ export const VAD_MIN_TIMEOUT_MS = 5_000;
 export const VAD_MAX_TIMEOUT_MS = 30_000;
 export const VAD_TIMEOUT_AUDIO_MULTIPLIER = 4;
 
-// The Silero VAD model keeps an onnxruntime-web WASM heap resident in the
-// always-open pill renderer. Drop it after a stretch of no dictation so the
-// heap can be reclaimed; a PTT key-down re-warms it (see prewarmVad), so the
-// user rarely feels the cold start.
-export const VAD_IDLE_RELEASE_MS = 5 * 60 * 1000;
-
 export const VAD_MODEL_URL = "/vad/silero_vad_legacy.onnx";
 export const VAD_ORT_WASM_BASE_URL = "/vad/ort-wasm/";
 

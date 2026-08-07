@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Message } from "@ricky0123/vad-web";
 import { createStreamingVadSession } from "./streamingVad";
-import { resolveVadModel } from "./vadModel";
+import type { VadWorkerClient } from "./vadWorkerClient";
+import type { VadWorkerEvent } from "./vadWorkerProtocol";
 import {
   createCapturedAudio,
   pcm16ToFloat32,
@@ -17,8 +18,12 @@ import {
   FAKE_VAD_MODEL_FRAME_SAMPLES,
 } from "../test/fakes/fakeVadModel";
 
-vi.mock("./vadModel", () => ({
-  resolveVadModel: vi.fn(),
+const mocks = vi.hoisted(() => ({
+  createVadWorkerClient: vi.fn(),
+}));
+
+vi.mock("./vadWorkerClient", () => ({
+  createVadWorkerClient: mocks.createVadWorkerClient,
 }));
 
 type FakeEvent =
@@ -53,6 +58,52 @@ function createManualFrameProcessor(processImpl?: ProcessImpl) {
   };
 }
 
+function createWorkerForFrameProcessor(
+  frameProcessor: ReturnType<typeof createManualFrameProcessor>,
+): VadWorkerClient {
+  return {
+    ready: vi.fn().mockResolvedValue(undefined),
+    processFrame: vi.fn(async (frame: Float32Array, frameIndex: number) => {
+      const events: Array<{
+        type: "speech-start" | "speech-end" | "misfire";
+        frameIndex: number;
+      }> = [];
+      await frameProcessor.process(frame, (event) => {
+        if (event.msg === Message.SpeechStart) {
+          events.push({ type: "speech-start", frameIndex });
+        } else if (event.msg === Message.SpeechEnd) {
+          events.push({ type: "speech-end", frameIndex });
+        } else if (event.msg === Message.VADMisfire) {
+          events.push({ type: "misfire", frameIndex });
+        }
+      });
+      return events;
+    }),
+    finish: vi.fn(async (frameIndex: number) => {
+      const events: Array<{
+        type: "speech-start" | "speech-end" | "misfire";
+        frameIndex: number;
+      }> = [];
+      frameProcessor.endSegment((event) => {
+        if (event.msg === Message.SpeechEnd) {
+          events.push({ type: "speech-end", frameIndex });
+        }
+      });
+      return events;
+    }),
+    runClip: vi.fn(),
+    dispose: vi.fn(),
+  };
+}
+
+function useFrameProcessor(
+  frameProcessor: ReturnType<typeof createManualFrameProcessor>,
+): VadWorkerClient {
+  const worker = createWorkerForFrameProcessor(frameProcessor);
+  mocks.createVadWorkerClient.mockReturnValue(worker);
+  return worker;
+}
+
 async function flush(times = 20): Promise<void> {
   for (let i = 0; i < times; i++) {
     await Promise.resolve();
@@ -61,7 +112,7 @@ async function flush(times = 20): Promise<void> {
 
 describe("streamingVad", () => {
   beforeEach(() => {
-    vi.mocked(resolveVadModel).mockReset();
+    mocks.createVadWorkerClient.mockReset();
   });
 
   afterEach(() => {
@@ -70,7 +121,7 @@ describe("streamingVad", () => {
 
   it("re-chunks 30ms capture frames into fixed 1536-sample model windows", async () => {
     const fp = createManualFrameProcessor();
-    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+    useFrameProcessor(fp);
 
     const session = createStreamingVadSession();
     await flush();
@@ -106,7 +157,7 @@ describe("streamingVad", () => {
       }
       windowIndex += 1;
     });
-    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+    useFrameProcessor(fp);
 
     const onSpeechStart = vi.fn();
     const onSpeechEnd = vi.fn();
@@ -124,7 +175,7 @@ describe("streamingVad", () => {
 
   it("drops a trailing partial window at finish(), matching NonRealTimeVAD.run()", async () => {
     const fp = createManualFrameProcessor();
-    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+    const worker = useFrameProcessor(fp);
 
     const session = createStreamingVadSession();
     await flush();
@@ -142,38 +193,135 @@ describe("streamingVad", () => {
     // Resampler.stream() dropping a trailing partial frame in the post-hoc
     // path), so no further process() call happens at flush time.
     expect(fp.process).toHaveBeenCalledTimes(1);
+    expect(worker.dispose).toHaveBeenCalledOnce();
   });
 
   it("marks itself unusable when the model fails to load, and finish() returns null", async () => {
-    vi.mocked(resolveVadModel).mockRejectedValue(new Error("model load failed"));
+    const worker: VadWorkerClient = {
+      ready: vi.fn().mockRejectedValue(new Error("model load failed")),
+      processFrame: vi.fn(),
+      finish: vi.fn(),
+      runClip: vi.fn(),
+      dispose: vi.fn(),
+    };
+    mocks.createVadWorkerClient.mockReturnValue(worker);
 
     const session = createStreamingVadSession();
     await flush();
 
     expect(session.isUsable()).toBe(false);
+    expect(worker.dispose).toHaveBeenCalledTimes(1);
 
     const result = await session.finish(createCapturedAudio(new Int16Array(1600)));
     expect(result).toBeNull();
+    expect(worker.dispose).toHaveBeenCalledTimes(1);
   });
 
-  it("stops accepting frames once disposed", async () => {
+  it("creates and terminates a new worker for each sequential session", async () => {
+    const firstWorker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    const secondWorker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    mocks.createVadWorkerClient
+      .mockReturnValueOnce(firstWorker)
+      .mockReturnValueOnce(secondWorker);
+    const audio = createCapturedAudio(new Int16Array(1600));
+
+    const first = createStreamingVadSession();
+    await flush();
+    await first.finish(audio);
+
+    expect(firstWorker.dispose).toHaveBeenCalledOnce();
+
+    const second = createStreamingVadSession();
+    await flush();
+
+    expect(mocks.createVadWorkerClient).toHaveBeenCalledTimes(2);
+    await second.finish(audio);
+    expect(secondWorker.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("returns null when cancellation races with finish and never reuses the worker", async () => {
     const fp = createManualFrameProcessor();
-    vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+    const worker = createWorkerForFrameProcessor(fp);
+    const replacement = createWorkerForFrameProcessor(createManualFrameProcessor());
+    mocks.createVadWorkerClient
+      .mockReturnValueOnce(worker)
+      .mockReturnValueOnce(replacement);
+    let resolveFinish = (_events: VadWorkerEvent[]): void => {};
+    worker.finish = vi.fn((_frameIndex: number): Promise<VadWorkerEvent[]> =>
+      new Promise((resolve) => {
+        resolveFinish = resolve;
+      }),
+    );
+    const audio = createCapturedAudio(new Int16Array(1600));
+    const session = createStreamingVadSession();
+
+    await flush();
+    const finishing = session.finish(audio);
+    await vi.waitFor(() => {
+      expect(worker.finish).toHaveBeenCalledTimes(1);
+    });
+
+    session.dispose();
+    expect(worker.dispose).toHaveBeenCalledTimes(1);
+
+    resolveFinish([]);
+    await expect(finishing).resolves.toBeNull();
+
+    const replacementSession = createStreamingVadSession();
+    expect(mocks.createVadWorkerClient).toHaveBeenCalledTimes(2);
+    expect(mocks.createVadWorkerClient).toHaveBeenNthCalledWith(2);
+    replacementSession.dispose();
+    expect(replacement.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("terminates a cancelled worker exactly once and stops accepting frames", async () => {
+    const fp = createManualFrameProcessor();
+    const worker = useFrameProcessor(fp);
 
     const session = createStreamingVadSession();
     await flush();
+    session.dispose();
     session.dispose();
 
     session.pushFrame(new Int16Array(1536));
     await flush();
 
     expect(fp.process).not.toHaveBeenCalled();
+    expect(worker.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("terminates the worker when frame processing fails", async () => {
+    const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    worker.processFrame = vi.fn().mockRejectedValue(new Error("process failed"));
+    mocks.createVadWorkerClient.mockReturnValue(worker);
+
+    const session = createStreamingVadSession();
+    await flush();
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    expect(worker.dispose).toHaveBeenCalledOnce();
+    await expect(session.finish(createCapturedAudio(new Int16Array(1600)))).resolves.toBeNull();
+    expect(worker.finish).not.toHaveBeenCalled();
+    expect(worker.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("terminates the worker when finalization fails", async () => {
+    const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    worker.finish = vi.fn().mockRejectedValue(new Error("finish failed"));
+    mocks.createVadWorkerClient.mockReturnValue(worker);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    await expect(session.finish(createCapturedAudio(new Int16Array(1600)))).resolves.toBeNull();
+    expect(worker.dispose).toHaveBeenCalledOnce();
   });
 
   describe("adaptive post-roll decision (waitForQuiet)", () => {
     it("resolves immediately (0ms) when no speech was ever detected", async () => {
       const fp = createManualFrameProcessor();
-      vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+      useFrameProcessor(fp);
 
       const session = createStreamingVadSession();
       await flush();
@@ -194,7 +342,7 @@ describe("streamingVad", () => {
           frame,
         });
       });
-      vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+      useFrameProcessor(fp);
 
       const session = createStreamingVadSession();
       await flush();
@@ -221,7 +369,7 @@ describe("streamingVad", () => {
         });
         windowIndex += 1;
       });
-      vi.mocked(resolveVadModel).mockResolvedValue({ frameProcessor: fp } as never);
+      useFrameProcessor(fp);
 
       const session = createStreamingVadSession();
       await flush();
@@ -283,9 +431,7 @@ describe("streamingVad", () => {
 
       // --- streaming path: the same clip fed as real-time 30ms capture frames ---
       const streamingFrameProcessor = createScriptedFrameProcessor(isSpeechScript);
-      vi.mocked(resolveVadModel).mockResolvedValue({
-        frameProcessor: streamingFrameProcessor,
-      } as never);
+      useFrameProcessor(streamingFrameProcessor as never);
 
       const session = createStreamingVadSession();
       await flush();

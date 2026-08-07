@@ -32,6 +32,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   private readonly removeStoppedListener: () => void;
   private readonly removeErrorListener: () => void;
   private stopped = false;
+  private cancelled = false;
   private started = false;
   private stopResolver: (() => void) | null = null;
   private stopRejecter: ((error: Error) => void) | null = null;
@@ -79,11 +80,16 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
 
     await window.audioCapture.start();
     this.started = true;
+    if (this.cancelled) {
+      this.started = false;
+      void window.audioCapture.cancel();
+      throw new Error("Native PCM capture session was cancelled.");
+    }
   }
 
   async stop(): Promise<CapturedAudio> {
     this.stopped = true;
-    if (this.started && window.audioCapture) {
+    if (this.started && window.audioCapture && !this.cancelled) {
       const stopped = new Promise<void>((resolve, reject) => {
         this.stopResolver = resolve;
         this.stopRejecter = reject;
@@ -107,6 +113,8 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
 
   cancel(): void {
     this.stopped = true;
+    this.cancelled = true;
+    this.stopResolver?.();
     this.stopResolver = null;
     this.stopRejecter = null;
     this.removeListeners();

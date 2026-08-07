@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { LocalModelInfo, ModelStatus } from "../types/shared";
 
 export type ModelRow = {
@@ -20,6 +20,8 @@ export function useModels(options: UseModelsOptions = {}) {
   const [infos, setInfos] = useState<LocalModelInfo[]>([]);
   const [statuses, setStatuses] = useState<Record<string, ModelStatus>>({});
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
+  const [activatingModelId, setActivatingModelId] = useState<string | null>(null);
+  const activatingModelIdRef = useRef<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -122,11 +124,15 @@ export function useModels(options: UseModelsOptions = {}) {
 
   const setActive = useCallback(
     async (modelId: string) => {
-      setActiveModelId(modelId);
+      if (activatingModelIdRef.current) return;
+      activatingModelIdRef.current = modelId;
+      setActivatingModelId(modelId);
       try {
         await window.stt?.setActiveModel?.(modelId);
       } finally {
         await refresh();
+        activatingModelIdRef.current = null;
+        setActivatingModelId(null);
       }
     },
     [refresh],
@@ -152,6 +158,7 @@ export function useModels(options: UseModelsOptions = {}) {
   return {
     rows,
     activeModelId,
+    activatingModelId,
     install,
     remove,
     cancel,

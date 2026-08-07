@@ -69,6 +69,62 @@ describe("NativePcmCaptureSession", () => {
     expect(onError).toBeNull();
   });
 
+  it("settles a pending stop when cancellation races with it", async () => {
+    let onFrame = (_payload: Uint8Array): void => {};
+    let onStopped: (() => void) | null = null;
+    let onError: ((message: string) => void) | null = null;
+    let resolveStop: (() => void) | null = null;
+    const stop = vi.fn(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          resolveStop = () => resolve({ ok: true });
+        }),
+    );
+    const cancel = vi.fn(async () => {
+      resolveStop?.();
+      return { ok: true };
+    });
+
+    window.audioCapture = {
+      isAvailable: async () => true,
+      listDevices: async () => [],
+      start: async () => ({ ok: true }),
+      stop,
+      cancel,
+      onFrame: (callback) => {
+        onFrame = callback;
+        return () => {
+          onFrame = () => {};
+        };
+      },
+      onStopped: (callback) => {
+        onStopped = callback;
+        return () => {
+          onStopped = null;
+        };
+      },
+      onError: (callback) => {
+        onError = callback;
+        return () => {
+          onError = null;
+        };
+      },
+    };
+
+    const session = new NativePcmCaptureSession();
+    await session.start();
+    const stopping = session.stop();
+
+    session.cancel();
+
+    const captured = await stopping;
+    expect(stop).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(captured.pcm16).toHaveLength(0);
+    expect(onStopped).toBeNull();
+    expect(onError).toBeNull();
+  });
+
   it("reports malformed native frames without passing them downstream", () => {
     let onFrame = (_payload: Uint8Array): void => {};
     let onStopped: (() => void) | null = null;

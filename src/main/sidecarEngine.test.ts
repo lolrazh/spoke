@@ -82,6 +82,46 @@ describe("sidecarEngine", () => {
     expect(mocks.spawn).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects a different model while the current model is still starting", async () => {
+    const proc = createSidecarProcess();
+    mocks.spawn.mockReturnValue(proc);
+    const { spawnSidecar } = await importEngine();
+
+    const startup = spawnSidecar("model-a");
+    await expect(spawnSidecar("model-b")).rejects.toThrow(
+      "still stopping or starting",
+    );
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+    proc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+    await startup;
+  });
+
+  it("does not permit a replacement spawn until the old process exits", async () => {
+    const oldProc = createSidecarProcess();
+    const replacementProc = createSidecarProcess(54321);
+    mocks.spawn.mockReturnValueOnce(oldProc).mockReturnValueOnce(replacementProc);
+    const { killSidecar, spawnSidecar } = await importEngine();
+
+    const startup = spawnSidecar("model-a");
+    oldProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+    await startup;
+
+    const stopping = killSidecar();
+    await expect(spawnSidecar("model-b")).rejects.toThrow(
+      "must exit before",
+    );
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+    oldProc.emit("exit", 0);
+    await stopping;
+    const replacement = spawnSidecar("model-b");
+    replacementProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+    await replacement;
+
+    expect(mocks.spawn).toHaveBeenCalledTimes(2);
+  });
+
   it("clears the shared spawn promise after startup failure", async () => {
     const failedProc = createSidecarProcess();
     const readyProc = createSidecarProcess();
@@ -214,16 +254,17 @@ describe("sidecarEngine", () => {
     });
 
     it("kills the process when transcription is explicitly aborted", async () => {
-      const { engine } = await startReadySidecar();
+      const { proc, engine } = await startReadySidecar();
       const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
 
       engine.abortLocalTranscription();
 
       expect(kill).toHaveBeenCalledWith(12345, "SIGKILL");
+      proc.emit("exit", 1);
       kill.mockRestore();
     });
 
-    it("does not let an aborted process clear its replacement on exit", async () => {
+    it("waits for an aborted process to exit before starting its replacement", async () => {
       const { proc: abortedProc, engine } = await startReadySidecar();
       const replacementProc = createSidecarProcess(54321);
       const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
@@ -231,14 +272,73 @@ describe("sidecarEngine", () => {
       engine.abortLocalTranscription();
       mocks.spawn.mockReturnValue(replacementProc);
       const replacementStartup = engine.spawnSidecar();
-      replacementProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
-      await replacementStartup;
+      await Promise.resolve();
+      expect(mocks.spawn).toHaveBeenCalledTimes(1);
 
       abortedProc.emit("exit", 1);
+      await vi.waitFor(() => {
+        expect(mocks.spawn).toHaveBeenCalledTimes(2);
+      });
+      replacementProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+      await replacementStartup;
 
       expect(engine.isSidecarRunning()).toBe(true);
       await engine.spawnSidecar();
       expect(mocks.spawn).toHaveBeenCalledTimes(2);
+      kill.mockRestore();
+    });
+
+    it("does not overlap a replacement with an aborted startup", async () => {
+      const abortedProc = createSidecarProcess();
+      const replacementProc = createSidecarProcess(54321);
+      mocks.spawn
+        .mockReturnValueOnce(abortedProc)
+        .mockReturnValueOnce(replacementProc);
+      const { spawnSidecar, abortLocalTranscription } = await importEngine();
+
+      const startup = spawnSidecar("model-a");
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+      abortLocalTranscription();
+
+      const replacementStartup = spawnSidecar("model-b");
+      await Promise.resolve();
+      expect(mocks.spawn).toHaveBeenCalledTimes(1);
+
+      abortedProc.emit("exit", 1);
+      await vi.waitFor(() => {
+        expect(mocks.spawn).toHaveBeenCalledTimes(2);
+      });
+      replacementProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+
+      await expect(startup).rejects.toThrow("Sidecar exited before ready");
+      await expect(replacementStartup).resolves.toBeUndefined();
+      kill.mockRestore();
+    });
+
+    it("rejects queued requests from an aborted generation", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const replacementProc = createSidecarProcess(54321);
+      mocks.spawn.mockReturnValue(replacementProc);
+      const active = engine.transcribeLocal(Buffer.from([1]));
+      await Promise.resolve();
+      const queued = engine.transcribeLocal(Buffer.from([2]));
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      engine.abortLocalTranscription();
+      proc.emit("exit", 1);
+      const replacementStartup = engine.spawnSidecar("replacement");
+      await vi.waitFor(() => {
+        expect(mocks.spawn).toHaveBeenCalledTimes(2);
+      });
+      replacementProc.stdout.emit("data", Buffer.from('{"type":"ready"}\n'));
+      await replacementStartup;
+
+      await expect(active).rejects.toThrow("Sidecar exited during transcription");
+      await expect(queued).rejects.toThrow(
+        "Local transcription cancelled before it started",
+      );
+      expect(proc.stdin.write).toHaveBeenCalledTimes(4);
+      expect(replacementProc.stdin.write).not.toHaveBeenCalled();
       kill.mockRestore();
     });
   });

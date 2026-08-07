@@ -25,7 +25,6 @@ import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
 import { NativePcmCaptureSession } from "../utils/nativePcmCaptureSession";
 import {
-  prewarmVad,
   trimCapturedAudioWithVad,
   type VadAudioResult,
 } from "../utils/vadTrimmer";
@@ -171,11 +170,8 @@ export function useTranscription(
       window.electron?.bootMark?.("transcription-hook:get-provider:done");
     });
 
-    // No boot-time VAD prewarm: the model is warmed on dictation intent
-    // (start(), the PTT key-down) instead, so its onnxruntime-web WASM heap
-    // never goes resident in the always-open pill window if the user never
-    // dictates. After a stretch of inactivity it's released again (see
-    // VAD_IDLE_RELEASE_MS / resolveVadModel's idle watchdog).
+    // No boot-time VAD prewarm: each dictation owns a short-lived worker, so
+    // the ONNX/WASM heap never becomes permanent renderer state.
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -232,8 +228,6 @@ export function useTranscription(
   // Start recording
   const start = useCallback(async () => {
     if (recording || processing || stopInFlightRef.current) return;
-
-    void prewarmVad().catch((err) => vadLog.warn("Start prewarm failed:", err));
 
     const providerId = await resolveActiveProviderId();
     const provider =
@@ -503,7 +497,8 @@ export function useTranscription(
     };
 
     const streamingVadSession = streamingVadRef.current;
-    streamingVadRef.current = null;
+    // Keep the shared reference until stop() finishes so cancel() can dispose
+    // a session while its async finish() is still finalizing.
 
     try {
       setProcessing(true);
@@ -637,6 +632,7 @@ export function useTranscription(
         vadResult = await streamingVadSession.finish(capturedAudio);
       }
       if (!vadResult) {
+        if (isCancelled()) return;
         // Streaming VAD never became usable (model init failed, or it
         // failed mid-recording) — fall back to the post-hoc full-clip pass.
         vadLog.warn("Streaming VAD unavailable; falling back to post-hoc VAD");
@@ -717,6 +713,9 @@ export function useTranscription(
       // above exited — mirrors how `recorder.stop()` always runs. dispose()
       // is a no-op if finish() already completed it.
       streamingVadSession?.dispose();
+      if (streamingVadRef.current === streamingVadSession) {
+        streamingVadRef.current = null;
+      }
       // If cancel() interrupted this pipeline it already performed the
       // cleanup below and a new session may have started since; leave it be.
       if (!isCancelled()) {
@@ -774,9 +773,8 @@ export function useTranscription(
     if (activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID) {
       void window.stt?.cancelLocalTranscription?.();
     }
-    // If a stop() pipeline is mid-flight it already took ownership of the
-    // streaming VAD session (nulled this ref) and is responsible for
-    // disposing it itself; only dispose here when cancel() got to it first.
+    // Keep this reference reachable while stop() is finalizing VAD so cancel
+    // can terminate the worker instead of letting finish() return it warm.
     if (streamingVadRef.current) {
       streamingVadRef.current.dispose();
       streamingVadRef.current = null;

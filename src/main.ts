@@ -469,7 +469,10 @@ app.on("before-quit", () => {
   stopFollowCursor();
 
   // Clean up local Whisper sidecar
-  stopLocalSidecar();
+  void stopLocalSidecar().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[STT] Shutdown during quit failed: ${message}`);
+  });
 
   // Clean up the native macOS audio capture helper
   shutdownNativeAudioCapture();

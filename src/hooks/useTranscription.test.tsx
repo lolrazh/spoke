@@ -21,7 +21,6 @@ vi.mock("../utils/audioFeedback", () => ({
 }));
 
 vi.mock("../utils/vadTrimmer", () => ({
-  prewarmVad: vi.fn(() => Promise.resolve()),
   trimCapturedAudioWithVad: vi.fn(),
 }));
 
@@ -597,7 +596,9 @@ describe("useTranscription", () => {
     const latencyCall = consoleInfoSpy.mock.calls.find(
       (call) => call[0] === "[Latency]",
     );
-    const payload = latencyCall?.[2] as { post_roll_ms: number } | undefined;
+    const payload = latencyCall?.[2]
+      ? (JSON.parse(String(latencyCall[2])) as { post_roll_ms: number })
+      : undefined;
     expect(payload?.post_roll_ms).toBeLessThan(50);
     consoleInfoSpy.mockRestore();
   });
@@ -691,6 +692,52 @@ describe("useTranscription", () => {
 
     expect(usableSession.dispose).toHaveBeenCalledTimes(1);
     expect(usableSession.finish).not.toHaveBeenCalled();
+  });
+
+  it("disposes streaming VAD when cancel races with finish()", async () => {
+    let resolveFinish:
+      | ((result: VadAudioResult | null) => void)
+      | null = null;
+    const usableSession = createUsableStreamingVadSessionFake({
+      finish: async () =>
+        new Promise((resolve) => {
+          resolveFinish = resolve;
+        }),
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+
+    const { result } = renderHook(() => useTranscription());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await waitFor(() => {
+        expect(usableSession.finish).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    await act(async () => {
+      result.current.cancel();
+    });
+
+    expect(usableSession.dispose).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFinish?.(null);
+      await Promise.resolve();
+    });
+
+    expect(trimCapturedAudioWithVad).not.toHaveBeenCalled();
+    expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
   });
 });
 

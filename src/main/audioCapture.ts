@@ -7,6 +7,7 @@ import type { MicDevice } from "../types/shared";
 const AUDIO_CAPTURE_APP_NAME = "Spoke Audio Capture.app";
 const AUDIO_CAPTURE_EXECUTABLE_NAME = "Spoke Audio Capture";
 const HEADER_BYTES = 4;
+export const NATIVE_AUDIO_STOP_TIMEOUT_MS = 2_000;
 
 enum AudioEventType {
   ready = 1,
@@ -22,11 +23,11 @@ type PendingResult<T> = {
 };
 
 export function getAudioCapturePath(): string {
-  const root = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  const root = app.isPackaged
+    ? process.resourcesPath
+    : path.join(app.getAppPath(), "native", "bin");
   return path.join(
     root,
-    "native",
-    "bin",
     AUDIO_CAPTURE_APP_NAME,
     "Contents",
     "MacOS",
@@ -128,20 +129,49 @@ class NativeAudioCaptureManager {
       this.stopPromise = null;
       throw error;
     }
+    let timeoutId: NodeJS.Timeout | null = null;
     try {
-      await stopped;
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(
+            new Error(
+              `Native audio capture did not acknowledge stop within ${NATIVE_AUDIO_STOP_TIMEOUT_MS}ms.`,
+            ),
+          );
+        }, NATIVE_AUDIO_STOP_TIMEOUT_MS);
+        timeoutId.unref?.();
+      });
+      await Promise.race([stopped, timeout]);
+    } catch (error) {
+      // A helper that is stuck draining native audio cannot process a later
+      // cancel command. Force-terminate it so the next recording cannot
+      // inherit a wedged process or an unresolved stop waiter.
+      this.terminateProcess(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      throw error;
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       if (this.stopPromise === stopped) this.stopPromise = null;
     }
   }
 
   cancel(): void {
     if (!this.process || !this.active) return;
+
+    const cancellationError = new Error("Native audio capture was cancelled.");
+    const pendingStart = this.pendingStart;
+    const pendingStop = this.pendingStop;
+
     this.active = false;
     this.target = null;
     this.pendingStart = null;
     this.pendingStop = null;
-    this.stopPromise = null;
+    pendingStart?.reject(cancellationError);
+    // A stop interrupted by cancellation still has to settle so the renderer
+    // can finish its cleanup pipeline. Leave stopPromise for stop()'s finally
+    // block to clear after its waiter observes this resolution.
+    pendingStop?.resolve();
     try {
       this.sendCommand({ action: "cancel" });
     } catch {
@@ -297,6 +327,26 @@ class NativeAudioCaptureManager {
     this.readyReject?.(error);
     this.readyResolve = null;
     this.readyReject = null;
+  }
+
+  private terminateProcess(error: Error): void {
+    const child = this.process;
+    if (!child) return;
+
+    this.rejectPending(error);
+    if (this.process === child) {
+      this.process = null;
+      this.ready = null;
+      this.active = false;
+      this.target = null;
+      this.stdoutBuffer = Buffer.alloc(0);
+    }
+
+    try {
+      if (!child.killed) child.kill("SIGKILL");
+    } catch {
+      // The helper may have exited between the timeout and forced kill.
+    }
   }
 }
 

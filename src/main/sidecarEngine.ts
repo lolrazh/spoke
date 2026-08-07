@@ -24,10 +24,16 @@ export const LOCAL_STT_MAX_REQUEST_BYTES = 30 * 16_000 * 2;
 let sidecarProcess: ReturnType<typeof spawn> | null = null;
 let sidecarReady = false;
 let sidecarSpawnPromise: Promise<void> | null = null;
+let sidecarModelId: string | null = null;
 let sidecarTranscribeQueue: Promise<void> = Promise.resolve();
+let sidecarGeneration = 0;
+let sidecarStoppingPromise: Promise<void> | null = null;
 let autoRestartEnabled = false;
+const processExitPromises = new WeakMap<object, Promise<void>>();
+const exitedProcesses = new WeakSet<object>();
 
 export const SIDECAR_STARTUP_TIMEOUT_MS = 120000;
+export const SIDECAR_SHUTDOWN_TIMEOUT_MS = 5000;
 
 // ── Lifecycle ──────────────────────────────────────────────────────────
 
@@ -35,28 +41,55 @@ export function isSidecarRunning(): boolean {
   return sidecarProcess !== null && sidecarReady;
 }
 
+export function getSidecarModelId(): string | null {
+  return sidecarProcess ? sidecarModelId : null;
+}
+
 export function setAutoRestart(enabled: boolean): void {
   autoRestartEnabled = enabled;
 }
 
-export function spawnSidecar(): Promise<void> {
-  if (sidecarProcess && sidecarReady) {
+export function spawnSidecar(modelId = getActiveModelId()): Promise<void> {
+  if (sidecarProcess && sidecarReady && sidecarModelId === modelId) {
     return Promise.resolve();
   }
+  if (sidecarStoppingPromise) {
+    const stopping = sidecarStoppingPromise;
+    return stopping.then(() => {
+      if (sidecarStoppingPromise === stopping) {
+        sidecarStoppingPromise = null;
+      }
+      return spawnSidecar(modelId);
+    });
+  }
   if (sidecarSpawnPromise) {
+    if (sidecarModelId !== modelId) {
+      return Promise.reject(
+        new Error(
+          `Sidecar for '${sidecarModelId ?? "unknown"}' is still stopping or starting`,
+        ),
+      );
+    }
     return sidecarSpawnPromise;
   }
+  if (sidecarProcess) {
+    return Promise.reject(
+      new Error(
+        `Sidecar for '${sidecarModelId ?? "unknown"}' must exit before '${modelId}' can start`,
+      ),
+    );
+  }
 
-  sidecarSpawnPromise = spawnSidecarOnce().finally(() => {
+  sidecarSpawnPromise = spawnSidecarOnce(modelId).finally(() => {
     sidecarSpawnPromise = null;
   });
   return sidecarSpawnPromise;
 }
 
-function spawnSidecarOnce(): Promise<void> {
+function spawnSidecarOnce(modelId: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const binaryPath = getSidecarBinaryPath();
-    const family = getModelFamily(getActiveModelId()) ?? "whisper";
+    const family = getModelFamily(modelId) ?? "whisper";
     const args = getSidecarArgs(family);
 
     if (!fs.existsSync(binaryPath)) {
@@ -77,9 +110,16 @@ function spawnSidecarOnce(): Promise<void> {
       detached: false,
     });
 
+    sidecarGeneration += 1;
     sidecarProcess = proc;
+    sidecarModelId = modelId;
     sidecarReady = false;
     let settled = false;
+    let resolveExit: () => void = () => undefined;
+    const exitPromise = new Promise<void>((exitResolve) => {
+      resolveExit = exitResolve;
+    });
+    processExitPromises.set(proc, exitPromise);
 
     const settle = (callback: () => void): void => {
       if (settled) return;
@@ -93,7 +133,10 @@ function spawnSidecarOnce(): Promise<void> {
     // unpacking/importing before the model load log appears.
     const timeout = setTimeout(() => {
       console.error("[STT] Sidecar timed out waiting for ready signal");
-      killSidecar();
+      void killSidecar().catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[STT] Timed-out sidecar shutdown failed: ${message}`);
+      });
       settle(() => reject(new Error("Sidecar timed out loading model")));
     }, SIDECAR_STARTUP_TIMEOUT_MS);
 
@@ -108,6 +151,10 @@ function spawnSidecarOnce(): Promise<void> {
         try {
           const event = JSON.parse(line);
           if (event.type === "ready") {
+            if (sidecarProcess !== proc) {
+              settle(() => reject(new Error("Sidecar startup was superseded")));
+              return;
+            }
             sidecarReady = true;
             console.log("[STT] Sidecar daemon ready");
             bootTimeline.mark("sidecar:ready");
@@ -133,11 +180,14 @@ function spawnSidecarOnce(): Promise<void> {
 
     proc.once("exit", (code) => {
       console.log(`[STT] Sidecar exited with code ${code}`);
+      exitedProcesses.add(proc);
+      resolveExit();
       clearTimeout(timeout);
       // A hard cancellation can be followed immediately by a new recording.
       // Do not let the old process's delayed exit clear its replacement.
       if (sidecarProcess === proc) {
         sidecarProcess = null;
+        sidecarModelId = null;
         sidecarReady = false;
       }
       if (!settled) {
@@ -165,14 +215,17 @@ function spawnSidecarOnce(): Promise<void> {
       console.error("[STT] Sidecar spawn error:", err);
       if (sidecarProcess === proc) {
         sidecarProcess = null;
+        sidecarModelId = null;
         sidecarReady = false;
       }
+      exitedProcesses.add(proc);
+      resolveExit();
       settle(() => reject(err));
     });
   });
 }
 
-export function killSidecar(): void {
+export async function killSidecar(): Promise<void> {
   autoRestartEnabled = false;
   if (!sidecarProcess) return;
   console.log("[STT] Killing sidecar daemon...");
@@ -186,17 +239,39 @@ export function killSidecar(): void {
   }
   // Force kill after a brief grace period
   const proc = sidecarProcess;
-  setTimeout(() => {
+  sidecarReady = false;
+  const forceTimer = setTimeout(() => {
     try {
-      if (proc && !proc.killed && proc.pid) {
+      if (!exitedProcesses.has(proc) && proc.pid) {
         process.kill(proc.pid, "SIGKILL");
       }
     } catch {
       // ignore
     }
   }, 2000);
-  sidecarProcess = null;
-  sidecarReady = false;
+  const exitPromise = processExitPromises.get(proc);
+  if (exitPromise) {
+    let rejectShutdown: (error: Error) => void = () => undefined;
+    const shutdownTimeout = new Promise<never>((_resolve, reject) => {
+      rejectShutdown = reject;
+    });
+    const timeout = setTimeout(() => {
+      rejectShutdown(
+        new Error(`Sidecar did not exit within ${SIDECAR_SHUTDOWN_TIMEOUT_MS}ms`),
+      );
+    }, SIDECAR_SHUTDOWN_TIMEOUT_MS);
+    try {
+      await Promise.race([exitPromise, shutdownTimeout]);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  clearTimeout(forceTimer);
+  if (sidecarProcess === proc) {
+    sidecarProcess = null;
+    sidecarModelId = null;
+    sidecarReady = false;
+  }
 }
 
 /**
@@ -207,10 +282,20 @@ export function killSidecar(): void {
 export function abortLocalTranscription(): void {
   autoRestartEnabled = false;
   sidecarTranscribeQueue = Promise.resolve();
+  sidecarGeneration += 1;
   const proc = sidecarProcess;
-  sidecarProcess = null;
   sidecarReady = false;
   if (!proc) return;
+
+  if (!sidecarStoppingPromise) {
+    const exitPromise = processExitPromises.get(proc) ?? Promise.resolve();
+    const startupPromise = sidecarSpawnPromise ?? Promise.resolve();
+    sidecarStoppingPromise = Promise.allSettled([
+      exitPromise,
+      startupPromise,
+    ]).then(() => undefined);
+  }
+
   console.warn("[STT] Aborting local transcription and killing sidecar");
   try {
     if (proc.pid) process.kill(proc.pid, "SIGKILL");
@@ -234,9 +319,23 @@ export function transcribeLocal(
   }
   // Sidecar stdout is a shared stream. Serialize requests so "done" events
   // cannot be consumed by the wrong in-flight caller.
+  const requestGeneration = sidecarGeneration;
+  const requestProcess = sidecarProcess;
   const queued = sidecarTranscribeQueue.then(
-    () => transcribeLocalOnce(pcmBuffer, prompt),
-    () => transcribeLocalOnce(pcmBuffer, prompt),
+    () =>
+      transcribeLocalOnce(
+        pcmBuffer,
+        requestProcess,
+        requestGeneration,
+        prompt,
+      ),
+    () =>
+      transcribeLocalOnce(
+        pcmBuffer,
+        requestProcess,
+        requestGeneration,
+        prompt,
+      ),
   );
   sidecarTranscribeQueue = queued.then(
     (): undefined => undefined,
@@ -247,15 +346,24 @@ export function transcribeLocal(
 
 function transcribeLocalOnce(
   pcmBuffer: Buffer,
+  expectedProcess: ReturnType<typeof spawn> | null,
+  expectedGeneration: number,
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
   return new Promise((resolve, reject) => {
-    if (!sidecarProcess || !sidecarReady) {
+    if (
+      expectedGeneration !== sidecarGeneration ||
+      expectedProcess !== sidecarProcess
+    ) {
+      reject(new Error("Local transcription cancelled before it started"));
+      return;
+    }
+    if (!expectedProcess || !sidecarReady) {
       reject(new Error("Sidecar not running"));
       return;
     }
 
-    const proc = sidecarProcess;
+    const proc = expectedProcess;
     let stdoutBuffer = "";
     let resolved = false;
     let timeout: NodeJS.Timeout | null = null;
