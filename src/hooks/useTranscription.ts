@@ -7,6 +7,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import type {
+  PrepareTranscriptionResult,
   TranscriptionContext,
   TranscriptionMode,
   TranscriptionProviderKind,
@@ -127,6 +128,7 @@ export function useTranscription(
   const ocrWordsRef = useRef<string[]>([]);
   const ocrPromiseRef = useRef<Promise<void> | null>(null);
   const activeProviderIdRef = useRef<string | null>(null);
+  const prepareResultRef = useRef<PrepareTranscriptionResult | null>(null);
   const preferredProviderIdRef = useRef<PreferredTranscriptionProviderId>(
     LOCAL_STT_PROVIDER_ID,
   );
@@ -195,6 +197,7 @@ export function useTranscription(
       }
       recorderRef.current?.cancel();
       localStreamingDictationRef.current?.cancel();
+      prepareResultRef.current = null;
     };
   }, [initStream, options.autoInitStream]);
 
@@ -276,10 +279,12 @@ export function useTranscription(
       const provider =
         defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
 
-      await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
-        context: buildTranscriptionContext(),
-      });
+      const prepareResult = await defaultTranscriptionSessionOrchestrator.prepare(
+        providerId,
+        { context: buildTranscriptionContext() },
+      );
       if (!isCurrentStart()) return;
+      prepareResultRef.current = prepareResult;
 
       if (
         provider.descriptor.kind === "local" &&
@@ -334,6 +339,7 @@ export function useTranscription(
               {
                 audio,
                 context: buildTranscriptionContext(),
+                prepareResult,
               },
             );
           },
@@ -434,6 +440,7 @@ export function useTranscription(
       reportTranscriptionError(toUserFacingTranscriptionError(err));
       setRecording(false);
       activeProviderIdRef.current = null;
+      prepareResultRef.current = null;
       recorderStartPromiseRef.current = null;
       streamingVadRef.current?.dispose();
       streamingVadRef.current = null;
@@ -573,6 +580,7 @@ export function useTranscription(
     if (isCancelled()) return;
     const provider =
       defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+    const prepareResult = prepareResultRef.current;
 
     const timing = {
       stopStartedAt: performance.now(),
@@ -830,6 +838,7 @@ export function useTranscription(
         {
           audio,
           context,
+          prepareResult,
         },
       );
       timing.sttDoneAt = performance.now();
@@ -869,6 +878,7 @@ export function useTranscription(
       if (!isCancelled()) {
         stopInFlightRef.current = false;
         activeProviderIdRef.current = null;
+        prepareResultRef.current = null;
         recorderStartPromiseRef.current = null;
         // Release microphone stream so the OS mic indicator turns off
         if (streamRef.current) {
@@ -949,6 +959,7 @@ export function useTranscription(
     setText("");
     setAudioLevel(0);
     activeProviderIdRef.current = null;
+    prepareResultRef.current = null;
     ocrWordsRef.current = [];
     ocrPromiseRef.current = null;
   }, []);
