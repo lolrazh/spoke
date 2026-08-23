@@ -40,7 +40,7 @@ import {
   installLocalModelAndSyncSidecar,
   prewarmLocalSidecar,
   removeLocalModelAndStopSidecar,
-  setActiveModelAndResync,
+  selectActiveModel,
   syncLocalSidecarForCurrentProvider,
   transcribeWithLocalSidecar,
   abortLocalSidecarTranscription,
@@ -81,8 +81,8 @@ export function registerSttIpc(): void {
     return listModelInfos();
   });
 
-  ipcMain.handle("stt:set-active-model", async (_event, modelId: string) => {
-    await setActiveModelAndResync(modelId);
+  ipcMain.handle("stt:set-active-model", (_event, modelId: string) => {
+    selectActiveModel(modelId);
   });
 
   ipcMain.handle("stt:prewarm-local", () => {

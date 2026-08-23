@@ -323,10 +323,9 @@ describe("localSttLifecycle", () => {
     await installLocalModelAndSyncSidecar("new-model");
 
     expect(mocks.setActiveModelId).toHaveBeenCalledWith("new-model");
-    // Activation is a single transaction: the stale process exits before the
-    // selected model is reported ready.
-    expect(mocks.killSidecar).toHaveBeenCalled();
-    expect(mocks.spawnSidecar).toHaveBeenCalledWith("new-model");
+    await vi.waitFor(() => {
+      expect(mocks.spawnSidecar).toHaveBeenCalledWith("new-model");
+    });
   });
 
   it("does not steal activation when the active model is ready", async () => {
@@ -380,19 +379,26 @@ describe("localSttLifecycle", () => {
     );
   });
 
-  it("lets a later model switch supersede one still waiting in the lifecycle queue", async () => {
+  it("persists rapid model selections immediately and only loads the latest", async () => {
     let active = "old-model";
     mocks.getActiveModelId.mockImplementation(() => active);
     mocks.setActiveModelId.mockImplementation((modelId: string) => {
       active = modelId;
     });
-    const { setActiveModelAndResync } = await importLifecycle();
+    const { selectActiveModel } = await importLifecycle();
 
-    const first = setActiveModelAndResync("model-a");
-    const second = setActiveModelAndResync("model-b");
-    await Promise.all([first, second]);
+    selectActiveModel("model-a");
+    selectActiveModel("model-b");
 
-    expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
+    expect(active).toBe("model-b");
+    expect(mocks.setActiveModelId.mock.calls.map(([modelId]) => modelId)).toEqual([
+      "model-a",
+      "model-b",
+    ]);
+    await vi.waitFor(() => {
+      expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
+    });
+
     expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
   });
 
@@ -415,14 +421,17 @@ describe("localSttLifecycle", () => {
       rejectStartup?.(new Error("prewarm cancelled"));
       rejectStartup = null;
     });
-    const { prewarmLocalSidecar, setActiveModelAndResync } =
+    const { prewarmLocalSidecar, selectActiveModel } =
       await importLifecycle();
 
     prewarmLocalSidecar("ptt-down");
     await flushLifecycle();
     expect(mocks.spawnSidecar).toHaveBeenCalledWith("old-model");
 
-    await setActiveModelAndResync("model-b");
+    selectActiveModel("model-b");
+    await vi.waitFor(() => {
+      expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
+    });
 
     expect(mocks.spawnSidecar.mock.calls.map(([modelId]) => modelId)).toEqual([
       "old-model",
@@ -440,34 +449,45 @@ describe("localSttLifecycle", () => {
     mocks.setActiveModelId.mockImplementation((modelId: string) => {
       active = modelId;
     });
-    const { prewarmLocalSidecar, setActiveModelAndResync } =
+    const { prewarmLocalSidecar, selectActiveModel } =
       await importLifecycle();
 
     prewarmLocalSidecar("ptt-down");
-    await setActiveModelAndResync("model-b");
+    selectActiveModel("model-b");
+    await vi.waitFor(() => {
+      expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
+    });
 
     expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
     expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
   });
 
-  it("keeps the previous model selected when the replacement fails to load", async () => {
+  it("keeps a selection when its background load fails", async () => {
     mocks.spawnSidecar.mockRejectedValue(new Error("model load failed"));
-    const { setActiveModelAndResync } = await importLifecycle();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { selectActiveModel } = await importLifecycle();
 
-    await expect(setActiveModelAndResync("model-b")).rejects.toThrow(
-      "model load failed",
-    );
+    expect(() => selectActiveModel("model-b")).not.toThrow();
+    expect(mocks.setActiveModelId).toHaveBeenCalledWith("model-b");
+    await vi.waitFor(() => {
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("model load failed"),
+      );
+    });
 
-    expect(mocks.setActiveModelId).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
-  it("does not stop or persist an unready model selection", async () => {
+  it("rejects an unready model before it changes selection or lifecycle", async () => {
     mocks.getModelInstallState.mockImplementation((modelId?: string) =>
       modelId === "model-b" ? "not_installed" : "ready",
     );
-    const { setActiveModelAndResync } = await importLifecycle();
+    const { selectActiveModel, LOCAL_MODEL_NOT_INSTALLED_MESSAGE } =
+      await importLifecycle();
 
-    await setActiveModelAndResync("model-b");
+    expect(() => selectActiveModel("model-b")).toThrow(
+      LOCAL_MODEL_NOT_INSTALLED_MESSAGE,
+    );
 
     expect(mocks.killSidecar).not.toHaveBeenCalled();
     expect(mocks.spawnSidecar).not.toHaveBeenCalled();
@@ -476,9 +496,9 @@ describe("localSttLifecycle", () => {
 
   it("persists a ready model without touching the sidecar for a cloud provider", async () => {
     mocks.isPreferredProviderLocal.mockReturnValue(false);
-    const { setActiveModelAndResync } = await importLifecycle();
+    const { selectActiveModel } = await importLifecycle();
 
-    await setActiveModelAndResync("model-b");
+    selectActiveModel("model-b");
 
     expect(mocks.setActiveModelId).toHaveBeenCalledWith("model-b");
     expect(mocks.killSidecar).not.toHaveBeenCalled();
@@ -486,8 +506,9 @@ describe("localSttLifecycle", () => {
     expect(mocks.setAutoRestart).not.toHaveBeenCalled();
   });
 
-  it("rechecks target readiness after stopping before spawning or persisting", async () => {
+  it("rechecks readiness before the background load starts", async () => {
     let targetReady = true;
+    let active = "model-a";
     mocks.getModelInstallState.mockImplementation((modelId?: string) =>
       modelId === "model-b"
         ? targetReady
@@ -495,20 +516,25 @@ describe("localSttLifecycle", () => {
           : "not_installed"
         : "ready",
     );
-    mocks.killSidecar.mockImplementation(async () => {
-      targetReady = false;
+    mocks.getActiveModelId.mockImplementation(() => active);
+    mocks.setActiveModelId.mockImplementation((modelId: string) => {
+      active = modelId;
     });
-    const { setActiveModelAndResync } = await importLifecycle();
+    const { selectActiveModel } = await importLifecycle();
 
-    await setActiveModelAndResync("model-b");
+    selectActiveModel("model-b");
+    targetReady = false;
+    await flushLifecycle();
 
-    expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
+    expect(active).toBe("model-b");
+    expect(mocks.killSidecar).not.toHaveBeenCalled();
     expect(mocks.spawnSidecar).not.toHaveBeenCalled();
-    expect(mocks.setActiveModelId).not.toHaveBeenCalled();
   });
 
-  it("waits for an active transcription before replacing its model", async () => {
+  it("persists now but waits for an active transcription before replacing its model", async () => {
     let active = "model-a";
+    let runningModel = "model-a";
+    let running = true;
     let resolveTranscribe: (value: {
       text: string;
       metrics: Record<string, never>;
@@ -517,14 +543,21 @@ describe("localSttLifecycle", () => {
     mocks.setActiveModelId.mockImplementation((modelId: string) => {
       active = modelId;
     });
-    mocks.isSidecarRunning.mockReturnValueOnce(true).mockReturnValue(false);
-    mocks.getSidecarModelId.mockReturnValue("model-a");
+    mocks.isSidecarRunning.mockImplementation(() => running);
+    mocks.getSidecarModelId.mockImplementation(() => runningModel);
+    mocks.killSidecar.mockImplementation(async () => {
+      running = false;
+    });
+    mocks.spawnSidecar.mockImplementation(async (modelId: string) => {
+      running = true;
+      runningModel = modelId;
+    });
     mocks.transcribeLocal.mockReturnValue(
       new Promise((resolve) => {
         resolveTranscribe = resolve;
       }),
     );
-    const { setActiveModelAndResync, transcribeWithLocalSidecar } =
+    const { selectActiveModel, transcribeWithLocalSidecar } =
       await importLifecycle();
 
     const transcription = transcribeWithLocalSidecar(
@@ -532,16 +565,45 @@ describe("localSttLifecycle", () => {
       Buffer.from([1]),
     );
     await flushLifecycle();
-    const switching = setActiveModelAndResync("model-b");
+    selectActiveModel("model-b");
+    expect(active).toBe("model-b");
     await flushLifecycle();
     expect(mocks.killSidecar).not.toHaveBeenCalled();
 
     resolveTranscribe({ text: "done", metrics: {} });
     await transcription;
-    await switching;
+    await vi.waitFor(() => {
+      expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
+    });
 
     expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
-    expect(mocks.spawnSidecar).toHaveBeenCalledWith("model-b");
+  });
+
+  it("retries the selected model when dictation follows a failed prewarm", async () => {
+    let active = "model-a";
+    mocks.getActiveModelId.mockImplementation(() => active);
+    mocks.setActiveModelId.mockImplementation((modelId: string) => {
+      active = modelId;
+    });
+    mocks.spawnSidecar
+      .mockRejectedValueOnce(new Error("background load failed"))
+      .mockResolvedValueOnce(undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { selectActiveModel, transcribeWithLocalSidecar } =
+      await importLifecycle();
+
+    selectActiveModel("model-b");
+    await vi.waitFor(() => {
+      expect(warn).toHaveBeenCalled();
+    });
+
+    await expect(
+      transcribeWithLocalSidecar("model-b", Buffer.from([1])),
+    ).resolves.toMatchObject({ text: "hello" });
+    expect(mocks.spawnSidecar).toHaveBeenNthCalledWith(1, "model-b");
+    expect(mocks.spawnSidecar).toHaveBeenNthCalledWith(2, "model-b");
+
+    warn.mockRestore();
   });
 
   describe("idle watchdog", () => {
