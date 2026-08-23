@@ -25,6 +25,8 @@ export class LocalStreamingDictation {
   private sendQueue = Promise.resolve();
   private failure: Error | null = null;
   private closed = false;
+  private startPending = false;
+  private cancelRequested = false;
   private limitReported = false;
 
   constructor(private readonly options: LocalStreamingDictationOptions) {
@@ -43,6 +45,9 @@ export class LocalStreamingDictation {
   }
 
   async start(): Promise<void> {
+    if (this.closed) {
+      throw new Error("Local streaming session was cancelled before startup.");
+    }
     const bridge = window.stt;
     if (
       !bridge?.startLocalStream ||
@@ -57,12 +62,18 @@ export class LocalStreamingDictation {
         this.options.onPartial(payload.text);
       }
     });
+    this.startPending = true;
     try {
       const { sessionId } = await bridge.startLocalStream();
+      if (this.closed) {
+        throw new Error("Local streaming session was cancelled during startup.");
+      }
       this.sessionId = sessionId;
     } catch (error) {
       this.cleanupListener();
       throw error;
+    } finally {
+      this.startPending = false;
     }
   }
 
@@ -98,13 +109,16 @@ export class LocalStreamingDictation {
   }
 
   cancel(): void {
-    const hadSession = this.sessionId !== null;
+    const shouldCancelRemote =
+      !this.cancelRequested &&
+      (this.startPending || this.sessionId !== null);
+    this.cancelRequested = true;
     this.closed = true;
     this.pending.length = 0;
     this.pendingSamples = 0;
     this.cleanupListener();
     this.sessionId = null;
-    if (hadSession) void window.stt?.cancelLocalTranscription?.();
+    if (shouldCancelRemote) void window.stt?.cancelLocalTranscription?.();
   }
 
   private flushPending(): void {

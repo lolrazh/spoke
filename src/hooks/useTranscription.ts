@@ -110,6 +110,11 @@ export function useTranscription(
   );
   const requestStopRef = useRef<() => void>(() => undefined);
   const stopInFlightRef = useRef(false);
+  // A start attempt keeps this generation until it either commits recording
+  // state or exits. Cancel invalidates the generation before touching any
+  // pending resource so delayed startup work cannot revive the session.
+  const startGenerationRef = useRef(0);
+  const pendingStartGenerationRef = useRef<number | null>(null);
   // Incremented by cancel(); an in-flight stop() pipeline compares against the
   // value it captured at entry and bails out once they differ.
   const stopGenerationRef = useRef(0);
@@ -179,6 +184,8 @@ export function useTranscription(
     // No boot-time VAD prewarm: each dictation owns a short-lived worker, so
     // the ONNX/WASM heap never becomes permanent renderer state.
     return () => {
+      startGenerationRef.current += 1;
+      pendingStartGenerationRef.current = null;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
@@ -234,19 +241,35 @@ export function useTranscription(
 
   // Start recording
   const start = useCallback(async () => {
-    if (recording || processing || stopInFlightRef.current) return;
+    if (
+      recording ||
+      processing ||
+      stopInFlightRef.current ||
+      pendingStartGenerationRef.current !== null
+    ) {
+      return;
+    }
 
-    const providerId = await resolveActiveProviderId();
-    const provider =
-      defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+    const startGeneration = startGenerationRef.current + 1;
+    startGenerationRef.current = startGeneration;
+    pendingStartGenerationRef.current = startGeneration;
+    const isCurrentStart = () =>
+      startGenerationRef.current === startGeneration;
+
+    let localChunkedDictation: LocalChunkedDictation | null = null;
+    let localStreamingDictation: LocalStreamingDictation | null = null;
 
     try {
+      const providerId = await resolveActiveProviderId();
+      if (!isCurrentStart()) return;
+      const provider =
+        defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+
       await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
         context: buildTranscriptionContext(),
       });
+      if (!isCurrentStart()) return;
 
-      let localChunkedDictation: LocalChunkedDictation | null = null;
-      let localStreamingDictation: LocalStreamingDictation | null = null;
       if (
         provider.descriptor.kind === "local" &&
         window.stt.getActiveModel &&
@@ -256,6 +279,7 @@ export function useTranscription(
           window.stt.getActiveModel(),
           window.stt.getModelInfos(),
         ]);
+        if (!isCurrentStart()) return;
         const activeModel = modelInfos.find(
           (model) => model.modelId === activeModelId,
         );
@@ -272,8 +296,11 @@ export function useTranscription(
               requestStopRef.current();
             },
           });
-          await localStreamingDictation.start();
+          // Publish the pending adapter before awaiting IPC startup. Cancel
+          // can now abort the main-process record even before it has an ID.
           localStreamingDictationRef.current = localStreamingDictation;
+          await localStreamingDictation.start();
+          if (!isCurrentStart()) return;
         }
       }
       if (provider.descriptor.kind === "local" && !localStreamingDictation) {
@@ -356,6 +383,8 @@ export function useTranscription(
       })();
       recorderStartPromiseRef.current = recorderPromise;
 
+      if (!isCurrentStart()) return;
+
       setText("");
       setError(null);
       setRecording(true);
@@ -381,6 +410,10 @@ export function useTranscription(
 
       // Wait for recorder to be ready, but OCR continues in background
       const recorder = await recorderPromise;
+      if (!isCurrentStart()) {
+        recorder.cancel();
+        return;
+      }
       if (stopInFlightRef.current) {
         return;
       }
@@ -388,6 +421,7 @@ export function useTranscription(
       recorderStartPromiseRef.current = null;
       ocrPromiseRef.current = ocrPromise;
     } catch (err) {
+      if (!isCurrentStart()) return;
       log.error("Start failed:", err);
       reportTranscriptionError(toUserFacingTranscriptionError(err));
       setRecording(false);
@@ -403,6 +437,10 @@ export function useTranscription(
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+      }
+    } finally {
+      if (pendingStartGenerationRef.current === startGeneration) {
+        pendingStartGenerationRef.current = null;
       }
     }
   }, [
@@ -849,6 +887,10 @@ export function useTranscription(
 
   // Cancel recording
   const cancel = useCallback(() => {
+    // Invalidate pending startup first. Any awaited continuation from the old
+    // generation must observe this before it can publish recording state.
+    startGenerationRef.current += 1;
+    pendingStartGenerationRef.current = null;
     // Invalidate any in-flight stop() pipeline so it bails after its next
     // await instead of publishing text, adding history, or pasting.
     stopGenerationRef.current += 1;
