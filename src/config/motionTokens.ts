@@ -23,6 +23,9 @@ export const MOTION = {
     heavy: { stiffness: 420, damping: 34, mass: 1.0 } as SpringToken,
     // Snappy return to idle with minimal bounce
     settle: { stiffness: 720, damping: 28, mass: 0.6 } as SpringToken,
+    // Re-targeted by every ASR partial. Critical damping avoids repeated
+    // bounce while preserving continuous velocity between width updates.
+    transcript: { stiffness: 520, damping: 46, mass: 1 } as SpringToken,
   },
 } as const;
 

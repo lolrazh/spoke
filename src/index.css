@@ -378,6 +378,78 @@
     align-items: center;
   }
 
+  .live-transcript-container {
+    box-sizing: border-box;
+    width: 100%;
+    height: 14px;
+    padding-inline: 14px;
+    pointer-events: none;
+  }
+
+  .live-transcript {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    gap: 10px;
+  }
+
+  .live-transcript-activity {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 12px;
+  }
+
+  .live-transcript-viewport {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 16px;
+    overflow: hidden;
+    line-height: 16px;
+  }
+
+  .live-transcript-viewport.is-overflowing {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 18px,
+      black 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      black 18px,
+      black 100%
+    );
+  }
+
+  .live-transcript-rail,
+  .live-transcript-measure {
+    font-family: "Inter", sans-serif;
+    color: #d0d0d0;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    white-space: pre;
+  }
+
+  .live-transcript-rail {
+    display: inline-block;
+    transform-origin: center right;
+    will-change: transform;
+  }
+
+  .live-transcript-measure {
+    position: fixed;
+    top: -10000px;
+    left: -10000px;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   /* Frequency bars container - denser layout */
   .frequency-bars-container {
     width: 100%;

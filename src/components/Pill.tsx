@@ -1,14 +1,18 @@
 import React, {
+  useCallback,
   lazy,
   Suspense,
   useLayoutEffect,
   useRef,
   useEffect,
+  useState,
 } from "react";
-import { m, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
+import { LiveTranscript } from "./LiveTranscript";
+import { calculateLiveTranscriptLayout } from "./liveTranscriptLayout";
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -47,6 +51,7 @@ interface PillProps {
     notifMsg?: string;
     notifAction?: string | null;
   };
+  liveTranscript: string;
   notifWidth: number | null;
   isTextTruncated: boolean;
   dims: {
@@ -74,6 +79,7 @@ interface PillProps {
 const Pill: React.FC<PillProps> = ({
   pillState,
   pillContext,
+  liveTranscript,
   onHoverChange,
   onMetrics,
   notifWidth,
@@ -93,6 +99,9 @@ const Pill: React.FC<PillProps> = ({
   // --- Refs ---
   const pillCoreRef = useRef<HTMLDivElement>(null);
   const previousStateRef = useRef<PillStateType>(pillState);
+  const reduceMotion = useReducedMotion() ?? false;
+  const [currentLiveTextWidth, setCurrentLiveTextWidth] = useState(0);
+  const [maxLiveTextWidth, setMaxLiveTextWidth] = useState(0);
 
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
@@ -109,7 +118,30 @@ const Pill: React.FC<PillProps> = ({
 
   const isShowingNotification = pillState === "NOTIFICATION";
   const isExpanded = pillState === "EXPANDED";
+  const hasLiveTranscript =
+    (pillState === "LISTENING" || pillState === "PROCESSING") &&
+    liveTranscript.length > 0;
   const notificationAction = pillContext.notifAction ?? null;
+
+  const handleLiveTextWidthChange = useCallback((width: number) => {
+    setCurrentLiveTextWidth((previous) =>
+      previous === width ? previous : width,
+    );
+    setMaxLiveTextWidth((previous) => Math.max(previous, width));
+  }, []);
+
+  useEffect(() => {
+    if (hasLiveTranscript) return;
+    setCurrentLiveTextWidth(0);
+    setMaxLiveTextWidth(0);
+  }, [hasLiveTranscript]);
+
+  const liveTranscriptLayout = calculateLiveTranscriptLayout({
+    currentTextWidth: currentLiveTextWidth,
+    maxTextWidth: maxLiveTextWidth,
+    baseWidth: dims.baseW,
+    maxWidth: dims.maxW,
+  });
 
   // (Removed noisy state logging)
 
@@ -200,9 +232,15 @@ const Pill: React.FC<PillProps> = ({
       case "IDLE":
         return { width: dims.baseW, height: dims.restingH };
       case "HOVER_PREVIEW":
+        return { width: dims.baseW, height: dims.baseH };
       case "LISTENING":
       case "PROCESSING":
-        return { width: dims.baseW, height: dims.baseH };
+        return {
+          width: hasLiveTranscript
+            ? liveTranscriptLayout.pillWidth
+            : dims.baseW,
+          height: dims.baseH,
+        };
       case "NOTIFICATION":
         return { width: notificationTargetWidth, height: dims.baseH };
       case "EXPANDED":
@@ -221,6 +259,13 @@ const Pill: React.FC<PillProps> = ({
 
   // State-specific spring feel
   const transitionForState = (() => {
+    if (reduceMotion) return { duration: 0 };
+    if (
+      hasLiveTranscript &&
+      (pillState === "LISTENING" || pillState === "PROCESSING")
+    ) {
+      return { type: "spring" as const, ...MOTION.springs.transcript };
+    }
     const isReturningToIdle =
       pillState === "IDLE" && previousStateRef.current !== "IDLE";
     switch (pillState) {
@@ -301,6 +346,9 @@ const Pill: React.FC<PillProps> = ({
           />
         )}
         <div className="pill-content flex items-center justify-center w-full h-full">
+          <span className="sr-only" role="status">
+            {hasLiveTranscript ? "Live transcription active" : ""}
+          </span>
           <AnimatePresence mode="wait">
             {isExpanded ? (
               <m.div
@@ -365,22 +413,34 @@ const Pill: React.FC<PillProps> = ({
             ) : (
               <m.div
                 key="visualizer"
-                className="visualization-container"
+                className={
+                  hasLiveTranscript
+                    ? "live-transcript-container"
+                    : "visualization-container"
+                }
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: MOTION.durations.fast / 2 }}
               >
                 {/* Visuals for non-notification states */}
-                {pillState === "LISTENING" && (
+                {hasLiveTranscript ? (
+                  <LiveTranscript
+                    text={liveTranscript}
+                    isProcessing={pillState === "PROCESSING"}
+                    railOffsetX={liveTranscriptLayout.railOffsetX}
+                    overflowing={liveTranscriptLayout.overflowing}
+                    reducedMotion={reduceMotion}
+                    onTextWidthChange={handleLiveTextWidthChange}
+                  />
+                ) : pillState === "LISTENING" ? (
                   <ListeningFrequencyBars
                     isListening={true}
                     isIdle={false}
                     isHovered={false}
                     isProcessing={false}
                   />
-                )}
-                {pillState === "PROCESSING" && (
+                ) : pillState === "PROCESSING" ? (
                   <FrequencyBars
                     audioLevel={0}
                     isListening={false}
@@ -388,8 +448,7 @@ const Pill: React.FC<PillProps> = ({
                     isHovered={false}
                     isProcessing={true}
                   />
-                )}
-                {pillState === "HOVER_PREVIEW" && (
+                ) : pillState === "HOVER_PREVIEW" ? (
                   <FrequencyBars
                     audioLevel={0}
                     isListening={false}
@@ -397,8 +456,9 @@ const Pill: React.FC<PillProps> = ({
                     isHovered={true}
                     isProcessing={false}
                   />
-                )}
-                {pillState === "IDLE" && <div className="resting-indicator" />}
+                ) : pillState === "IDLE" ? (
+                  <div className="resting-indicator" />
+                ) : null}
               </m.div>
             )}
           </AnimatePresence>

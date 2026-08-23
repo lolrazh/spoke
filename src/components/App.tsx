@@ -685,6 +685,7 @@ const AppInner: React.FC = () => {
       <Pill
         pillState={pillState}
         pillContext={pillContext}
+        liveTranscript={trans.liveText}
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
         dims={dims}
