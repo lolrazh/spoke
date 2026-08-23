@@ -303,11 +303,10 @@ export function useTranscription(
             requestStopRef.current();
           },
         });
-        // Publish the pending adapter before awaiting IPC startup. Cancel
-        // can now abort the main-process record even before it has an ID.
+        // Publish the adapter before startup. It buffers bounded PCM batches
+        // until the main process finishes loading the pinned model.
         localStreamingDictationRef.current = localStreamingDictation;
-        await localStreamingDictation.start();
-        if (!isCurrentStart()) return;
+        localStreamingDictation.start();
       }
       if (provider.descriptor.kind === "local" && !localStreamingDictation) {
         localChunkedDictation = new LocalChunkedDictation({

@@ -39,7 +39,11 @@ describe("LocalStreamingDictation", () => {
     const first = new Int16Array(
       (window.stt.pushLocalStream as ReturnType<typeof vi.fn>).mock.calls[0][1],
     );
-    expect(first).toHaveLength(40);
+    expect(first).toHaveLength(32);
+    const second = new Int16Array(
+      (window.stt.pushLocalStream as ReturnType<typeof vi.fn>).mock.calls[1][1],
+    );
+    expect(second).toHaveLength(13);
     expect(Array.from(first.slice(18, 22))).toEqual([1, 1, 2, 2]);
   });
 
@@ -58,6 +62,64 @@ describe("LocalStreamingDictation", () => {
     expect(onPartial).toHaveBeenCalledOnce();
     expect(onPartial).toHaveBeenCalledWith("hello");
     stream.cancel();
+  });
+
+  it("queues bounded batches until model startup completes", async () => {
+    let resolveStart!: (value: { sessionId: string }) => void;
+    window.stt.startLocalStream = vi.fn(
+      () =>
+        new Promise<{ sessionId: string }>((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
+      sampleRateHz: 100,
+      batchMs: 320,
+      maxDurationMs: 5_000,
+      onPartial: vi.fn(),
+      onLimitReached: vi.fn(),
+    });
+
+    stream.start();
+    stream.pushFrame(new Int16Array(20).fill(1));
+    stream.pushFrame(new Int16Array(25).fill(2));
+    expect(window.stt.pushLocalStream).not.toHaveBeenCalled();
+
+    const finishing = stream.finish();
+    resolveStart({ sessionId: "stream-1" });
+    await finishing;
+
+    expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2);
+    const batches = (
+      window.stt.pushLocalStream as ReturnType<typeof vi.fn>
+    ).mock.calls.map((call) => new Int16Array(call[1]));
+    expect(batches.map((batch) => batch.length)).toEqual([32, 13]);
+    expect(Array.from(batches[0].slice(18, 22))).toEqual([1, 1, 2, 2]);
+  });
+
+  it("defers a startup failure until finalization", async () => {
+    let rejectStart!: (reason: Error) => void;
+    window.stt.startLocalStream = vi.fn(
+      () =>
+        new Promise<{ sessionId: string }>((_resolve, reject) => {
+          rejectStart = reject;
+        }),
+    );
+    const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
+      sampleRateHz: 100,
+      maxDurationMs: 5_000,
+      onPartial: vi.fn(),
+      onLimitReached: vi.fn(),
+    });
+
+    expect(() => stream.start()).not.toThrow();
+    stream.pushFrame(new Int16Array(10));
+    rejectStart(new Error("model load failed"));
+
+    await expect(stream.finish()).rejects.toThrow("model load failed");
+    expect(window.stt.pushLocalStream).not.toHaveBeenCalled();
   });
 
   it("reports the duration limit once and does not send excess audio", async () => {

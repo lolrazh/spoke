@@ -812,7 +812,7 @@ describe("useTranscription", () => {
     expect(window.clipboard.insertText).not.toHaveBeenCalled();
   });
 
-  it("keeps recording off when cancel wins a deferred streaming start", async () => {
+  it("records while streaming startup is pending and still lets cancel win", async () => {
     let resolveStart!: (value: { sessionId: string }) => void;
     const pendingStart = new Promise<{ sessionId: string }>((resolve) => {
       resolveStart = resolve;
@@ -850,13 +850,15 @@ describe("useTranscription", () => {
     );
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    let startPromise!: Promise<void>;
     await act(async () => {
-      startPromise = result.current.start() as unknown as Promise<void>;
+      await result.current.start();
       await waitFor(() =>
         expect(window.stt.startLocalStream).toHaveBeenCalledOnce(),
       );
     });
+
+    expect(result.current.recording).toBe(true);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
 
     act(() => result.current.cancel());
     expect(window.stt.cancelLocalTranscription).toHaveBeenCalledOnce();
@@ -864,11 +866,10 @@ describe("useTranscription", () => {
 
     await act(async () => {
       resolveStart({ sessionId: "stale-stream" });
-      await startPromise;
+      await Promise.resolve();
     });
 
     expect(result.current.recording).toBe(false);
-    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
   });
 });
 
