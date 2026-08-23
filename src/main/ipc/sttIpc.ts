@@ -45,7 +45,6 @@ import {
   transcribeWithLocalSidecar,
   abortLocalSidecarTranscription,
   beginLocalStreamingSession,
-  type ManagedLocalStreamingSession,
 } from "../localSttLifecycle";
 import {
   getModelStatus,
@@ -55,13 +54,13 @@ import {
 } from "../modelManager";
 import { listModelInfos } from "../localModelContract";
 import { scheduleLocalSidecarPrewarm } from "../windows";
+import { LocalStreamIpcController } from "./localStreamIpcController";
 
-let activeLocalStream: {
-  id: string;
-  ownerId: number;
-  session: ManagedLocalStreamingSession;
-} | null = null;
-let localStreamStartPending = false;
+const localStreams = new LocalStreamIpcController(
+  beginLocalStreamingSession,
+  abortLocalSidecarTranscription,
+  randomUUID,
+);
 
 export function registerSttIpc(): void {
   // ============ Local Whisper IPC handlers ============
@@ -126,71 +125,23 @@ export function registerSttIpc(): void {
   );
 
   ipcMain.handle("stt:cancel-local-transcription", () => {
-    if (activeLocalStream) {
-      activeLocalStream.session.cancel();
-      activeLocalStream = null;
-    } else {
-      abortLocalSidecarTranscription();
-    }
+    localStreams.cancel();
   });
 
-  ipcMain.handle("stt:start-local-stream", async (event) => {
-    if (activeLocalStream || localStreamStartPending) {
-      throw new Error("A local streaming session is already active.");
-    }
-    localStreamStartPending = true;
-    const id = randomUUID();
-    const ownerId = event.sender.id;
-    let session: ManagedLocalStreamingSession;
-    try {
-      session = await beginLocalStreamingSession((text) => {
-        if (activeLocalStream?.id !== id || event.sender.isDestroyed()) return;
-        event.sender.send("stt:local-stream-partial", { sessionId: id, text });
-      });
-    } finally {
-      localStreamStartPending = false;
-    }
-    activeLocalStream = { id, ownerId, session };
-    event.sender.once("destroyed", () => {
-      if (activeLocalStream?.id !== id) return;
-      activeLocalStream.session.cancel();
-      activeLocalStream = null;
-    });
-    return { sessionId: id };
-  });
+  ipcMain.handle("stt:start-local-stream", (event) =>
+    localStreams.start(event.sender),
+  );
 
   ipcMain.handle(
     "stt:push-local-stream",
     async (event, sessionId: string, pcmBytes: Uint8Array) => {
-      const active = activeLocalStream;
-      if (
-        !active ||
-        active.id !== sessionId ||
-        active.ownerId !== event.sender.id
-      ) {
-        throw new Error("Local streaming session is not active.");
-      }
-      await active.session.push(
-        Buffer.from(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.byteLength),
-      );
+      await localStreams.push(event.sender, sessionId, pcmBytes);
     },
   );
 
-  ipcMain.handle("stt:finish-local-stream", async (event, sessionId: string) => {
-    const active = activeLocalStream;
-    if (
-      !active ||
-      active.id !== sessionId ||
-      active.ownerId !== event.sender.id
-    ) {
-      throw new Error("Local streaming session is not active.");
-    }
-    try {
-      return await active.session.finish();
-    } finally {
-      if (activeLocalStream?.id === sessionId) activeLocalStream = null;
-    }
-  });
+  ipcMain.handle("stt:finish-local-stream", (event, sessionId: string) =>
+    localStreams.finish(event.sender, sessionId),
+  );
 
   ipcMain.handle("stt:extract-ocr", async (_event, imageBase64: string) => {
     const providerId = resolveEnhancementProvider(getPreferredProviderId());

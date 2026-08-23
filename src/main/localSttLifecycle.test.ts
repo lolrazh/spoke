@@ -203,6 +203,24 @@ describe("localSttLifecycle", () => {
     expect(mocks.startLocalStream).not.toHaveBeenCalled();
   });
 
+  it("abandons a pending stream after renderer reload without killing the loaded model", async () => {
+    let finishStartup!: () => void;
+    mocks.spawnSidecar.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishStartup = resolve)),
+    );
+    const abortController = new AbortController();
+    const { beginLocalStreamingSession } = await importLifecycle();
+
+    const pending = beginLocalStreamingSession(vi.fn(), abortController.signal);
+    await Promise.resolve();
+    abortController.abort();
+    finishStartup();
+
+    await expect(pending).rejects.toThrow("cancelled during startup");
+    expect(mocks.startLocalStream).not.toHaveBeenCalled();
+    expect(mocks.killSidecar).not.toHaveBeenCalled();
+  });
+
   it("does not spawn when the sidecar is already running", async () => {
     mocks.isSidecarRunning.mockReturnValue(true);
     const { ensureLocalSidecarRunning } = await importLifecycle();
@@ -214,9 +232,7 @@ describe("localSttLifecycle", () => {
   });
 
   it("stops a running sidecar for the wrong model before starting the active one", async () => {
-    mocks.isSidecarRunning
-      .mockReturnValueOnce(true)
-      .mockReturnValueOnce(false);
+    mocks.isSidecarRunning.mockReturnValueOnce(true).mockReturnValueOnce(false);
     mocks.getSidecarModelId.mockReturnValue("old-model");
     const { ensureLocalSidecarRunning } = await importLifecycle();
 
@@ -453,7 +469,11 @@ describe("localSttLifecycle", () => {
   it("rechecks target readiness after stopping before spawning or persisting", async () => {
     let targetReady = true;
     mocks.getModelInstallState.mockImplementation((modelId?: string) =>
-      modelId === "model-b" ? (targetReady ? "ready" : "not_installed") : "ready",
+      modelId === "model-b"
+        ? targetReady
+          ? "ready"
+          : "not_installed"
+        : "ready",
     );
     mocks.killSidecar.mockImplementation(async () => {
       targetReady = false;
@@ -477,9 +497,7 @@ describe("localSttLifecycle", () => {
     mocks.setActiveModelId.mockImplementation((modelId: string) => {
       active = modelId;
     });
-    mocks.isSidecarRunning
-      .mockReturnValueOnce(true)
-      .mockReturnValue(false);
+    mocks.isSidecarRunning.mockReturnValueOnce(true).mockReturnValue(false);
     mocks.getSidecarModelId.mockReturnValue("model-a");
     mocks.transcribeLocal.mockReturnValue(
       new Promise((resolve) => {

@@ -284,9 +284,10 @@ export async function removeLocalModelAndStopSidecar(
 export async function setActiveModelAndResync(modelId: string): Promise<void> {
   latestRequestedModelId = modelId;
   const isTargetReady = () => getModelInstallState(modelId) === "ready";
-  const stalePrewarmStop = isTargetReady() && isPreferredProviderLocal()
-    ? cancelPendingPrewarm()
-    : Promise.resolve();
+  const stalePrewarmStop =
+    isTargetReady() && isPreferredProviderLocal()
+      ? cancelPendingPrewarm()
+      : Promise.resolve();
   await enqueueLifecycle(async () => {
     await stalePrewarmStop;
     await waitForTranscriptionsToDrain();
@@ -358,20 +359,38 @@ export interface ManagedLocalStreamingSession {
 /** Acquire one lifecycle lease for a full live Nemotron dictation. */
 export async function beginLocalStreamingSession(
   onPartial: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<ManagedLocalStreamingSession> {
+  const throwIfAborted = () => {
+    if (signal?.aborted) {
+      throw new Error("Local streaming session was cancelled during startup.");
+    }
+  };
+
   await enqueueLifecycle(async () => {
+    throwIfAborted();
     const activeModelId = getActiveModelId();
     if (getModelFamily(activeModelId) !== "nemotron") {
-      throw new Error("The active local model does not support live streaming.");
+      throw new Error(
+        "The active local model does not support live streaming.",
+      );
     }
     await ensureLocalSidecarRunningOnce(activeModelId);
+    // A renderer reload can occur while the model is loading. Preserve the
+    // now-ready sidecar, but do not acquire a lease for the stale document.
+    throwIfAborted();
     transcriptionsInFlight++;
   });
   armIdleTimer();
 
   let sidecarSession: LocalStreamingSession;
   try {
+    throwIfAborted();
     sidecarSession = await startLocalStream(onPartial);
+    if (signal?.aborted) {
+      sidecarSession.cancel();
+      throwIfAborted();
+    }
   } catch (error) {
     releaseTranscriptionLease();
     armIdleTimer();

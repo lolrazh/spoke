@@ -19,8 +19,8 @@ const info: LocalModelInfo = {
   languageCount: 14,
   quantization: "4-bit",
   totalBytes: 1_600_000_000,
-      isDefault: true,
-      streaming: false,
+  isDefault: true,
+  streaming: false,
 };
 
 const baseStatus: ModelStatus = {
@@ -79,9 +79,7 @@ describe("ModelInstallCard", () => {
     renderCard({ loaded: false });
     expect(screen.getByText("Cohere Transcribe 03-2026")).toBeTruthy();
     // Until loaded the row is inert (a plain group, not a button).
-    expect(
-      screen.queryByRole("button", { name: info.displayName }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: info.displayName })).toBeNull();
   });
 
   it("renders a progress ring + byte progress when downloading", () => {
@@ -138,17 +136,25 @@ describe("ModelInstallCard", () => {
     expect(props.onActivate).not.toHaveBeenCalled();
   });
 
-  it("shows loading state and locks model actions until activation is ready", () => {
+  it("keeps installed details visible and locks actions while switching", () => {
     const props = renderCard({
       status: { state: "ready" },
       activationLocked: true,
       isActivating: true,
     });
 
-    expect(screen.getByText("Loading model…")).toBeTruthy();
-    expect(screen.getByRole("status", { name: "Loading model" })).toBeTruthy();
+    expect(screen.getByText("14 languages · 4-bit · 1.5 GB")).toBeTruthy();
+    expect(screen.queryByText("Loading model…")).toBeNull();
+    expect(
+      screen.getByRole("status", { name: "Switching model" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: info.displayName })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Uninstall model" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Uninstall model" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Cancel download" }),
+    ).toBeNull();
     expect(props.onActivate).not.toHaveBeenCalled();
   });
 
@@ -161,9 +167,7 @@ describe("ModelInstallCard", () => {
       screen.getByRole("button", { name: "Uninstall model" }),
     ).toBeTruthy();
     // The active row is not a clickable button (no-op).
-    expect(
-      screen.queryByRole("button", { name: info.displayName }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: info.displayName })).toBeNull();
     expect(props.onActivate).not.toHaveBeenCalled();
   });
 
