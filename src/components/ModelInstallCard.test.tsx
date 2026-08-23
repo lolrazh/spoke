@@ -19,7 +19,8 @@ const info: LocalModelInfo = {
   languageCount: 14,
   quantization: "4-bit",
   totalBytes: 1_600_000_000,
-  isDefault: true,
+      isDefault: true,
+      streaming: false,
 };
 
 const baseStatus: ModelStatus = {

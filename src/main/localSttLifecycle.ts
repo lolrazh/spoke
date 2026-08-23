@@ -15,13 +15,16 @@ import {
   killSidecar,
   setAutoRestart,
   spawnSidecar,
+  startLocalStream,
   transcribeLocal,
+  type LocalStreamingSession,
 } from "./sidecarEngine";
 import { bootTimeline } from "./bootTimeline";
 import { correctTranscript } from "./dictionaryCorrection";
 import { getVocabularyDictionary } from "./vocabularyService";
 import { state } from "./windowState";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
+import { getModelFamily } from "./localModelContract";
 
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
@@ -344,4 +347,59 @@ export async function transcribeWithLocalSidecar(
     // Reset on completion so idle time is measured from the last activity.
     armIdleTimer();
   }
+}
+
+export interface ManagedLocalStreamingSession {
+  push(pcmBuffer: Buffer): Promise<void>;
+  finish(): Promise<LocalTranscribeResult>;
+  cancel(): void;
+}
+
+/** Acquire one lifecycle lease for a full live Nemotron dictation. */
+export async function beginLocalStreamingSession(
+  onPartial: (text: string) => void,
+): Promise<ManagedLocalStreamingSession> {
+  await enqueueLifecycle(async () => {
+    const activeModelId = getActiveModelId();
+    if (getModelFamily(activeModelId) !== "nemotron") {
+      throw new Error("The active local model does not support live streaming.");
+    }
+    await ensureLocalSidecarRunningOnce(activeModelId);
+    transcriptionsInFlight++;
+  });
+  armIdleTimer();
+
+  let sidecarSession: LocalStreamingSession;
+  try {
+    sidecarSession = await startLocalStream(onPartial);
+  } catch (error) {
+    releaseTranscriptionLease();
+    armIdleTimer();
+    throw error;
+  }
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    releaseTranscriptionLease();
+    armIdleTimer();
+  };
+
+  return {
+    push: (pcmBuffer) => sidecarSession.push(pcmBuffer),
+    async finish() {
+      try {
+        const result = await sidecarSession.finish();
+        const dictionary = state.appPreferences.vocabularyDictionary ?? [];
+        return { ...result, text: correctTranscript(result.text, dictionary) };
+      } finally {
+        release();
+      }
+    },
+    cancel() {
+      sidecarSession.cancel();
+      release();
+    },
+  };
 }

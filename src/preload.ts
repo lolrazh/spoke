@@ -191,6 +191,27 @@ contextBridge.exposeInMainWorld("stt", {
     ),
   cancelLocalTranscription: () =>
     ipcRenderer.invoke("stt:cancel-local-transcription"),
+  startLocalStream: (): Promise<{ sessionId: string }> =>
+    ipcRenderer.invoke("stt:start-local-stream"),
+  pushLocalStream: (sessionId: string, pcmBuffer: ArrayBuffer) =>
+    ipcRenderer.invoke(
+      "stt:push-local-stream",
+      sessionId,
+      new Uint8Array(pcmBuffer),
+    ),
+  finishLocalStream: (sessionId: string) =>
+    ipcRenderer.invoke("stt:finish-local-stream", sessionId),
+  onLocalStreamPartial: (
+    cb: (payload: { sessionId: string; text: string }) => void,
+  ) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      payload: { sessionId: string; text: string },
+    ) => cb(payload);
+    ipcRenderer.on("stt:local-stream-partial", listener);
+    return () =>
+      ipcRenderer.removeListener("stt:local-stream-partial", listener);
+  },
   transcribeApiKeyProvider: (
     providerId: string,
     payload: {

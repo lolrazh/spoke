@@ -18,6 +18,14 @@ import { bootTimeline } from "./bootTimeline";
 // 16 kHz, mono, signed PCM16. Keep this below Parakeet's problematic
 // full-attention region; renderer chunking normally sends 25-second requests.
 export const LOCAL_STT_MAX_REQUEST_BYTES = 30 * 16_000 * 2;
+export const LOCAL_STT_MAX_STREAM_FRAME_BYTES = 1 * 16_000 * 2;
+export const LOCAL_STT_MAX_STREAM_BYTES = 5 * 60 * 16_000 * 2;
+
+export interface LocalStreamingSession {
+  push(pcmBuffer: Buffer): Promise<void>;
+  finish(): Promise<LocalTranscribeResult>;
+  cancel(): void;
+}
 
 // ── Internal state ─────────────────────────────────────────────────────
 
@@ -451,4 +459,200 @@ function transcribeLocalOnce(
       reject(err);
     }
   });
+}
+
+/** Reserve the shared sidecar stdout/stdin pair for one live dictation. */
+export function startLocalStream(
+  onPartial: (text: string) => void,
+): Promise<LocalStreamingSession> {
+  const requestGeneration = sidecarGeneration;
+  const requestProcess = sidecarProcess;
+  let resolveReady!: (session: LocalStreamingSession) => void;
+  let rejectReady!: (error: Error) => void;
+  const ready = new Promise<LocalStreamingSession>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  const reservation = sidecarTranscribeQueue.then(
+    () =>
+      runLocalStream(
+        requestProcess,
+        requestGeneration,
+        onPartial,
+        resolveReady,
+        rejectReady,
+      ),
+    () =>
+      runLocalStream(
+        requestProcess,
+        requestGeneration,
+        onPartial,
+        resolveReady,
+        rejectReady,
+      ),
+  );
+  sidecarTranscribeQueue = reservation.then(
+    (): undefined => undefined,
+    (): undefined => undefined,
+  );
+  return ready;
+}
+
+async function runLocalStream(
+  expectedProcess: ReturnType<typeof spawn> | null,
+  expectedGeneration: number,
+  onPartial: (text: string) => void,
+  resolveReady: (session: LocalStreamingSession) => void,
+  rejectReady: (error: Error) => void,
+): Promise<void> {
+  if (
+    expectedGeneration !== sidecarGeneration ||
+    expectedProcess !== sidecarProcess
+  ) {
+    rejectReady(
+      new Error("Local streaming session was cancelled before it started"),
+    );
+    return;
+  }
+  if (!expectedProcess || !sidecarReady) {
+    rejectReady(new Error("Sidecar not running"));
+    return;
+  }
+
+  const proc = expectedProcess;
+  let stdoutBuffer = "";
+  let totalBytes = 0;
+  let finishing = false;
+  let settled = false;
+  let finalTimeout: NodeJS.Timeout | null = null;
+  let resolveResult!: (result: LocalTranscribeResult) => void;
+  let rejectResult!: (error: Error) => void;
+  const result = new Promise<LocalTranscribeResult>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  let writeQueue = Promise.resolve();
+
+  const cleanup = () => {
+    if (finalTimeout) clearTimeout(finalTimeout);
+    proc.stdout?.removeListener("data", onData);
+    proc.removeListener("exit", onExit);
+  };
+  const fail = (error: Error) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    rejectResult(error);
+  };
+  const onData = (chunk: Buffer) => {
+    stdoutBuffer += chunk.toString();
+    const lines = stdoutBuffer.split("\n");
+    stdoutBuffer = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const event: SttEvent = JSON.parse(line);
+        if (event.type === "partial") {
+          onPartial(event.text);
+        } else if (event.type === "done") {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolveResult({ text: event.transcript, metrics: event.metrics });
+        } else if (event.type === "error") {
+          fail(new Error(event.message));
+        }
+      } catch {
+        console.warn("[STT] Non-JSON stdout during stream:", line);
+      }
+    }
+  };
+  const onExit = () =>
+    fail(new Error("Sidecar exited during live transcription"));
+  proc.stdout?.on("data", onData);
+  proc.once("exit", onExit);
+
+  const writeFrame = (payload: Buffer): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const stdin = proc.stdin;
+      if (!stdin || stdin.destroyed) {
+        reject(new Error("Sidecar input is unavailable"));
+        return;
+      }
+      const header = Buffer.alloc(4);
+      header.writeUInt32LE(payload.length);
+      const framed =
+        payload.length > 0 ? Buffer.concat([header, payload]) : header;
+      const onError = (error: Error) => {
+        stdin.removeListener("drain", onDrain);
+        reject(error);
+      };
+      const onDrain = () => {
+        stdin.removeListener("error", onError);
+        resolve();
+      };
+      stdin.once("error", onError);
+      try {
+        if (stdin.write(framed)) {
+          stdin.removeListener("error", onError);
+          resolve();
+        } else {
+          stdin.once("drain", onDrain);
+        }
+      } catch (error) {
+        stdin.removeListener("error", onError);
+        reject(error);
+      }
+    });
+
+  const session: LocalStreamingSession = {
+    push(pcmBuffer) {
+      if (finishing || settled) {
+        return Promise.reject(new Error("Local streaming session is closed"));
+      }
+      if (pcmBuffer.length === 0 || pcmBuffer.length % 2 !== 0) {
+        return Promise.reject(new Error("Live PCM frame must contain PCM16 audio"));
+      }
+      if (pcmBuffer.length > LOCAL_STT_MAX_STREAM_FRAME_BYTES) {
+        return Promise.reject(new Error("Live PCM frame exceeds the one-second limit"));
+      }
+      if (totalBytes + pcmBuffer.length > LOCAL_STT_MAX_STREAM_BYTES) {
+        return Promise.reject(new Error("Live dictation exceeds the five-minute limit"));
+      }
+      totalBytes += pcmBuffer.length;
+      writeQueue = writeQueue.then(() => writeFrame(pcmBuffer));
+      void writeQueue.catch((error) => {
+        fail(error instanceof Error ? error : new Error(String(error)));
+      });
+      return writeQueue;
+    },
+    async finish() {
+      if (!finishing && !settled) {
+        finishing = true;
+        await writeQueue;
+        await writeFrame(Buffer.alloc(0));
+        finalTimeout = setTimeout(() => {
+          fail(new Error("Live transcription finalization timed out"));
+          abortLocalTranscription();
+        }, 60_000);
+      }
+      return result;
+    },
+    cancel() {
+      abortLocalTranscription();
+    },
+  };
+
+  try {
+    const metadata = Buffer.from(JSON.stringify({ op: "stream" }), "utf8");
+    await writeFrame(metadata);
+    resolveReady(session);
+  } catch (error) {
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    rejectReady(normalized);
+    fail(normalized);
+  }
+
+  await result;
 }

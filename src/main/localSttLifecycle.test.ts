@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   setAutoRestart: vi.fn(),
   spawnSidecar: vi.fn(),
   transcribeLocal: vi.fn(),
+  startLocalStream: vi.fn(),
+  streamingPush: vi.fn(),
+  streamingFinish: vi.fn(),
+  streamingCancel: vi.fn(),
+  getModelFamily: vi.fn(),
   state: { appPreferences: {} as { vocabularyDictionary?: string[] } },
 }));
 
@@ -37,6 +42,11 @@ vi.mock("./sidecarEngine", () => ({
   setAutoRestart: mocks.setAutoRestart,
   spawnSidecar: mocks.spawnSidecar,
   transcribeLocal: mocks.transcribeLocal,
+  startLocalStream: mocks.startLocalStream,
+}));
+
+vi.mock("./localModelContract", () => ({
+  getModelFamily: mocks.getModelFamily,
 }));
 
 vi.mock("./windowState", () => ({ state: mocks.state }));
@@ -66,6 +76,14 @@ describe("localSttLifecycle", () => {
     mocks.killSidecar.mockResolvedValue(undefined);
     mocks.spawnSidecar.mockResolvedValue(undefined);
     mocks.transcribeLocal.mockResolvedValue({ text: "hello", metrics: {} });
+    mocks.streamingPush.mockResolvedValue(undefined);
+    mocks.streamingFinish.mockResolvedValue({ text: "hello", metrics: {} });
+    mocks.startLocalStream.mockResolvedValue({
+      push: mocks.streamingPush,
+      finish: mocks.streamingFinish,
+      cancel: mocks.streamingCancel,
+    });
+    mocks.getModelFamily.mockReturnValue("nemotron");
     mocks.state.appPreferences = {};
   });
 
@@ -156,6 +174,33 @@ describe("localSttLifecycle", () => {
     await expect(
       transcribeWithLocalSidecar(Buffer.from([1, 2, 3])),
     ).resolves.toEqual({ text: "github", metrics: {} });
+  });
+
+  it("holds one lifecycle lease across a live stream and corrects its final text", async () => {
+    mocks.state.appPreferences = { vocabularyDictionary: ["GitHub"] };
+    mocks.streamingFinish.mockResolvedValue({ text: "github", metrics: {} });
+    const { beginLocalStreamingSession } = await importLifecycle();
+    const onPartial = vi.fn();
+
+    const session = await beginLocalStreamingSession(onPartial);
+    await session.push(Buffer.from([1, 0]));
+    await expect(session.finish()).resolves.toEqual({
+      text: "GitHub",
+      metrics: {},
+    });
+
+    expect(mocks.startLocalStream).toHaveBeenCalledWith(onPartial);
+    expect(mocks.streamingPush).toHaveBeenCalledWith(Buffer.from([1, 0]));
+  });
+
+  it("rejects live streaming for a batch-only active model", async () => {
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    const { beginLocalStreamingSession } = await importLifecycle();
+
+    await expect(beginLocalStreamingSession(vi.fn())).rejects.toThrow(
+      "does not support live streaming",
+    );
+    expect(mocks.startLocalStream).not.toHaveBeenCalled();
   });
 
   it("does not spawn when the sidecar is already running", async () => {

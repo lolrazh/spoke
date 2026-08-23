@@ -23,16 +23,22 @@ vi.mock("./sidecarPaths", () => ({
 }));
 
 function createSidecarProcess(pid = 12345) {
+  const stdin = new EventEmitter() as EventEmitter & {
+    write: ReturnType<typeof vi.fn>;
+    destroyed: boolean;
+  };
+  stdin.write = vi.fn(() => true);
+  stdin.destroyed = false;
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
     stderr: EventEmitter;
-    stdin: { write: ReturnType<typeof vi.fn> };
+    stdin: typeof stdin;
     killed: boolean;
     pid: number;
   };
   proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
-  proc.stdin = { write: vi.fn() };
+  proc.stdin = stdin;
   proc.killed = false;
   proc.pid = pid;
   return proc;
@@ -339,6 +345,56 @@ describe("sidecarEngine", () => {
       );
       expect(proc.stdin.write).toHaveBeenCalledTimes(4);
       expect(replacementProc.stdin.write).not.toHaveBeenCalled();
+      kill.mockRestore();
+    });
+
+    it("streams framed PCM, forwards partials, and finalizes in order", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const onPartial = vi.fn();
+      const session = await engine.startLocalStream(onPartial);
+
+      const metadataFrame = proc.stdin.write.mock.calls[0][0] as Buffer;
+      const metadataLength = metadataFrame.readUInt32LE(0);
+      expect(
+        JSON.parse(metadataFrame.subarray(4, 4 + metadataLength).toString("utf8")),
+      ).toEqual({ op: "stream" });
+
+      proc.stdout.emit(
+        "data",
+        Buffer.from('{"type":"partial","text":"hello"}\n'),
+      );
+      await session.push(Buffer.from([1, 0, 2, 0]));
+      const finishing = session.finish();
+      await Promise.resolve();
+      proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"type":"done","transcript":"hello world","metrics":{"inference_ms":2}}\n',
+        ),
+      );
+
+      await expect(finishing).resolves.toMatchObject({ text: "hello world" });
+      expect(onPartial).toHaveBeenCalledWith("hello");
+      const audioFrame = proc.stdin.write.mock.calls[1][0] as Buffer;
+      expect(audioFrame.readUInt32LE(0)).toBe(4);
+      expect(audioFrame.subarray(4)).toEqual(Buffer.from([1, 0, 2, 0]));
+      const finalFrame = proc.stdin.write.mock.calls[2][0] as Buffer;
+      expect(finalFrame.readUInt32LE(0)).toBe(0);
+    });
+
+    it("rejects unsafe live PCM before writing it", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const session = await engine.startLocalStream(vi.fn());
+
+      await expect(session.push(Buffer.from([1]))).rejects.toThrow("PCM16");
+      await expect(
+        session.push(Buffer.alloc(engine.LOCAL_STT_MAX_STREAM_FRAME_BYTES + 2)),
+      ).rejects.toThrow("one-second limit");
+      expect(proc.stdin.write).toHaveBeenCalledTimes(1);
+
+      const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+      session.cancel();
+      proc.emit("exit", 1);
       kill.mockRestore();
     });
   });
