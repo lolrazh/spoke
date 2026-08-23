@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  LIVE_TRANSCRIPT_CHROME_WIDTH,
+  LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
+  LIVE_TRANSCRIPT_LINE_HEIGHT,
+  LIVE_TRANSCRIPT_MAX_LINES,
+  LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT,
   calculateLiveTranscriptLayout,
 } from "./liveTranscriptLayout";
 
@@ -10,14 +13,17 @@ describe("calculateLiveTranscriptLayout", () => {
     expect(
       calculateLiveTranscriptLayout({
         currentTextWidth: 50,
-        maxTextWidth: 50,
+        wrappedTextHeight: 16,
         baseWidth: 196,
+        baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
       pillWidth: 196,
-      viewportWidth: 196 - LIVE_TRANSCRIPT_CHROME_WIDTH,
-      railOffsetX: 0,
+      pillHeight: LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + 16,
+      textWidth: 196 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
+      visibleTextHeight: 16,
+      railOffsetY: 0,
       overflowing: false,
     });
   });
@@ -26,42 +32,52 @@ describe("calculateLiveTranscriptLayout", () => {
     expect(
       calculateLiveTranscriptLayout({
         currentTextWidth: 250,
-        maxTextWidth: 250,
+        wrappedTextHeight: 16,
         baseWidth: 196,
+        baseHeight: 30,
         maxWidth: 560,
       }).pillWidth,
-    ).toBe(250 + LIVE_TRANSCRIPT_CHROME_WIDTH);
+    ).toBe(250 + LIVE_TRANSCRIPT_HORIZONTAL_PADDING);
   });
 
-  it("holds the max width and moves the rail to expose the newest text", () => {
+  it("holds the max width and grows down when text wraps", () => {
     expect(
       calculateLiveTranscriptLayout({
         currentTextWidth: 600,
-        maxTextWidth: 600,
+        wrappedTextHeight: 32,
         baseWidth: 196,
+        baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
       pillWidth: 560,
-      viewportWidth: 560 - LIVE_TRANSCRIPT_CHROME_WIDTH,
-      railOffsetX: -(600 - (560 - LIVE_TRANSCRIPT_CHROME_WIDTH)),
-      overflowing: true,
+      pillHeight: LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + 32,
+      textWidth: 560 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
+      visibleTextHeight: 32,
+      railOffsetY: 0,
+      overflowing: false,
     });
   });
 
-  it("keeps expansion monotonic without scrolling past shorter corrected text", () => {
+  it("caps at three rows and moves older rows upward", () => {
+    const visibleTextHeight =
+      LIVE_TRANSCRIPT_LINE_HEIGHT * LIVE_TRANSCRIPT_MAX_LINES;
     expect(
       calculateLiveTranscriptLayout({
-        currentTextWidth: 200,
-        maxTextWidth: 600,
+        currentTextWidth: 900,
+        wrappedTextHeight: 80,
         baseWidth: 196,
+        baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
       pillWidth: 560,
-      viewportWidth: 560 - LIVE_TRANSCRIPT_CHROME_WIDTH,
-      railOffsetX: 0,
-      overflowing: false,
+      pillHeight:
+        LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + visibleTextHeight,
+      textWidth: 560 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
+      visibleTextHeight,
+      railOffsetY: -(80 - visibleTextHeight),
+      overflowing: true,
     });
   });
 });

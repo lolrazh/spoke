@@ -11,7 +11,10 @@ import { m, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
-import { LiveTranscript } from "./LiveTranscript";
+import {
+  LiveTranscript,
+  type LiveTranscriptMetrics,
+} from "./LiveTranscript";
 import { calculateLiveTranscriptLayout } from "./liveTranscriptLayout";
 
 type PillMetrics = {
@@ -100,8 +103,11 @@ const Pill: React.FC<PillProps> = ({
   const pillCoreRef = useRef<HTMLDivElement>(null);
   const previousStateRef = useRef<PillStateType>(pillState);
   const reduceMotion = useReducedMotion() ?? false;
-  const [currentLiveTextWidth, setCurrentLiveTextWidth] = useState(0);
-  const [maxLiveTextWidth, setMaxLiveTextWidth] = useState(0);
+  const [liveTranscriptMetrics, setLiveTranscriptMetrics] =
+    useState<LiveTranscriptMetrics>({
+      textWidth: 0,
+      wrappedTextHeight: 0,
+    });
 
   // --- Metrics Reporting ---
   useLayoutEffect(() => {
@@ -123,23 +129,28 @@ const Pill: React.FC<PillProps> = ({
     liveTranscript.length > 0;
   const notificationAction = pillContext.notifAction ?? null;
 
-  const handleLiveTextWidthChange = useCallback((width: number) => {
-    setCurrentLiveTextWidth((previous) =>
-      previous === width ? previous : width,
-    );
-    setMaxLiveTextWidth((previous) => Math.max(previous, width));
-  }, []);
+  const handleLiveTextMetricsChange = useCallback(
+    (metrics: LiveTranscriptMetrics) => {
+      setLiveTranscriptMetrics((previous) =>
+        previous.textWidth === metrics.textWidth &&
+        previous.wrappedTextHeight === metrics.wrappedTextHeight
+          ? previous
+          : metrics,
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     if (hasLiveTranscript) return;
-    setCurrentLiveTextWidth(0);
-    setMaxLiveTextWidth(0);
+    setLiveTranscriptMetrics({ textWidth: 0, wrappedTextHeight: 0 });
   }, [hasLiveTranscript]);
 
   const liveTranscriptLayout = calculateLiveTranscriptLayout({
-    currentTextWidth: currentLiveTextWidth,
-    maxTextWidth: maxLiveTextWidth,
+    currentTextWidth: liveTranscriptMetrics.textWidth,
+    wrappedTextHeight: liveTranscriptMetrics.wrappedTextHeight,
     baseWidth: dims.baseW,
+    baseHeight: dims.baseH,
     maxWidth: dims.maxW,
   });
 
@@ -239,7 +250,9 @@ const Pill: React.FC<PillProps> = ({
           width: hasLiveTranscript
             ? liveTranscriptLayout.pillWidth
             : dims.baseW,
-          height: dims.baseH,
+          height: hasLiveTranscript
+            ? liveTranscriptLayout.pillHeight
+            : dims.baseH,
         };
       case "NOTIFICATION":
         return { width: notificationTargetWidth, height: dims.baseH };
@@ -428,10 +441,13 @@ const Pill: React.FC<PillProps> = ({
                   <LiveTranscript
                     text={liveTranscript}
                     isProcessing={pillState === "PROCESSING"}
-                    railOffsetX={liveTranscriptLayout.railOffsetX}
+                    baseWidth={dims.baseW}
+                    maxWidth={dims.maxW}
+                    visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
+                    railOffsetY={liveTranscriptLayout.railOffsetY}
                     overflowing={liveTranscriptLayout.overflowing}
                     reducedMotion={reduceMotion}
-                    onTextWidthChange={handleLiveTextWidthChange}
+                    onTextMetricsChange={handleLiveTextMetricsChange}
                   />
                 ) : pillState === "LISTENING" ? (
                   <ListeningFrequencyBars

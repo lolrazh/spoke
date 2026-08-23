@@ -3,26 +3,39 @@ import { m } from "framer-motion";
 
 import { MOTION } from "../config/motionTokens";
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
+import { calculateLiveTranscriptWidth } from "./liveTranscriptLayout";
+
+export type LiveTranscriptMetrics = {
+  textWidth: number;
+  wrappedTextHeight: number;
+};
 
 type LiveTranscriptProps = {
   text: string;
   isProcessing: boolean;
-  railOffsetX: number;
+  baseWidth: number;
+  maxWidth: number;
+  visibleTextHeight: number;
+  railOffsetY: number;
   overflowing: boolean;
   reducedMotion: boolean;
-  onTextWidthChange: (width: number) => void;
+  onTextMetricsChange: (metrics: LiveTranscriptMetrics) => void;
 };
 
 /** Visual-only partial transcript. Final publication remains in useTranscription. */
 export function LiveTranscript({
   text,
   isProcessing,
-  railOffsetX,
+  baseWidth,
+  maxWidth,
+  visibleTextHeight,
+  railOffsetY,
   overflowing,
   reducedMotion,
-  onTextWidthChange,
+  onTextMetricsChange,
 }: LiveTranscriptProps) {
-  const measureRef = useRef<HTMLSpanElement>(null);
+  const intrinsicMeasureRef = useRef<HTMLSpanElement>(null);
+  const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
   const splitRef = useRef({
     fullText: "",
     stableText: "",
@@ -44,9 +57,25 @@ export function LiveTranscript({
   const { stableText, appendedText } = splitRef.current;
 
   useLayoutEffect(() => {
-    const width = measureRef.current?.getBoundingClientRect().width ?? 0;
-    onTextWidthChange(Math.ceil(width));
-  }, [onTextWidthChange, text]);
+    const intrinsicWidth = Math.ceil(
+      intrinsicMeasureRef.current?.getBoundingClientRect().width ?? 0,
+    );
+    const wrappedMeasure = wrappedMeasureRef.current;
+    if (!wrappedMeasure) return;
+
+    const { textWidth } = calculateLiveTranscriptWidth({
+      currentTextWidth: intrinsicWidth,
+      baseWidth,
+      maxWidth,
+    });
+    wrappedMeasure.style.width = `${textWidth}px`;
+    onTextMetricsChange({
+      textWidth: intrinsicWidth,
+      wrappedTextHeight: Math.ceil(
+        wrappedMeasure.getBoundingClientRect().height,
+      ),
+    });
+  }, [baseWidth, maxWidth, onTextMetricsChange, text]);
 
   return (
     <div className="live-transcript" aria-hidden="true">
@@ -71,10 +100,11 @@ export function LiveTranscript({
 
       <div
         className={`live-transcript-viewport ${overflowing ? "is-overflowing" : ""}`}
+        style={{ height: visibleTextHeight }}
       >
         <m.span
           className="live-transcript-rail"
-          animate={{ x: railOffsetX }}
+          animate={{ y: railOffsetY }}
           transition={
             reducedMotion
               ? { duration: 0 }
@@ -95,7 +125,16 @@ export function LiveTranscript({
         </m.span>
       </div>
 
-      <span ref={measureRef} className="live-transcript-measure">
+      <span
+        ref={intrinsicMeasureRef}
+        className="live-transcript-measure live-transcript-measure-intrinsic"
+      >
+        {text}
+      </span>
+      <span
+        ref={wrappedMeasureRef}
+        className="live-transcript-measure live-transcript-measure-wrapped"
+      >
         {text}
       </span>
     </div>

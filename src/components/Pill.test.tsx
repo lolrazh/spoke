@@ -38,6 +38,13 @@ describe("Pill live transcript", () => {
     expect(
       container.querySelector(".live-transcript-rail")?.textContent,
     ).toBe("Hello from Nemotron");
+    const liveLayout = container.querySelector(".live-transcript");
+    expect(
+      liveLayout?.children[0]?.classList.contains("live-transcript-activity"),
+    ).toBe(true);
+    expect(
+      liveLayout?.children[1]?.classList.contains("live-transcript-viewport"),
+    ).toBe(true);
     expect(getByRole("status").textContent).toBe("Live transcription active");
 
     rerender(
