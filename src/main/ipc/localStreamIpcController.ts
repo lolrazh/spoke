@@ -8,6 +8,7 @@ import type { LocalTranscribeResult } from "../../types/shared";
 import type { ManagedLocalStreamingSession } from "../localSttLifecycle";
 
 type BeginLocalStream = (
+  modelId: string,
   onPartial: (text: string) => void,
   signal: AbortSignal,
 ) => Promise<ManagedLocalStreamingSession>;
@@ -37,7 +38,7 @@ export class LocalStreamIpcController {
     private readonly createId: () => string,
   ) {}
 
-  async start(owner: WebContents): Promise<{ sessionId: string }> {
+  async start(owner: WebContents, modelId: string): Promise<{ sessionId: string }> {
     if (this.current) {
       throw new Error("A local streaming session is already active.");
     }
@@ -53,13 +54,17 @@ export class LocalStreamIpcController {
     record.removeOwnerListeners = this.watchOwner(record);
 
     try {
-      const session = await this.begin((text) => {
-        if (this.current !== record || owner.isDestroyed()) return;
-        owner.send("stt:local-stream-partial", {
-          sessionId: record.id,
-          text,
-        });
-      }, record.abortController.signal);
+      const session = await this.begin(
+        modelId,
+        (text) => {
+          if (this.current !== record || owner.isDestroyed()) return;
+          owner.send("stt:local-stream-partial", {
+            sessionId: record.id,
+            text,
+          });
+        },
+        record.abortController.signal,
+      );
 
       if (this.current !== record || record.abortController.signal.aborted) {
         session.cancel();

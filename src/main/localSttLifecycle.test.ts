@@ -92,7 +92,9 @@ describe("localSttLifecycle", () => {
     const { transcribeWithLocalSidecar, LOCAL_MODEL_NOT_INSTALLED_MESSAGE } =
       await importLifecycle();
 
-    await expect(transcribeWithLocalSidecar(Buffer.from([]))).rejects.toThrow(
+    await expect(
+      transcribeWithLocalSidecar("current-model", Buffer.from([])),
+    ).rejects.toThrow(
       LOCAL_MODEL_NOT_INSTALLED_MESSAGE,
     );
 
@@ -104,7 +106,9 @@ describe("localSttLifecycle", () => {
     const { transcribeWithLocalSidecar } = await importLifecycle();
     const pcmBuffer = Buffer.from([1, 2, 3]);
 
-    await expect(transcribeWithLocalSidecar(pcmBuffer)).resolves.toEqual({
+    await expect(
+      transcribeWithLocalSidecar("current-model", pcmBuffer),
+    ).resolves.toEqual({
       text: "hello",
       metrics: {},
     });
@@ -115,12 +119,21 @@ describe("localSttLifecycle", () => {
     expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer, undefined);
   });
 
+  it("uses the dictation's pinned model after the active selection changes", async () => {
+    mocks.getActiveModelId.mockReturnValue("newer-selection");
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await transcribeWithLocalSidecar("pinned-model", Buffer.from([1, 2]));
+
+    expect(mocks.spawnSidecar).toHaveBeenCalledWith("pinned-model");
+  });
+
   it("passes an optional prompt through to the sidecar engine", async () => {
     const { transcribeWithLocalSidecar } = await importLifecycle();
     const pcmBuffer = Buffer.from([1, 2, 3]);
     const prompt = "Your vocabulary includes: Spoke, Sandeep";
 
-    await transcribeWithLocalSidecar(pcmBuffer, prompt);
+    await transcribeWithLocalSidecar("current-model", pcmBuffer, prompt);
 
     expect(mocks.transcribeLocal).toHaveBeenCalledWith(pcmBuffer, prompt);
   });
@@ -133,7 +146,7 @@ describe("localSttLifecycle", () => {
     const pcmBuffer = Buffer.from([1, 2, 3]);
     const prompt = "Your vocabulary includes: Spoke";
 
-    await transcribeWithLocalSidecar(pcmBuffer, prompt);
+    await transcribeWithLocalSidecar("current-model", pcmBuffer, prompt);
 
     expect(mocks.transcribeLocal).toHaveBeenCalledWith(
       pcmBuffer,
@@ -150,6 +163,7 @@ describe("localSttLifecycle", () => {
     const pcmBuffer = Buffer.from([1, 2, 3]);
 
     await transcribeWithLocalSidecar(
+      "current-model",
       pcmBuffer,
       "Your vocabulary includes: Spoke, OCRWord",
     );
@@ -163,7 +177,7 @@ describe("localSttLifecycle", () => {
     const { transcribeWithLocalSidecar } = await importLifecycle();
 
     await expect(
-      transcribeWithLocalSidecar(Buffer.from([1, 2, 3])),
+      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
     ).resolves.toEqual({ text: "GitHub", metrics: {} });
   });
 
@@ -172,7 +186,7 @@ describe("localSttLifecycle", () => {
     const { transcribeWithLocalSidecar } = await importLifecycle();
 
     await expect(
-      transcribeWithLocalSidecar(Buffer.from([1, 2, 3])),
+      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
     ).resolves.toEqual({ text: "github", metrics: {} });
   });
 
@@ -182,7 +196,7 @@ describe("localSttLifecycle", () => {
     const { beginLocalStreamingSession } = await importLifecycle();
     const onPartial = vi.fn();
 
-    const session = await beginLocalStreamingSession(onPartial);
+    const session = await beginLocalStreamingSession("current-model", onPartial);
     await session.push(Buffer.from([1, 0]));
     await expect(session.finish()).resolves.toEqual({
       text: "GitHub",
@@ -197,7 +211,9 @@ describe("localSttLifecycle", () => {
     mocks.getModelFamily.mockReturnValue("parakeet");
     const { beginLocalStreamingSession } = await importLifecycle();
 
-    await expect(beginLocalStreamingSession(vi.fn())).rejects.toThrow(
+    await expect(
+      beginLocalStreamingSession("current-model", vi.fn()),
+    ).rejects.toThrow(
       "does not support live streaming",
     );
     expect(mocks.startLocalStream).not.toHaveBeenCalled();
@@ -211,7 +227,11 @@ describe("localSttLifecycle", () => {
     const abortController = new AbortController();
     const { beginLocalStreamingSession } = await importLifecycle();
 
-    const pending = beginLocalStreamingSession(vi.fn(), abortController.signal);
+    const pending = beginLocalStreamingSession(
+      "current-model",
+      vi.fn(),
+      abortController.signal,
+    );
     await Promise.resolve();
     abortController.abort();
     finishStartup();
@@ -507,7 +527,10 @@ describe("localSttLifecycle", () => {
     const { setActiveModelAndResync, transcribeWithLocalSidecar } =
       await importLifecycle();
 
-    const transcription = transcribeWithLocalSidecar(Buffer.from([1]));
+    const transcription = transcribeWithLocalSidecar(
+      "model-a",
+      Buffer.from([1]),
+    );
     await flushLifecycle();
     const switching = setActiveModelAndResync("model-b");
     await flushLifecycle();
@@ -536,7 +559,7 @@ describe("localSttLifecycle", () => {
       const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
         await importLifecycle();
 
-      await transcribeWithLocalSidecar(Buffer.from([1]));
+      await transcribeWithLocalSidecar("current-model", Buffer.from([1]));
       expect(mocks.killSidecar).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(SIDECAR_IDLE_TIMEOUT_MS);
@@ -552,7 +575,7 @@ describe("localSttLifecycle", () => {
         SIDECAR_IDLE_TIMEOUT_MS,
       } = await importLifecycle();
 
-      await transcribeWithLocalSidecar(Buffer.from([1]));
+      await transcribeWithLocalSidecar("current-model", Buffer.from([1]));
       await vi.advanceTimersByTimeAsync(SIDECAR_IDLE_TIMEOUT_MS - 1000);
       expect(mocks.killSidecar).not.toHaveBeenCalled();
 
@@ -579,7 +602,10 @@ describe("localSttLifecycle", () => {
       const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
         await importLifecycle();
 
-      const inflight = transcribeWithLocalSidecar(Buffer.from([1]));
+      const inflight = transcribeWithLocalSidecar(
+        "current-model",
+        Buffer.from([1]),
+      );
       // Let ensureLocalSidecarRunning settle so the request is registered.
       await Promise.resolve();
       await Promise.resolve();
@@ -600,7 +626,7 @@ describe("localSttLifecycle", () => {
       const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
         await importLifecycle();
 
-      await transcribeWithLocalSidecar(Buffer.from([1]));
+      await transcribeWithLocalSidecar("current-model", Buffer.from([1]));
       await vi.advanceTimersByTimeAsync(SIDECAR_IDLE_TIMEOUT_MS);
 
       // Auto-restart is disabled before the kill, so the engine's exit handler
@@ -619,7 +645,7 @@ describe("localSttLifecycle", () => {
       const { transcribeWithLocalSidecar, SIDECAR_IDLE_TIMEOUT_MS } =
         await importLifecycle();
 
-      await transcribeWithLocalSidecar(Buffer.from([1]));
+      await transcribeWithLocalSidecar("current-model", Buffer.from([1]));
       await vi.advanceTimersByTimeAsync(SIDECAR_IDLE_TIMEOUT_MS);
 
       expect(errorSpy).toHaveBeenCalledWith(

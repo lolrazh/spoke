@@ -1,6 +1,7 @@
 import type { LocalTranscribeResult } from "../../types/shared";
 
 export interface LocalStreamingDictationOptions {
+  modelId: string;
   sampleRateHz: number;
   batchMs?: number;
   maxDurationMs: number;
@@ -64,7 +65,7 @@ export class LocalStreamingDictation {
     });
     this.startPending = true;
     try {
-      const { sessionId } = await bridge.startLocalStream();
+      const { sessionId } = await bridge.startLocalStream(this.options.modelId);
       if (this.closed) {
         throw new Error("Local streaming session was cancelled during startup.");
       }

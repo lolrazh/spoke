@@ -288,36 +288,26 @@ export function useTranscription(
 
       if (
         provider.descriptor.kind === "local" &&
-        window.stt.getActiveModel &&
-        window.stt.getModelInfos
+        prepareResult?.localModel?.streaming
       ) {
-        const [activeModelId, modelInfos] = await Promise.all([
-          window.stt.getActiveModel(),
-          window.stt.getModelInfos(),
-        ]);
+        localStreamingDictation = new LocalStreamingDictation({
+          modelId: prepareResult.localModel.modelId,
+          sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+          batchMs: 320,
+          maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
+          onPartial: setLiveText,
+          onLimitReached: () => {
+            window.notifications?.send(
+              "Sorry — Spoke has a five-minute recording limit. Finishing your transcription now…",
+            );
+            requestStopRef.current();
+          },
+        });
+        // Publish the pending adapter before awaiting IPC startup. Cancel
+        // can now abort the main-process record even before it has an ID.
+        localStreamingDictationRef.current = localStreamingDictation;
+        await localStreamingDictation.start();
         if (!isCurrentStart()) return;
-        const activeModel = modelInfos.find(
-          (model) => model.modelId === activeModelId,
-        );
-        if (activeModel?.streaming) {
-          localStreamingDictation = new LocalStreamingDictation({
-            sampleRateHz: TARGET_SAMPLE_RATE_HZ,
-            batchMs: 320,
-            maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
-            onPartial: setLiveText,
-            onLimitReached: () => {
-              window.notifications?.send(
-                "Sorry — Spoke has a five-minute recording limit. Finishing your transcription now…",
-              );
-              requestStopRef.current();
-            },
-          });
-          // Publish the pending adapter before awaiting IPC startup. Cancel
-          // can now abort the main-process record even before it has an ID.
-          localStreamingDictationRef.current = localStreamingDictation;
-          await localStreamingDictation.start();
-          if (!isCurrentStart()) return;
-        }
       }
       if (provider.descriptor.kind === "local" && !localStreamingDictation) {
         localChunkedDictation = new LocalChunkedDictation({

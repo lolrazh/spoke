@@ -1,4 +1,5 @@
 import type { CapturedAudio } from "./capturedAudio";
+import type { LocalModelTarget } from "../../types/shared";
 
 export type TranscriptionMode = "dictation" | "edit";
 
@@ -26,6 +27,7 @@ export interface PrepareTranscriptionInput {
 
 export interface PrepareTranscriptionResult {
   ocrWords?: string[];
+  localModel?: LocalModelTarget;
 }
 
 export interface TranscribeAudioInput {

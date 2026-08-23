@@ -324,14 +324,13 @@ export async function setActiveModelAndResync(modelId: string): Promise<void> {
 }
 
 export async function transcribeWithLocalSidecar(
+  modelId: string,
   pcmBuffer: Buffer,
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
-  const modelId = await enqueueLifecycle(async () => {
-    const activeModelId = getActiveModelId();
-    await ensureLocalSidecarRunningOnce(activeModelId);
+  await enqueueLifecycle(async () => {
+    await ensureLocalSidecarRunningOnce(modelId);
     transcriptionsInFlight++;
-    return activeModelId;
   });
   // Reset on request; if the timer somehow elapses mid-flight the in-flight
   // guard blocks the stop.
@@ -358,6 +357,7 @@ export interface ManagedLocalStreamingSession {
 
 /** Acquire one lifecycle lease for a full live Nemotron dictation. */
 export async function beginLocalStreamingSession(
+  modelId: string,
   onPartial: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<ManagedLocalStreamingSession> {
@@ -369,13 +369,12 @@ export async function beginLocalStreamingSession(
 
   await enqueueLifecycle(async () => {
     throwIfAborted();
-    const activeModelId = getActiveModelId();
-    if (getModelFamily(activeModelId) !== "nemotron") {
+    if (getModelFamily(modelId) !== "nemotron") {
       throw new Error(
         "The active local model does not support live streaming.",
       );
     }
-    await ensureLocalSidecarRunningOnce(activeModelId);
+    await ensureLocalSidecarRunningOnce(modelId);
     // A renderer reload can occur while the model is loading. Preserve the
     // now-ready sidecar, but do not acquire a lease for the stale document.
     throwIfAborted();

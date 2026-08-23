@@ -143,7 +143,7 @@ Object.defineProperty(window, "stt", {
     ),
     transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
     getActiveModel: vi.fn(() => Promise.resolve("test-model")),
-    getModelInfos: vi.fn(() => Promise.resolve([])),
+    getModelInfos: vi.fn(() => Promise.resolve([testModelInfo()])),
     startLocalStream: vi.fn(() => Promise.resolve({ sessionId: "stream-1" })),
     pushLocalStream: vi.fn(() => Promise.resolve()),
     finishLocalStream: vi.fn(() =>
@@ -171,7 +171,7 @@ describe("useTranscription", () => {
       metrics: {},
     });
     (window.stt.getActiveModel as any).mockResolvedValue("test-model");
-    (window.stt.getModelInfos as any).mockResolvedValue([]);
+    (window.stt.getModelInfos as any).mockResolvedValue([testModelInfo()]);
     (window.stt.startLocalStream as any).mockResolvedValue({
       sessionId: "stream-1",
     });
@@ -818,6 +818,18 @@ describe("useTranscription", () => {
       resolveStart = resolve;
     });
     (window.stt.getActiveModel as any).mockResolvedValue("nemotron");
+    (window.stt.getModelStatus as any).mockResolvedValue({
+      state: "ready",
+      family: "nemotron",
+      modelId: "nemotron",
+      displayName: "Nemotron",
+      version: "1.0.0",
+      manifestVersion: 1,
+      downloadProgress: 1,
+      downloadedBytes: 1,
+      totalBytes: 1,
+      error: null,
+    });
     (window.stt.getModelInfos as any).mockResolvedValue([
       {
         modelId: "nemotron",
@@ -865,6 +877,18 @@ function configureStreamingModel(finalText: string) {
     | ((payload: { sessionId: string; text: string }) => void)
     | null = null;
   (window.stt.getActiveModel as any).mockResolvedValue("nemotron");
+  (window.stt.getModelStatus as any).mockResolvedValue({
+    state: "ready",
+    family: "nemotron",
+    modelId: "nemotron",
+    displayName: "Nemotron",
+    version: "1.0.0",
+    manifestVersion: 1,
+    downloadProgress: 1,
+    downloadedBytes: 1,
+    totalBytes: 1,
+    error: null,
+  });
   (window.stt.getModelInfos as any).mockResolvedValue([
     {
       modelId: "nemotron",
@@ -893,6 +917,20 @@ function configureStreamingModel(finalText: string) {
     emitPartial(text: string) {
       partialListener?.({ sessionId: "stream-1", text });
     },
+  };
+}
+
+function testModelInfo() {
+  return {
+    modelId: "test-model",
+    family: "whisper",
+    displayName: "Test Model",
+    tagline: "Test",
+    languageCount: 1,
+    quantization: "4-bit",
+    totalBytes: 1,
+    isDefault: true,
+    streaming: false,
   };
 }
 

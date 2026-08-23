@@ -20,6 +20,7 @@ describe("LocalStreamingDictation", () => {
 
   it("batches PCM in order and flushes the tail before finalization", async () => {
     const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
       sampleRateHz: 100,
       batchMs: 320,
       maxDurationMs: 5_000,
@@ -27,6 +28,7 @@ describe("LocalStreamingDictation", () => {
       onLimitReached: vi.fn(),
     });
     await stream.start();
+    expect(window.stt.startLocalStream).toHaveBeenCalledWith("nemotron");
     stream.pushFrame(new Int16Array(20).fill(1));
     stream.pushFrame(new Int16Array(20).fill(2));
     stream.pushFrame(new Int16Array(5).fill(3));
@@ -44,6 +46,7 @@ describe("LocalStreamingDictation", () => {
   it("forwards only partials for its session", async () => {
     const onPartial = vi.fn();
     const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
       sampleRateHz: 100,
       maxDurationMs: 5_000,
       onPartial,
@@ -60,6 +63,7 @@ describe("LocalStreamingDictation", () => {
   it("reports the duration limit once and does not send excess audio", async () => {
     const onLimitReached = vi.fn();
     const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
       sampleRateHz: 100,
       batchMs: 1_000,
       maxDurationMs: 1_000,

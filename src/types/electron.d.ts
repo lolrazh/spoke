@@ -233,11 +233,12 @@ declare global {
     ) => () => void;
     stt: {
       transcribeLocal: (
+        modelId: string,
         pcmBuffer: ArrayBuffer,
         prompt?: string,
       ) => Promise<LocalTranscribeResult>;
       cancelLocalTranscription: () => Promise<void>;
-      startLocalStream: () => Promise<{ sessionId: string }>;
+      startLocalStream: (modelId: string) => Promise<{ sessionId: string }>;
       pushLocalStream: (
         sessionId: string,
         pcmBuffer: ArrayBuffer,

@@ -21,6 +21,21 @@ describe("localSttProvider", () => {
             error: null,
           }),
         ),
+        getModelInfos: vi.fn(() =>
+          Promise.resolve([
+            {
+              modelId: "test-model",
+              family: "whisper",
+              displayName: "Test Model",
+              tagline: "Test",
+              languageCount: 1,
+              quantization: "4-bit",
+              totalBytes: 1,
+              isDefault: true,
+              streaming: false,
+            },
+          ]),
+        ),
         transcribeLocal: vi.fn(() =>
           Promise.resolve({
             text: "local transcript",
@@ -38,10 +53,12 @@ describe("localSttProvider", () => {
     const result = await localSttProvider.transcribe({
       audio,
       context: { mode: "dictation" },
+      prepareResult: preparedLocalModel(),
     });
 
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
     expect(window.stt.transcribeLocal).toHaveBeenCalledWith(
+      "test-model",
       expect.any(ArrayBuffer),
       undefined,
     );
@@ -51,6 +68,12 @@ describe("localSttProvider", () => {
     });
   });
 
+  it("pins the ready local model during preparation", async () => {
+    await expect(
+      localSttProvider.prepare?.({ context: { mode: "dictation" } }),
+    ).resolves.toEqual(preparedLocalModel());
+  });
+
   it("passes the context's sttPrompt through to the Electron bridge", async () => {
     const audio = createCapturedAudio(new Int16Array([1, 2, 3, 4]));
     const sttPrompt = "Your vocabulary includes: Spoke, Sandeep";
@@ -58,9 +81,11 @@ describe("localSttProvider", () => {
     await localSttProvider.transcribe({
       audio,
       context: { mode: "dictation", sttPrompt },
+      prepareResult: preparedLocalModel(),
     });
 
     expect(window.stt.transcribeLocal).toHaveBeenCalledWith(
+      "test-model",
       expect.any(ArrayBuffer),
       sttPrompt,
     );
@@ -98,3 +123,13 @@ describe("localSttProvider", () => {
     ).rejects.toBeInstanceOf(TranscriptionSessionError);
   });
 });
+
+function preparedLocalModel() {
+  return {
+    localModel: {
+      modelId: "test-model",
+      family: "whisper" as const,
+      streaming: false,
+    },
+  };
+}

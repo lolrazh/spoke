@@ -183,3 +183,10 @@ export type LocalModelInfo = {
   /** True when this model accepts live PCM and returns cumulative partials. */
   streaming: boolean;
 };
+
+/** Immutable model choice captured when one local dictation starts. */
+export type LocalModelTarget = {
+  modelId: string;
+  family: LocalModelFamily;
+  streaming: boolean;
+};

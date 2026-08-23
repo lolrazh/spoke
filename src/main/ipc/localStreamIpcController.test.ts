@@ -40,10 +40,13 @@ describe("LocalStreamIpcController", () => {
     const secondSession = createSession();
     const begin = vi
       .fn()
-      .mockImplementationOnce((_partial, signal: AbortSignal) => {
-        expect(signal.aborted).toBe(false);
-        return first.promise;
-      })
+      .mockImplementationOnce(
+        (modelId: string, _partial, signal: AbortSignal) => {
+          expect(modelId).toBe("nemotron-a");
+          expect(signal.aborted).toBe(false);
+          return first.promise;
+        },
+      )
       .mockResolvedValueOnce(secondSession);
     const abortBatch = vi.fn();
     const controller = new LocalStreamIpcController(
@@ -53,15 +56,15 @@ describe("LocalStreamIpcController", () => {
     );
     const owner = createOwner();
 
-    const staleStart = controller.start(owner);
+    const staleStart = controller.start(owner, "nemotron-a");
     owner.emit("did-start-navigation", {
       isMainFrame: true,
       isSameDocument: false,
     });
 
-    const replacement = await controller.start(owner);
+    const replacement = await controller.start(owner, "nemotron-b");
     expect(replacement).toEqual({ sessionId: "second" });
-    expect(begin.mock.calls[0][1].aborted).toBe(true);
+    expect(begin.mock.calls[0][2].aborted).toBe(true);
     expect(abortBatch).not.toHaveBeenCalled();
 
     const staleSession = createSession();
@@ -83,14 +86,14 @@ describe("LocalStreamIpcController", () => {
     );
     const owner = createOwner();
 
-    await controller.start(owner);
+    await controller.start(owner, "nemotron-a");
     owner.emit("did-start-navigation", {
       isMainFrame: true,
       isSameDocument: false,
     });
 
     expect(firstSession.cancel).toHaveBeenCalledOnce();
-    await expect(controller.start(owner)).resolves.toEqual({
+    await expect(controller.start(owner, "nemotron-b")).resolves.toEqual({
       sessionId: "second",
     });
   });
@@ -104,7 +107,7 @@ describe("LocalStreamIpcController", () => {
     );
     const owner = createOwner();
 
-    await controller.start(owner);
+    await controller.start(owner, "nemotron");
     owner.emit("did-start-navigation", {
       isMainFrame: true,
       isSameDocument: true,
@@ -127,13 +130,13 @@ describe("LocalStreamIpcController", () => {
     );
     const owner = createOwner();
 
-    await controller.start(owner);
+    await controller.start(owner, "nemotron");
     await expect(
       controller.push(owner, "stream", new Uint8Array([1, 0])),
     ).rejects.toThrow("sidecar write failed");
 
     expect(session.cancel).toHaveBeenCalledOnce();
-    await expect(controller.start(owner)).resolves.toEqual({
+    await expect(controller.start(owner, "nemotron")).resolves.toEqual({
       sessionId: "stream",
     });
   });
