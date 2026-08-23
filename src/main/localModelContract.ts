@@ -197,6 +197,54 @@ const PARAKEET_MANIFEST: ModelManifest = {
   ],
 };
 
+// ── Nemotron 3.5 ASR Streaming 0.6B (8-bit) ──────────────────────────
+
+const NEMOTRON_ID = "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
+const NEMOTRON_VERSION = "7279359e4481b5e9e185a318bd618e429c6d86cd";
+const NEMOTRON_BASE = hfResolveBase(NEMOTRON_ID, NEMOTRON_VERSION);
+
+const NEMOTRON_MANIFEST: ModelManifest = {
+  manifestVersion: LOCAL_MODEL_MANIFEST_VERSION,
+  family: "nemotron",
+  modelId: NEMOTRON_ID,
+  displayName: "Nemotron 3.5 ASR Streaming 0.6B",
+  version: NEMOTRON_VERSION,
+  files: [
+    {
+      role: "config",
+      path: "config.json",
+      url: `${NEMOTRON_BASE}/config.json`,
+      sha256:
+        "f30c7bc469fc01fd5483172b4d7c75075030ddb60f347589c44e216b0a5ea9b6",
+      size: 159605,
+    },
+    {
+      role: "weights",
+      path: "model.safetensors",
+      url: `${NEMOTRON_BASE}/model.safetensors`,
+      sha256:
+        "a64a4da048e7d28dde4cd4ff61ce59308a63314bb5563e73e06c24aae50ea941",
+      size: 755598923,
+    },
+    {
+      role: "tokenizer",
+      path: "tokenizer.model",
+      url: `${NEMOTRON_BASE}/tokenizer.model`,
+      sha256:
+        "ce3895e40806f02a26c3a225161b96ef682d6c0054bae32a245dec4258d7d291",
+      size: 406554,
+    },
+    {
+      role: "tokenizer",
+      path: "vocab.txt",
+      url: `${NEMOTRON_BASE}/vocab.txt`,
+      sha256:
+        "d74b60edd1cad792cfce25dcb7e1048d78d717cf4f29acaae2854262d5189f4f",
+      size: 78294,
+    },
+  ],
+};
+
 // ── Registry ──────────────────────────────────────────────────────────
 
 export type LocalModelEntry = {
@@ -207,7 +255,7 @@ export type LocalModelEntry = {
 };
 
 /** The model pre-selected in onboarding and used for fresh installs. */
-export const DEFAULT_MODEL_ID = PARAKEET_ID;
+export const DEFAULT_MODEL_ID = NEMOTRON_ID;
 
 function makeInfo(
   manifest: ModelManifest,
@@ -216,6 +264,7 @@ function makeInfo(
     languageCount: number;
     quantization: string;
     isDefault: boolean;
+    streaming?: boolean;
   },
 ): LocalModelInfo {
   return {
@@ -227,23 +276,36 @@ function makeInfo(
     quantization: extra.quantization,
     totalBytes: totalBytes(manifest),
     isDefault: extra.isDefault,
+    streaming: extra.streaming ?? false,
   };
 }
 
 export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
+  [NEMOTRON_ID]: {
+    manifest: NEMOTRON_MANIFEST,
+    info: makeInfo(NEMOTRON_MANIFEST, {
+      tagline: "Multilingual live transcription with low-latency partials.",
+      languageCount: 40,
+      quantization: "8-bit",
+      isDefault: true,
+      streaming: true,
+    }),
+    requiredFilePaths: [
+      "config.json",
+      "model.safetensors",
+      "tokenizer.model",
+      "vocab.txt",
+    ],
+  },
   [PARAKEET_ID]: {
     manifest: PARAKEET_MANIFEST,
     info: makeInfo(PARAKEET_MANIFEST, {
       tagline: "English-only speech recognition built for speed.",
       languageCount: 1,
       quantization: "6-bit",
-      isDefault: true,
+      isDefault: false,
     }),
-    requiredFilePaths: [
-      "config.json",
-      "model.safetensors",
-      "mel_filters.npy",
-    ],
+    requiredFilePaths: ["config.json", "model.safetensors", "mel_filters.npy"],
   },
   [COHERE_ID]: {
     manifest: COHERE_MANIFEST,
@@ -277,7 +339,12 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
 };
 
 /** Ordered list of model ids (default first), for stable UI rendering. */
-export const LOCAL_MODEL_IDS: string[] = [PARAKEET_ID, COHERE_ID, WHISPER_ID];
+export const LOCAL_MODEL_IDS: string[] = [
+  NEMOTRON_ID,
+  PARAKEET_ID,
+  COHERE_ID,
+  WHISPER_ID,
+];
 
 export function getModelEntry(modelId: string): LocalModelEntry | undefined {
   return LOCAL_MODELS[modelId];

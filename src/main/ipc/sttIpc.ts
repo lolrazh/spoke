@@ -7,6 +7,7 @@
  */
 
 import { ipcMain } from "electron";
+import { randomUUID } from "crypto";
 
 import {
   isApiKeyTranscriptionProviderId,
@@ -43,6 +44,7 @@ import {
   syncLocalSidecarForCurrentProvider,
   transcribeWithLocalSidecar,
   abortLocalSidecarTranscription,
+  beginLocalStreamingSession,
 } from "../localSttLifecycle";
 import {
   getModelStatus,
@@ -52,6 +54,13 @@ import {
 } from "../modelManager";
 import { listModelInfos } from "../localModelContract";
 import { scheduleLocalSidecarPrewarm } from "../windows";
+import { LocalStreamIpcController } from "./localStreamIpcController";
+
+const localStreams = new LocalStreamIpcController(
+  beginLocalStreamingSession,
+  abortLocalSidecarTranscription,
+  randomUUID,
+);
 
 export function registerSttIpc(): void {
   // ============ Local Whisper IPC handlers ============
@@ -116,8 +125,23 @@ export function registerSttIpc(): void {
   );
 
   ipcMain.handle("stt:cancel-local-transcription", () => {
-    abortLocalSidecarTranscription();
+    localStreams.cancel();
   });
+
+  ipcMain.handle("stt:start-local-stream", (event) =>
+    localStreams.start(event.sender),
+  );
+
+  ipcMain.handle(
+    "stt:push-local-stream",
+    async (event, sessionId: string, pcmBytes: Uint8Array) => {
+      await localStreams.push(event.sender, sessionId, pcmBytes);
+    },
+  );
+
+  ipcMain.handle("stt:finish-local-stream", (event, sessionId: string) =>
+    localStreams.finish(event.sender, sessionId),
+  );
 
   ipcMain.handle("stt:extract-ocr", async (_event, imageBase64: string) => {
     const providerId = resolveEnhancementProvider(getPreferredProviderId());

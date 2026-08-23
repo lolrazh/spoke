@@ -63,6 +63,8 @@ pyinstaller \
   --hidden-import mlx_whisper.load_models \
   --hidden-import mlx_whisper.tokenizer \
   --hidden-import mlx_whisper.whisper \
+  --hidden-import nemotron_streaming \
+  --hidden-import mlx_audio.stt.models.nemotron_asr \
   --hidden-import tiktoken \
   --hidden-import tiktoken_ext.openai_public \
   sidecar.py

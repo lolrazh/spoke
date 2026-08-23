@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Spoke MLX STT sidecar supporting three ASR engine families: Whisper, Cohere,
-and Parakeet.
+Spoke MLX STT sidecar supporting Whisper, Cohere, Parakeet, and Nemotron ASR.
 
-The engine family is selected with --family {whisper,cohere,parakeet} (default
+The engine family is selected with --family {whisper,cohere,parakeet,nemotron} (default
 whisper for back-compat). Whisper uses mlx_whisper (large-v3 turbo 4-bit);
 Cohere uses mlx-speech (CohereAsrModel); Parakeet uses parakeet-mlx (TDT 0.6b
 v2, 8-bit). Heavy per-family imports are loaded lazily so that selecting one
@@ -21,6 +20,7 @@ audio frame following) is a shutdown request.
 
 Protocol stdout events:
   {"type":"ready"}
+  {"type":"partial","text":"..."}
   {"type":"done","transcript":"...","metrics":{...}}
   {"type":"error","message":"...","code":"..."}
 """
@@ -77,6 +77,17 @@ PARAKEET_REQUIRED_MODEL_FILES = (
 # the packed weights (parakeet-mlx's from_pretrained has no quantized path).
 PARAKEET_QUANT_BITS = 6
 PARAKEET_QUANT_GROUP_SIZE = 64
+
+# Nemotron model identity / files. The model is already quantized by the MLX
+# conversion, and mlx-audio restores that layout from config.json.
+NEMOTRON_MODEL_ID = "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit"
+NEMOTRON_MODEL_DISPLAY_NAME = "Nemotron 3.5 ASR Streaming 0.6B 8-bit"
+NEMOTRON_REQUIRED_MODEL_FILES = (
+    "config.json",
+    "model.safetensors",
+    "tokenizer.model",
+    "vocab.txt",
+)
 
 # All engine families consume 16 kHz mono PCM. Keep a single shared constant;
 # the Whisper and Parakeet engines assert it matches their model's rate.
@@ -399,6 +410,13 @@ class Engine:
         self, audio: np.ndarray, prompt: str | None = None
     ) -> None:  # pragma: no cover - interface
         raise NotImplementedError
+
+    @property
+    def supports_streaming(self) -> bool:
+        return False
+
+    def stream(self, read_pcm_frame) -> None:  # pragma: no cover - interface
+        raise RuntimeError("This model does not support live streaming.")
 
 
 # ---------------------------------------------------------------------------
@@ -1645,6 +1663,159 @@ class ParakeetEngine(Engine):
 
 
 # ---------------------------------------------------------------------------
+# Nemotron streaming engine (mlx-audio). Imports stay lazy so other engines do
+# not pay its import or packaging cost at startup.
+# ---------------------------------------------------------------------------
+
+
+class NemotronEngine(Engine):
+    def __init__(self, weights_dir: Path, language: str | None) -> None:
+        self.weights_dir = weights_dir
+        self.language = language or "en-US"
+        self.model = None
+        self.load_ms: int | None = None
+        self.load_peak_memory_bytes = 0
+
+    @property
+    def supports_streaming(self) -> bool:
+        return True
+
+    def load(self) -> None:
+        validate_weights_dir(self.weights_dir, NEMOTRON_REQUIRED_MODEL_FILES)
+        from mlx_audio.stt import load
+
+        log(f"sidecar: loading {NEMOTRON_MODEL_DISPLAY_NAME} from {self.weights_dir}")
+        reset_peak_memory()
+        start = time.perf_counter()
+        self.model = load(str(self.weights_dir), lazy=False)
+        sample_rate = self.model.preprocessor_config.sample_rate
+        if sample_rate != SAMPLE_RATE:
+            raise RuntimeError(
+                f"Nemotron sample rate {sample_rate} != expected {SAMPLE_RATE}"
+            )
+        self.load_ms = round((time.perf_counter() - start) * 1000)
+        self.load_peak_memory_bytes = memory_snapshot()["peak_memory_bytes"]
+        log(f"sidecar: model loaded in {self.load_ms} ms")
+
+    def warmup(self) -> None:
+        if not is_enabled(WARMUP_MODE):
+            log("sidecar: warmup disabled")
+            return
+        if self.model is None:
+            raise RuntimeError("Nemotron model has not been loaded.")
+        try:
+            log("sidecar: warming Nemotron streaming decode path")
+            start = time.perf_counter()
+            list(
+                self.model.stream_generate(
+                    mx.zeros((SAMPLE_RATE,), dtype=mx.float32),
+                    language=self.language,
+                    chunk_duration=0.32,
+                    att_context_size=[56, 3],
+                )
+            )
+            clear_cache_if_enabled()
+            log(
+                "sidecar: warmup complete in "
+                f"{round((time.perf_counter() - start) * 1000)} ms"
+            )
+        except Exception as exc:
+            log(f"sidecar: warmup failed; continuing cold: {exc}")
+
+    def transcribe(self, audio: np.ndarray, prompt: str | None = None) -> None:
+        del prompt
+        if self.model is None:
+            raise RuntimeError("Nemotron model has not been loaded.")
+        start = time.perf_counter()
+        result = self.model.generate(
+            mx.array(audio),
+            language=self.language,
+            chunk_duration=0.32,
+            att_context_size=[56, 3],
+        )
+        transcript = result.text.strip()
+        inference_ms = round((time.perf_counter() - start) * 1000)
+        emit(
+            {
+                "type": "done",
+                "transcript": transcript,
+                "metrics": {
+                    "model_id": NEMOTRON_MODEL_ID,
+                    "model_load_ms": self.load_ms or 0,
+                    "audio_duration_ms": round(len(audio) / SAMPLE_RATE * 1000),
+                    "inference_ms": inference_ms,
+                    "ttft_ms": None,
+                    "word_count": len(transcript.split()),
+                    **memory_snapshot(),
+                },
+            }
+        )
+
+    def stream(self, read_pcm_frame) -> None:
+        if self.model is None:
+            raise RuntimeError("Nemotron model has not been loaded.")
+        from nemotron_streaming import stream_results
+
+        started = time.perf_counter()
+        first_text_at: float | None = None
+        transcript = ""
+        total_audio_bytes = 0
+        input_wait_seconds = 0.0
+
+        def tracked_read() -> bytes | None:
+            nonlocal input_wait_seconds, total_audio_bytes
+            wait_started = time.perf_counter()
+            frame = read_pcm_frame()
+            input_wait_seconds += time.perf_counter() - wait_started
+            if frame is not None:
+                total_audio_bytes += len(frame)
+            return frame
+
+        reset_peak_memory()
+        for result in stream_results(
+            self.model,
+            tracked_read,
+            language=self.language,
+        ):
+            text = result.text.strip()
+            if text == transcript:
+                continue
+            transcript = text
+            if transcript and first_text_at is None:
+                first_text_at = time.perf_counter()
+            emit({"type": "partial", "text": transcript})
+
+        finished = time.perf_counter()
+        elapsed_ms = round((finished - started) * 1000)
+        inference_ms = round(
+            max(0.0, finished - started - input_wait_seconds) * 1000
+        )
+        emit(
+            {
+                "type": "done",
+                "transcript": transcript,
+                "metrics": {
+                    "model_id": NEMOTRON_MODEL_ID,
+                    "model_load_ms": self.load_ms or 0,
+                    "audio_duration_ms": round(
+                        total_audio_bytes / 2 / SAMPLE_RATE * 1000
+                    ),
+                    "inference_ms": inference_ms,
+                    "stream_elapsed_ms": elapsed_ms,
+                    "ttft_ms": (
+                        round((first_text_at - started) * 1000)
+                        if first_text_at is not None
+                        else None
+                    ),
+                    "word_count": len(transcript.split()),
+                    **memory_snapshot(),
+                },
+            }
+        )
+        clear_cache_if_enabled()
+
+
+# ---------------------------------------------------------------------------
 # IPC / daemon driver (engine-agnostic).
 # ---------------------------------------------------------------------------
 
@@ -1656,6 +1827,8 @@ def build_engine(family: str, weights_dir: Path, language: str | None) -> Engine
         return CohereEngine(weights_dir=weights_dir, language=language)
     if family == "parakeet":
         return ParakeetEngine(weights_dir=weights_dir, language=language)
+    if family == "nemotron":
+        return NemotronEngine(weights_dir=weights_dir, language=language)
     raise ValueError(f"Unknown engine family: {family}")
 
 
@@ -1673,6 +1846,23 @@ def read_length_prefixed(stream) -> bytes | None:
 # given arbitrarily long audio. This mirrors the main-process guard so a bad or
 # old renderer cannot feed one huge request directly to the model.
 MAX_AUDIO_REQUEST_BYTES = 30 * 16_000 * 2
+MAX_STREAM_FRAME_BYTES = 1 * 16_000 * 2
+MAX_STREAM_AUDIO_BYTES = 5 * 60 * 16_000 * 2
+
+
+def read_stream_audio_frame(stream, total_bytes: int) -> bytes | None:
+    """Read one live PCM frame. A zero-length frame finalizes the session."""
+    length_bytes = read_exact(stream, 4)
+    length = struct.unpack("<I", length_bytes)[0]
+    if length == 0:
+        return None
+    if length % 2 != 0:
+        raise ValueError("Streaming PCM16 frame has an odd byte length.")
+    if length > MAX_STREAM_FRAME_BYTES:
+        raise ValueError("Streaming PCM16 frame exceeds the one-second limit.")
+    if total_bytes + length > MAX_STREAM_AUDIO_BYTES:
+        raise ValueError("Streaming dictation exceeds the five-minute limit.")
+    return read_exact(stream, length)
 
 
 def parse_request_metadata(raw: bytes) -> dict[str, Any]:
@@ -1713,6 +1903,37 @@ def daemon_mode(engine: Engine) -> int:
 
         try:
             request = parse_request_metadata(metadata_raw)
+            operation = request.get("op", "transcribe")
+            if operation == "stream":
+                if not engine.supports_streaming:
+                    emit_error(
+                        "The active local model does not support live streaming.",
+                        "streaming_not_supported",
+                    )
+                    continue
+
+                stream_bytes = 0
+
+                def read_next_stream_frame() -> bytes | None:
+                    nonlocal stream_bytes
+                    frame = read_stream_audio_frame(sys.stdin.buffer, stream_bytes)
+                    if frame is not None:
+                        stream_bytes += len(frame)
+                    return frame
+
+                try:
+                    engine.stream(read_next_stream_frame)
+                except Exception as exc:
+                    # Streaming model state cannot be reused after a protocol
+                    # or inference failure. Exit so main starts a clean process
+                    # instead of reading from a desynchronized stdin stream.
+                    log_exception(exc, include_traceback=True)
+                    emit_error(str(exc), "streaming_failed")
+                    return 1
+                continue
+            if operation != "transcribe":
+                emit_error("Unknown local STT operation.", "unknown_operation")
+                continue
             prompt = request.get("prompt")
             if prompt is not None and not isinstance(prompt, str):
                 prompt = None
@@ -1761,7 +1982,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Spoke MLX STT sidecar")
     parser.add_argument(
         "--family",
-        choices=("whisper", "cohere", "parakeet"),
+        choices=("whisper", "cohere", "parakeet", "nemotron"),
         default="whisper",
         help="ASR engine family to run (default: whisper).",
     )

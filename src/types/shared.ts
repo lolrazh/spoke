@@ -120,7 +120,11 @@ export type ModelInstallState =
   | "ready"
   | "broken";
 
-export type LocalModelFamily = "whisper" | "cohere" | "parakeet";
+export type LocalModelFamily =
+  | "whisper"
+  | "cohere"
+  | "parakeet"
+  | "nemotron";
 
 export type ModelStatus = {
   state: ModelInstallState;
@@ -176,4 +180,6 @@ export type LocalModelInfo = {
   totalBytes: number;
   /** True for the model pre-selected in onboarding / for fresh installs. */
   isDefault: boolean;
+  /** True when this model accepts live PCM and returns cumulative partials. */
+  streaming: boolean;
 };

@@ -13,6 +13,7 @@ const infos: LocalModelInfo[] = [
     quantization: "4-bit",
     totalBytes: 1,
     isDefault: true,
+    streaming: false,
   },
   {
     modelId: "model-b",
@@ -23,6 +24,7 @@ const infos: LocalModelInfo[] = [
     quantization: "4-bit",
     totalBytes: 1,
     isDefault: false,
+    streaming: false,
   },
 ];
 

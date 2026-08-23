@@ -51,6 +51,9 @@ import {
   mergeLocalChunkTexts,
 } from "../core/transcription/localChunkedDictation";
 import {
+  LocalStreamingDictation,
+} from "../core/transcription/localStreamingDictation";
+import {
   ENABLE_SCREEN_CONTEXT,
   ENABLE_TRANSCRIPT_ENHANCEMENT,
 } from "../config/featureFlags";
@@ -70,6 +73,9 @@ export interface UseTranscriptionReturn {
   recording: boolean;
   processing: boolean;
   ready: boolean;
+  /** Cumulative model output for transient in-pill feedback only. */
+  liveText: string;
+  /** Final text that is eligible for history and native insertion. */
   text: string;
   error: string | null;
   errorId: number;
@@ -92,6 +98,7 @@ export function useTranscription(
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
+  const [liveText, setLiveText] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
@@ -102,8 +109,16 @@ export function useTranscription(
   );
   const streamingVadRef = useRef<StreamingVadSessionHandle | null>(null);
   const localChunkedDictationRef = useRef<LocalChunkedDictation | null>(null);
+  const localStreamingDictationRef = useRef<LocalStreamingDictation | null>(
+    null,
+  );
   const requestStopRef = useRef<() => void>(() => undefined);
   const stopInFlightRef = useRef(false);
+  // A start attempt keeps this generation until it either commits recording
+  // state or exits. Cancel invalidates the generation before touching any
+  // pending resource so delayed startup work cannot revive the session.
+  const startGenerationRef = useRef(0);
+  const pendingStartGenerationRef = useRef<number | null>(null);
   // Incremented by cancel(); an in-flight stop() pipeline compares against the
   // value it captured at entry and bails out once they differ.
   const stopGenerationRef = useRef(0);
@@ -173,10 +188,13 @@ export function useTranscription(
     // No boot-time VAD prewarm: each dictation owns a short-lived worker, so
     // the ONNX/WASM heap never becomes permanent renderer state.
     return () => {
+      startGenerationRef.current += 1;
+      pendingStartGenerationRef.current = null;
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
       recorderRef.current?.cancel();
+      localStreamingDictationRef.current?.cancel();
     };
   }, [initStream, options.autoInitStream]);
 
@@ -227,19 +245,76 @@ export function useTranscription(
 
   // Start recording
   const start = useCallback(async () => {
-    if (recording || processing || stopInFlightRef.current) return;
+    if (
+      recording ||
+      processing ||
+      stopInFlightRef.current ||
+      pendingStartGenerationRef.current !== null
+    ) {
+      return;
+    }
 
-    const providerId = await resolveActiveProviderId();
-    const provider =
-      defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+    const startGeneration = startGenerationRef.current + 1;
+    startGenerationRef.current = startGeneration;
+    pendingStartGenerationRef.current = startGeneration;
+    const isCurrentStart = () =>
+      startGenerationRef.current === startGeneration;
+
+    let localChunkedDictation: LocalChunkedDictation | null = null;
+    let localStreamingDictation: LocalStreamingDictation | null = null;
+
+    // A live hypothesis belongs to exactly one capture. Clear the previous
+    // session before any async preparation so a failed start cannot leave old
+    // words visible in the pill.
+    setLiveText("");
+    setText("");
+    setError(null);
 
     try {
+      const providerId = await resolveActiveProviderId();
+      if (!isCurrentStart()) return;
+      const provider =
+        defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+
       await defaultTranscriptionSessionOrchestrator.prepare(providerId, {
         context: buildTranscriptionContext(),
       });
+      if (!isCurrentStart()) return;
 
-      let localChunkedDictation: LocalChunkedDictation | null = null;
-      if (provider.descriptor.kind === "local") {
+      if (
+        provider.descriptor.kind === "local" &&
+        window.stt.getActiveModel &&
+        window.stt.getModelInfos
+      ) {
+        const [activeModelId, modelInfos] = await Promise.all([
+          window.stt.getActiveModel(),
+          window.stt.getModelInfos(),
+        ]);
+        if (!isCurrentStart()) return;
+        const activeModel = modelInfos.find(
+          (model) => model.modelId === activeModelId,
+        );
+        if (activeModel?.streaming) {
+          localStreamingDictation = new LocalStreamingDictation({
+            sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+            batchMs: 320,
+            maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
+            onPartial: setLiveText,
+            onLimitReached: () => {
+              window.notifications?.send(
+                "Sorry — Spoke has a five-minute recording limit. Finishing your transcription now…",
+              );
+              requestStopRef.current();
+            },
+          });
+          // Publish the pending adapter before awaiting IPC startup. Cancel
+          // can now abort the main-process record even before it has an ID.
+          localStreamingDictationRef.current = localStreamingDictation;
+          await localStreamingDictation.start();
+          if (!isCurrentStart()) return;
+        }
+      }
+      if (provider.descriptor.kind === "local" && !localStreamingDictation) {
         localChunkedDictation = new LocalChunkedDictation({
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
           naturalChunkingStartMs: LOCAL_STT_CHUNK_NATURAL_START_MS,
@@ -296,27 +371,30 @@ export function useTranscription(
               onPcmFrame: (frame) => {
                 streamingVadSession.pushFrame(frame);
                 localChunkedDictation?.pushFrame(frame);
+                localStreamingDictation?.pushFrame(frame);
               },
+              retainPcm: !localStreamingDictation,
             })
           : new PcmCaptureSession({
-          onAudioLevel: setAudioLevel,
-          onError: (err) => {
-            log.error("PCM capture error:", err);
-            reportTranscriptionError(err.message);
-            setRecording(false);
-          },
-          onPcmFrame: (frame) => {
-            streamingVadSession.pushFrame(frame);
-            localChunkedDictation?.pushFrame(frame);
-          },
+              onAudioLevel: setAudioLevel,
+              onError: (err) => {
+                log.error("PCM capture error:", err);
+                reportTranscriptionError(err.message);
+                setRecording(false);
+              },
+              onPcmFrame: (frame) => {
+                streamingVadSession.pushFrame(frame);
+                localChunkedDictation?.pushFrame(frame);
+                localStreamingDictation?.pushFrame(frame);
+              },
+              retainPcm: !localStreamingDictation,
             });
         await recorder.start(stream ?? undefined);
         return recorder;
       })();
       recorderStartPromiseRef.current = recorderPromise;
 
-      setText("");
-      setError(null);
+      if (!isCurrentStart()) return;
       setRecording(true);
       activeProviderIdRef.current = providerId;
 
@@ -340,6 +418,10 @@ export function useTranscription(
 
       // Wait for recorder to be ready, but OCR continues in background
       const recorder = await recorderPromise;
+      if (!isCurrentStart()) {
+        recorder.cancel();
+        return;
+      }
       if (stopInFlightRef.current) {
         return;
       }
@@ -347,6 +429,7 @@ export function useTranscription(
       recorderStartPromiseRef.current = null;
       ocrPromiseRef.current = ocrPromise;
     } catch (err) {
+      if (!isCurrentStart()) return;
       log.error("Start failed:", err);
       reportTranscriptionError(toUserFacingTranscriptionError(err));
       setRecording(false);
@@ -356,10 +439,16 @@ export function useTranscription(
       streamingVadRef.current = null;
       localChunkedDictationRef.current?.discardPendingAudio();
       localChunkedDictationRef.current = null;
+      localStreamingDictationRef.current?.cancel();
+      localStreamingDictationRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+      }
+    } finally {
+      if (pendingStartGenerationRef.current === startGeneration) {
+        pendingStartGenerationRef.current = null;
       }
     }
   }, [
@@ -419,6 +508,9 @@ export function useTranscription(
         if (isCancelled()) return;
       }
 
+      // Reconcile the transient hypothesis with the authoritative result while
+      // processing is still visible. Only `text` continues to history/paste.
+      setLiveText(finalText);
       setText(finalText);
 
       if (invokedBloodyMary(finalText)) {
@@ -539,10 +631,63 @@ export function useTranscription(
       timing.pcmStopStartedAt = performance.now();
 
       const localChunkedDictation = localChunkedDictationRef.current;
+      const localStreamingDictation = localStreamingDictationRef.current;
       let capturedAudio: CapturedAudio | null = await recorder.stop();
       recorderRef.current = null;
       timing.pcmReadyAt = performance.now();
       if (isCancelled()) return;
+
+      if (provider.descriptor.kind === "local" && localStreamingDictation) {
+        capturedAudio = null;
+        timing.vadStartedAt = performance.now();
+        timing.vadDoneAt = timing.vadStartedAt;
+        timing.sttStartedAt = timing.stopStartedAt;
+        const result = await localStreamingDictation.finish();
+        localStreamingDictationRef.current = null;
+        timing.sttDoneAt = performance.now();
+        if (isCancelled()) return;
+
+        const capturedAudioMs = Math.round(localStreamingDictation.durationMs);
+        const vadResult: VadAudioResult = {
+          // The live model already consumed the PCM. Keep only telemetry here.
+          audio: {
+            format: "pcm16",
+            sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+            channelCount: 1,
+            pcm16: new Int16Array(),
+            durationMs: 0,
+          },
+          speechDetected: result.text.length > 0,
+          segments: [],
+          trimRange: { startSample: 0, endSample: 0 },
+          leadingTrimmedMs: 0,
+          trailingTrimmedMs: 0,
+          vadMs: 0,
+        };
+        if (!result.text) {
+          log.info("Live local model returned no speech; skipping publish");
+          logTranscriptionLatency({
+            providerKind: provider.descriptor.kind,
+            status: "no_speech",
+            timing,
+            capturedAudioMs,
+            vadResult,
+            metrics: result.metrics,
+          });
+          setLiveText("");
+          setText("");
+          return;
+        }
+        await finishTranscription({
+          result,
+          timing,
+          providerKind: provider.descriptor.kind,
+          capturedAudioMs,
+          vadResult,
+          isCancelled,
+        });
+        return;
+      }
 
       if (
         provider.descriptor.kind === "local" &&
@@ -593,6 +738,7 @@ export function useTranscription(
             capturedAudioMs,
             vadResult,
           });
+          setLiveText("");
           setText("");
           return;
         }
@@ -658,6 +804,7 @@ export function useTranscription(
           capturedAudioMs,
           vadResult,
         });
+        setLiveText("");
         setText("");
         return;
       }
@@ -706,6 +853,7 @@ export function useTranscription(
     } catch (err) {
       if (isCancelled()) return;
       log.error("Stop failed:", err);
+      setLiveText("");
       reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
       // stop() owns streamingVadSession once it's captured it above (the
@@ -731,6 +879,7 @@ export function useTranscription(
         ocrWordsRef.current = [];
         ocrPromiseRef.current = null;
         localChunkedDictationRef.current = null;
+        localStreamingDictationRef.current = null;
       }
     }
   }, [
@@ -753,6 +902,10 @@ export function useTranscription(
 
   // Cancel recording
   const cancel = useCallback(() => {
+    // Invalidate pending startup first. Any awaited continuation from the old
+    // generation must observe this before it can publish recording state.
+    startGenerationRef.current += 1;
+    pendingStartGenerationRef.current = null;
     // Invalidate any in-flight stop() pipeline so it bails after its next
     // await instead of publishing text, adding history, or pasting.
     stopGenerationRef.current += 1;
@@ -770,7 +923,13 @@ export function useTranscription(
     }
     localChunkedDictationRef.current?.discardPendingAudio();
     localChunkedDictationRef.current = null;
-    if (activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID) {
+    const localStreamingDictation = localStreamingDictationRef.current;
+    localStreamingDictationRef.current = null;
+    localStreamingDictation?.cancel();
+    if (
+      activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID &&
+      !localStreamingDictation
+    ) {
       void window.stt?.cancelLocalTranscription?.();
     }
     // Keep this reference reachable while stop() is finalizing VAD so cancel
@@ -786,6 +945,7 @@ export function useTranscription(
     }
     setRecording(false);
     setProcessing(false);
+    setLiveText("");
     setText("");
     setAudioLevel(0);
     activeProviderIdRef.current = null;
@@ -797,6 +957,7 @@ export function useTranscription(
     recording,
     processing,
     ready,
+    liveText,
     text,
     error,
     errorId,

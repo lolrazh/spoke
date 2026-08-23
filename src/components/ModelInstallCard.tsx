@@ -125,19 +125,20 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
   // clicking a ready-but-inactive row activates it. The active row is a no-op,
   // and busy/broken rows defer to their inline controls. Only attach the click
   // once `loaded` so we never react before the real status resolves.
-  const rowClick = !loaded || activationLocked
-    ? undefined
-    : status.state === "not_installed"
-      ? onInstall
-      : status.state === "ready" && !isActive
-        ? onActivate
-        : undefined;
+  const rowClick =
+    !loaded || activationLocked
+      ? undefined
+      : status.state === "not_installed"
+        ? onInstall
+        : status.state === "ready" && !isActive
+          ? onActivate
+          : undefined;
 
   return (
     <SettingsCard
       title={info.displayName}
       titleAccessory={info.isDefault ? <RecommendedBadge /> : undefined}
-      description={isActivating ? "Loading model…" : describe(info, status)}
+      description={describe(info, status)}
       icon={glyphForFamily(info.family)}
       inGroup={inGroup}
       // Every loaded card highlights on hover for visual consistency; this is
@@ -195,7 +196,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                         exit={{ opacity: 0 }}
                         className="inline-flex"
                         role="status"
-                        aria-label="Loading model"
+                        aria-label="Switching model"
                       >
                         <Spinner />
                       </m.span>
@@ -237,12 +238,14 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                   </AnimatePresence>
                 }
                 action={
-                  status.state === "ready" && !activationLocked ? (
-                    <TrashAction
-                      onClick={onRemove}
-                      title="Uninstall"
-                      ariaLabel="Uninstall model"
-                    />
+                  status.state === "ready" ? (
+                    activationLocked ? undefined : (
+                      <TrashAction
+                        onClick={onRemove}
+                        title="Uninstall"
+                        ariaLabel="Uninstall model"
+                      />
+                    )
                   ) : (
                     // Same reveal trash, but mid-install it cancels the download
                     // (which resets the model to not_installed).

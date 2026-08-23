@@ -237,6 +237,17 @@ declare global {
         prompt?: string,
       ) => Promise<LocalTranscribeResult>;
       cancelLocalTranscription: () => Promise<void>;
+      startLocalStream: () => Promise<{ sessionId: string }>;
+      pushLocalStream: (
+        sessionId: string,
+        pcmBuffer: ArrayBuffer,
+      ) => Promise<void>;
+      finishLocalStream: (
+        sessionId: string,
+      ) => Promise<LocalTranscribeResult>;
+      onLocalStreamPartial: (
+        cb: (payload: { sessionId: string; text: string }) => void,
+      ) => () => void;
       transcribeApiKeyProvider: (
         providerId: ApiKeyTranscriptionProviderId,
         payload: {
