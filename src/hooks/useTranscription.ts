@@ -73,6 +73,9 @@ export interface UseTranscriptionReturn {
   recording: boolean;
   processing: boolean;
   ready: boolean;
+  /** Cumulative model output for transient in-pill feedback only. */
+  liveText: string;
+  /** Final text that is eligible for history and native insertion. */
   text: string;
   error: string | null;
   errorId: number;
@@ -95,6 +98,7 @@ export function useTranscription(
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
+  const [liveText, setLiveText] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
@@ -259,6 +263,13 @@ export function useTranscription(
     let localChunkedDictation: LocalChunkedDictation | null = null;
     let localStreamingDictation: LocalStreamingDictation | null = null;
 
+    // A live hypothesis belongs to exactly one capture. Clear the previous
+    // session before any async preparation so a failed start cannot leave old
+    // words visible in the pill.
+    setLiveText("");
+    setText("");
+    setError(null);
+
     try {
       const providerId = await resolveActiveProviderId();
       if (!isCurrentStart()) return;
@@ -288,7 +299,7 @@ export function useTranscription(
             sampleRateHz: TARGET_SAMPLE_RATE_HZ,
             batchMs: 320,
             maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
-            onPartial: setText,
+            onPartial: setLiveText,
             onLimitReached: () => {
               window.notifications?.send(
                 "Sorry — Spoke has a five-minute recording limit. Finishing your transcription now…",
@@ -384,9 +395,6 @@ export function useTranscription(
       recorderStartPromiseRef.current = recorderPromise;
 
       if (!isCurrentStart()) return;
-
-      setText("");
-      setError(null);
       setRecording(true);
       activeProviderIdRef.current = providerId;
 
@@ -500,6 +508,9 @@ export function useTranscription(
         if (isCancelled()) return;
       }
 
+      // Reconcile the transient hypothesis with the authoritative result while
+      // processing is still visible. Only `text` continues to history/paste.
+      setLiveText(finalText);
       setText(finalText);
 
       if (invokedBloodyMary(finalText)) {
@@ -663,6 +674,7 @@ export function useTranscription(
             vadResult,
             metrics: result.metrics,
           });
+          setLiveText("");
           setText("");
           return;
         }
@@ -726,6 +738,7 @@ export function useTranscription(
             capturedAudioMs,
             vadResult,
           });
+          setLiveText("");
           setText("");
           return;
         }
@@ -791,6 +804,7 @@ export function useTranscription(
           capturedAudioMs,
           vadResult,
         });
+        setLiveText("");
         setText("");
         return;
       }
@@ -839,6 +853,7 @@ export function useTranscription(
     } catch (err) {
       if (isCancelled()) return;
       log.error("Stop failed:", err);
+      setLiveText("");
       reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
       // stop() owns streamingVadSession once it's captured it above (the
@@ -930,6 +945,7 @@ export function useTranscription(
     }
     setRecording(false);
     setProcessing(false);
+    setLiveText("");
     setText("");
     setAudioLevel(0);
     activeProviderIdRef.current = null;
@@ -941,6 +957,7 @@ export function useTranscription(
     recording,
     processing,
     ready,
+    liveText,
     text,
     error,
     errorId,
