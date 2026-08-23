@@ -13,16 +13,18 @@ describe("calculateLiveTranscriptLayout", () => {
     expect(
       calculateLiveTranscriptLayout({
         currentTextWidth: 50,
-        wrappedTextHeight: 16,
+        wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT,
         baseWidth: 196,
         baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
       pillWidth: 196,
-      pillHeight: LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + 16,
+      pillHeight:
+        LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT +
+        LIVE_TRANSCRIPT_LINE_HEIGHT,
       textWidth: 196 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
-      visibleTextHeight: 16,
+      visibleTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT,
       railOffsetY: 0,
       overflowing: false,
     });
@@ -32,7 +34,7 @@ describe("calculateLiveTranscriptLayout", () => {
     expect(
       calculateLiveTranscriptLayout({
         currentTextWidth: 250,
-        wrappedTextHeight: 16,
+        wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT,
         baseWidth: 196,
         baseHeight: 30,
         maxWidth: 560,
@@ -44,16 +46,18 @@ describe("calculateLiveTranscriptLayout", () => {
     expect(
       calculateLiveTranscriptLayout({
         currentTextWidth: 600,
-        wrappedTextHeight: 32,
+        wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
         baseWidth: 196,
         baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
       pillWidth: 560,
-      pillHeight: LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + 32,
+      pillHeight:
+        LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT +
+        LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
       textWidth: 560 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
-      visibleTextHeight: 32,
+      visibleTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
       railOffsetY: 0,
       overflowing: false,
     });

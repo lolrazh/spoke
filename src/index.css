@@ -383,7 +383,8 @@
     width: 100%;
     height: 100%;
     padding-inline: 14px;
-    padding-block: 6px;
+    padding-block-start: 8px;
+    padding-block-end: 6px;
     pointer-events: none;
   }
 
@@ -411,7 +412,7 @@
     width: 100%;
     min-width: 0;
     overflow: hidden;
-    line-height: 16px;
+    line-height: 19px;
   }
 
   .live-transcript-viewport.is-overflowing {
@@ -433,10 +434,10 @@
   .live-transcript-measure {
     font-family: "Inter", sans-serif;
     color: #d0d0d0;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     letter-spacing: -0.01em;
-    line-height: 16px;
+    line-height: 19px;
   }
 
   .live-transcript-rail {

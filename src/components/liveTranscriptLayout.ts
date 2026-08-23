@@ -1,7 +1,7 @@
 export const LIVE_TRANSCRIPT_HORIZONTAL_PADDING = 28;
-export const LIVE_TRANSCRIPT_LINE_HEIGHT = 16;
+export const LIVE_TRANSCRIPT_LINE_HEIGHT = 19;
 export const LIVE_TRANSCRIPT_MAX_LINES = 3;
-export const LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT = 28;
+export const LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT = 30;
 
 export type LiveTranscriptLayout = {
   pillWidth: number;
