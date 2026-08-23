@@ -51,6 +51,9 @@ import {
   mergeLocalChunkTexts,
 } from "../core/transcription/localChunkedDictation";
 import {
+  LocalStreamingDictation,
+} from "../core/transcription/localStreamingDictation";
+import {
   ENABLE_SCREEN_CONTEXT,
   ENABLE_TRANSCRIPT_ENHANCEMENT,
 } from "../config/featureFlags";
@@ -102,6 +105,9 @@ export function useTranscription(
   );
   const streamingVadRef = useRef<StreamingVadSessionHandle | null>(null);
   const localChunkedDictationRef = useRef<LocalChunkedDictation | null>(null);
+  const localStreamingDictationRef = useRef<LocalStreamingDictation | null>(
+    null,
+  );
   const requestStopRef = useRef<() => void>(() => undefined);
   const stopInFlightRef = useRef(false);
   // Incremented by cancel(); an in-flight stop() pipeline compares against the
@@ -177,6 +183,7 @@ export function useTranscription(
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
       recorderRef.current?.cancel();
+      localStreamingDictationRef.current?.cancel();
     };
   }, [initStream, options.autoInitStream]);
 
@@ -239,7 +246,37 @@ export function useTranscription(
       });
 
       let localChunkedDictation: LocalChunkedDictation | null = null;
-      if (provider.descriptor.kind === "local") {
+      let localStreamingDictation: LocalStreamingDictation | null = null;
+      if (
+        provider.descriptor.kind === "local" &&
+        window.stt.getActiveModel &&
+        window.stt.getModelInfos
+      ) {
+        const [activeModelId, modelInfos] = await Promise.all([
+          window.stt.getActiveModel(),
+          window.stt.getModelInfos(),
+        ]);
+        const activeModel = modelInfos.find(
+          (model) => model.modelId === activeModelId,
+        );
+        if (activeModel?.streaming) {
+          localStreamingDictation = new LocalStreamingDictation({
+            sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+            batchMs: 320,
+            maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
+            onPartial: setText,
+            onLimitReached: () => {
+              window.notifications?.send(
+                "Sorry — Spoke has a five-minute recording limit. Finishing your transcription now…",
+              );
+              requestStopRef.current();
+            },
+          });
+          await localStreamingDictation.start();
+          localStreamingDictationRef.current = localStreamingDictation;
+        }
+      }
+      if (provider.descriptor.kind === "local" && !localStreamingDictation) {
         localChunkedDictation = new LocalChunkedDictation({
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
           naturalChunkingStartMs: LOCAL_STT_CHUNK_NATURAL_START_MS,
@@ -296,19 +333,23 @@ export function useTranscription(
               onPcmFrame: (frame) => {
                 streamingVadSession.pushFrame(frame);
                 localChunkedDictation?.pushFrame(frame);
+                localStreamingDictation?.pushFrame(frame);
               },
+              retainPcm: !localStreamingDictation,
             })
           : new PcmCaptureSession({
-          onAudioLevel: setAudioLevel,
-          onError: (err) => {
-            log.error("PCM capture error:", err);
-            reportTranscriptionError(err.message);
-            setRecording(false);
-          },
-          onPcmFrame: (frame) => {
-            streamingVadSession.pushFrame(frame);
-            localChunkedDictation?.pushFrame(frame);
-          },
+              onAudioLevel: setAudioLevel,
+              onError: (err) => {
+                log.error("PCM capture error:", err);
+                reportTranscriptionError(err.message);
+                setRecording(false);
+              },
+              onPcmFrame: (frame) => {
+                streamingVadSession.pushFrame(frame);
+                localChunkedDictation?.pushFrame(frame);
+                localStreamingDictation?.pushFrame(frame);
+              },
+              retainPcm: !localStreamingDictation,
             });
         await recorder.start(stream ?? undefined);
         return recorder;
@@ -356,6 +397,8 @@ export function useTranscription(
       streamingVadRef.current = null;
       localChunkedDictationRef.current?.discardPendingAudio();
       localChunkedDictationRef.current = null;
+      localStreamingDictationRef.current?.cancel();
+      localStreamingDictationRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -539,10 +582,62 @@ export function useTranscription(
       timing.pcmStopStartedAt = performance.now();
 
       const localChunkedDictation = localChunkedDictationRef.current;
+      const localStreamingDictation = localStreamingDictationRef.current;
       let capturedAudio: CapturedAudio | null = await recorder.stop();
       recorderRef.current = null;
       timing.pcmReadyAt = performance.now();
       if (isCancelled()) return;
+
+      if (provider.descriptor.kind === "local" && localStreamingDictation) {
+        capturedAudio = null;
+        timing.vadStartedAt = performance.now();
+        timing.vadDoneAt = timing.vadStartedAt;
+        timing.sttStartedAt = timing.stopStartedAt;
+        const result = await localStreamingDictation.finish();
+        localStreamingDictationRef.current = null;
+        timing.sttDoneAt = performance.now();
+        if (isCancelled()) return;
+
+        const capturedAudioMs = Math.round(localStreamingDictation.durationMs);
+        const vadResult: VadAudioResult = {
+          // The live model already consumed the PCM. Keep only telemetry here.
+          audio: {
+            format: "pcm16",
+            sampleRateHz: TARGET_SAMPLE_RATE_HZ,
+            channelCount: 1,
+            pcm16: new Int16Array(),
+            durationMs: 0,
+          },
+          speechDetected: result.text.length > 0,
+          segments: [],
+          trimRange: { startSample: 0, endSample: 0 },
+          leadingTrimmedMs: 0,
+          trailingTrimmedMs: 0,
+          vadMs: 0,
+        };
+        if (!result.text) {
+          log.info("Live local model returned no speech; skipping publish");
+          logTranscriptionLatency({
+            providerKind: provider.descriptor.kind,
+            status: "no_speech",
+            timing,
+            capturedAudioMs,
+            vadResult,
+            metrics: result.metrics,
+          });
+          setText("");
+          return;
+        }
+        await finishTranscription({
+          result,
+          timing,
+          providerKind: provider.descriptor.kind,
+          capturedAudioMs,
+          vadResult,
+          isCancelled,
+        });
+        return;
+      }
 
       if (
         provider.descriptor.kind === "local" &&
@@ -731,6 +826,7 @@ export function useTranscription(
         ocrWordsRef.current = [];
         ocrPromiseRef.current = null;
         localChunkedDictationRef.current = null;
+        localStreamingDictationRef.current = null;
       }
     }
   }, [
@@ -770,7 +866,13 @@ export function useTranscription(
     }
     localChunkedDictationRef.current?.discardPendingAudio();
     localChunkedDictationRef.current = null;
-    if (activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID) {
+    const localStreamingDictation = localStreamingDictationRef.current;
+    localStreamingDictationRef.current = null;
+    localStreamingDictation?.cancel();
+    if (
+      activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID &&
+      !localStreamingDictation
+    ) {
       void window.stt?.cancelLocalTranscription?.();
     }
     // Keep this reference reachable while stop() is finalizing VAD so cancel

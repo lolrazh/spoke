@@ -142,6 +142,15 @@ Object.defineProperty(window, "stt", {
       }),
     ),
     transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
+    getActiveModel: vi.fn(() => Promise.resolve("test-model")),
+    getModelInfos: vi.fn(() => Promise.resolve([])),
+    startLocalStream: vi.fn(() => Promise.resolve({ sessionId: "stream-1" })),
+    pushLocalStream: vi.fn(() => Promise.resolve()),
+    finishLocalStream: vi.fn(() =>
+      Promise.resolve({ text: "", metrics: {} }),
+    ),
+    cancelLocalTranscription: vi.fn(() => Promise.resolve()),
+    onLocalStreamPartial: vi.fn(() => () => undefined),
     enhance: vi.fn(async (payload: { text: string }) => ({
       text: payload.text,
       bypassed: true,
@@ -158,6 +167,16 @@ describe("useTranscription", () => {
     (globalThis as any).__lastWorklet = null;
     (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "",
+      metrics: {},
+    });
+    (window.stt.getActiveModel as any).mockResolvedValue("test-model");
+    (window.stt.getModelInfos as any).mockResolvedValue([]);
+    (window.stt.startLocalStream as any).mockResolvedValue({
+      sessionId: "stream-1",
+    });
+    (window.stt.pushLocalStream as any).mockResolvedValue(undefined);
+    (window.stt.finishLocalStream as any).mockResolvedValue({
       text: "",
       metrics: {},
     });
@@ -738,6 +757,57 @@ describe("useTranscription", () => {
 
     expect(trimCapturedAudioWithVad).not.toHaveBeenCalled();
     expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
+  });
+
+  it("uses the bounded live path for a streaming local model", async () => {
+    let onPartial:
+      | ((payload: { sessionId: string; text: string }) => void)
+      | null = null;
+    (window.stt.getActiveModel as any).mockResolvedValue("nemotron");
+    (window.stt.getModelInfos as any).mockResolvedValue([
+      {
+        modelId: "nemotron",
+        family: "nemotron",
+        displayName: "Nemotron",
+        tagline: "Streaming",
+        languageCount: 40,
+        quantization: "8-bit",
+        totalBytes: 1,
+        isDefault: false,
+        streaming: true,
+      },
+    ]);
+    (window.stt.onLocalStreamPartial as any).mockImplementation((
+      listener: (payload: { sessionId: string; text: string }) => void,
+    ) => {
+      onPartial = listener;
+      return vi.fn();
+    });
+    (window.stt.finishLocalStream as any).mockResolvedValue({
+      text: "hello world",
+      metrics: { inference_ms: 1 },
+    });
+
+    const { result } = renderHook(() =>
+      useTranscription({ suppressNativePaste: true }),
+    );
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => result.current.start());
+    emitPcmFrame(new Array(5_120).fill(1));
+    await waitFor(() =>
+      expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(1),
+    );
+
+    await act(async () => {
+      onPartial?.({ sessionId: "stream-1", text: "hello" });
+    });
+    expect(result.current.text).toBe("hello");
+
+    await act(async () => result.current.stop());
+    await waitFor(() => expect(result.current.processing).toBe(false));
+    expect(window.stt.finishLocalStream).toHaveBeenCalledWith("stream-1");
+    expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
+    expect(result.current.text).toBe("hello world");
   });
 });
 
