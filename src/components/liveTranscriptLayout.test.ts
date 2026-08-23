@@ -63,13 +63,15 @@ describe("calculateLiveTranscriptLayout", () => {
     });
   });
 
-  it("caps at three rows and moves older rows upward", () => {
+  it("caps at five rows and moves older rows upward", () => {
     const visibleTextHeight =
       LIVE_TRANSCRIPT_LINE_HEIGHT * LIVE_TRANSCRIPT_MAX_LINES;
+    const fullTextHeight =
+      LIVE_TRANSCRIPT_LINE_HEIGHT * (LIVE_TRANSCRIPT_MAX_LINES + 2);
     expect(
       calculateLiveTranscriptLayout({
         currentTextWidth: 900,
-        wrappedTextHeight: 80,
+        wrappedTextHeight: fullTextHeight,
         baseWidth: 196,
         baseHeight: 30,
         maxWidth: 560,
@@ -80,7 +82,7 @@ describe("calculateLiveTranscriptLayout", () => {
         LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + visibleTextHeight,
       textWidth: 560 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
       visibleTextHeight,
-      railOffsetY: -(80 - visibleTextHeight),
+      railOffsetY: -(fullTextHeight - visibleTextHeight),
       overflowing: true,
     });
   });

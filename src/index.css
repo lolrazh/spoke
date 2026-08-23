@@ -384,7 +384,7 @@
     height: 100%;
     padding-inline: 14px;
     padding-block-start: 8px;
-    padding-block-end: 6px;
+    padding-block-end: 12px;
     pointer-events: none;
   }
 
@@ -397,7 +397,7 @@
     width: 100%;
     min-width: 0;
     height: 100%;
-    gap: 4px;
+    gap: 8px;
   }
 
   .live-transcript-activity {

@@ -1,7 +1,7 @@
 export const LIVE_TRANSCRIPT_HORIZONTAL_PADDING = 28;
 export const LIVE_TRANSCRIPT_LINE_HEIGHT = 19;
-export const LIVE_TRANSCRIPT_MAX_LINES = 3;
-export const LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT = 30;
+export const LIVE_TRANSCRIPT_MAX_LINES = 5;
+export const LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT = 40;
 
 export type LiveTranscriptLayout = {
   pillWidth: number;
@@ -47,7 +47,7 @@ export function calculateLiveTranscriptWidth({
  * Derive the pill target from measured text instead of character counts.
  *
  * Text starts below the activity bars. The pill first grows horizontally from
- * its center. At the width cap, text wraps and grows the pill to three rows.
+ * its center. At the width cap, text wraps and grows the pill to five rows.
  * Longer transcripts keep their newest rows visible without taking over the
  * screen.
  */
