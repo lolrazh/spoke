@@ -5,8 +5,11 @@
   "description": "Voice-to-text AI that works everywhere you do",
   "main": ".vite/build/main.js",
   "scripts": {
+    "predev": "node scripts/ensure-local-stt-runtime.mjs --optional",
     "dev": "SF_DEVTOOLS=1 electron-forge start",
+    "predev:onboarding": "node scripts/ensure-local-stt-runtime.mjs --optional",
     "dev:onboarding": "SF_DEVTOOLS=1 FORCE_ONBOARDING=1 electron-forge start",
+    "prestart": "node scripts/ensure-local-stt-runtime.mjs --optional",
     "start": "electron-forge start",
     "package": "electron-forge package --arch=arm64",
     "package:env": "node --env-file=.env scripts/run-command.mjs electron-forge package --arch=arm64",
@@ -22,6 +25,7 @@
     "postinstall": "bash native/build-helper.sh",
     "test": "vitest run",
     "test:watch": "vitest",
+    "setup:stt": "node scripts/ensure-local-stt-runtime.mjs",
     "benchmark:stt": "local-stt/.venv/bin/python local-stt/benchmark.py",
     "benchmark:stt:suite": "local-stt/.venv/bin/python local-stt/benchmark_suite.py"
   },
