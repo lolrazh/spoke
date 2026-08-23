@@ -115,8 +115,8 @@ export function LiveTranscript({
           {appendedText ? (
             <m.span
               key={`${text.length}:${appendedText}`}
-              initial={reducedMotion ? false : { opacity: 0, filter: "blur(2px)" }}
-              animate={{ opacity: 1, filter: "blur(0px)" }}
+              initial={reducedMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
               transition={{ duration: reducedMotion ? 0 : 0.12, ease: "easeOut" }}
             >
               {appendedText}
