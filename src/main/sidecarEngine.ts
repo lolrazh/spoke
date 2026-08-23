@@ -9,6 +9,7 @@
 
 import * as fs from "fs";
 import { spawn } from "child_process";
+import { StringDecoder } from "node:string_decoder";
 import type { SttEvent, LocalTranscribeResult } from "../types/shared";
 import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
 import { getActiveModelId } from "./modelManager";
@@ -148,9 +149,10 @@ function spawnSidecarOnce(modelId: string): Promise<void> {
       settle(() => reject(new Error("Sidecar timed out loading model")));
     }, SIDECAR_STARTUP_TIMEOUT_MS);
 
+    const stdoutDecoder = new StringDecoder("utf8");
     let stdoutBuffer = "";
     const onData = (chunk: Buffer) => {
-      stdoutBuffer += chunk.toString();
+      stdoutBuffer += stdoutDecoder.write(chunk);
       const lines = stdoutBuffer.split("\n");
       stdoutBuffer = lines.pop() || "";
 
@@ -372,12 +374,13 @@ function transcribeLocalOnce(
     }
 
     const proc = expectedProcess;
+    const stdoutDecoder = new StringDecoder("utf8");
     let stdoutBuffer = "";
     let resolved = false;
     let timeout: NodeJS.Timeout | null = null;
 
     const onData = (chunk: Buffer) => {
-      stdoutBuffer += chunk.toString();
+      stdoutBuffer += stdoutDecoder.write(chunk);
       const lines = stdoutBuffer.split("\n");
       stdoutBuffer = lines.pop() || "";
 
@@ -521,6 +524,7 @@ async function runLocalStream(
   }
 
   const proc = expectedProcess;
+  const stdoutDecoder = new StringDecoder("utf8");
   let stdoutBuffer = "";
   let totalBytes = 0;
   let finishing = false;
@@ -546,7 +550,7 @@ async function runLocalStream(
     rejectResult(error);
   };
   const onData = (chunk: Buffer) => {
-    stdoutBuffer += chunk.toString();
+    stdoutBuffer += stdoutDecoder.write(chunk);
     const lines = stdoutBuffer.split("\n");
     stdoutBuffer = lines.pop() || "";
     for (const line of lines) {

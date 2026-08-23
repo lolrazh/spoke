@@ -382,6 +382,29 @@ describe("sidecarEngine", () => {
       expect(finalFrame.readUInt32LE(0)).toBe(0);
     });
 
+    it("preserves a multibyte transcript split across stdout chunks", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const session = await engine.startLocalStream(vi.fn());
+      const finishing = session.finish();
+      await Promise.resolve();
+
+      const transcript = "नमस्ते";
+      const doneLine = Buffer.from(
+        `${JSON.stringify({
+          type: "done",
+          transcript,
+          metrics: { inference_ms: 2 },
+        })}\n`,
+        "utf8",
+      );
+      const firstCharacterOffset = doneLine.indexOf(Buffer.from("न", "utf8"));
+      const splitOffset = firstCharacterOffset + 1;
+      proc.stdout.emit("data", doneLine.subarray(0, splitOffset));
+      proc.stdout.emit("data", doneLine.subarray(splitOffset));
+
+      await expect(finishing).resolves.toMatchObject({ text: transcript });
+    });
+
     it("rejects unsafe live PCM before writing it", async () => {
       const { proc, engine } = await startReadySidecar();
       const session = await engine.startLocalStream(vi.fn());
