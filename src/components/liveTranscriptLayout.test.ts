@@ -86,4 +86,25 @@ describe("calculateLiveTranscriptLayout", () => {
       overflowing: true,
     });
   });
+
+  it("keeps its largest height when a streaming revision gets shorter", () => {
+    expect(
+      calculateLiveTranscriptLayout({
+        currentTextWidth: 900,
+        wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
+        maxWrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 4,
+        baseWidth: 196,
+        baseHeight: 30,
+        maxWidth: 560,
+      }),
+    ).toMatchObject({
+      pillWidth: 560,
+      pillHeight:
+        LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT +
+        LIVE_TRANSCRIPT_LINE_HEIGHT * 4,
+      visibleTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 4,
+      railOffsetY: 0,
+      overflowing: false,
+    });
+  });
 });

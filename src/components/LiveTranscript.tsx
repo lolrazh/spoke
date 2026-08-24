@@ -15,6 +15,7 @@ type LiveTranscriptProps = {
   isProcessing: boolean;
   baseWidth: number;
   maxWidth: number;
+  textWidth: number;
   visibleTextHeight: number;
   railOffsetY: number;
   overflowing: boolean;
@@ -28,6 +29,7 @@ export function LiveTranscript({
   isProcessing,
   baseWidth,
   maxWidth,
+  textWidth,
   visibleTextHeight,
   railOffsetY,
   overflowing,
@@ -36,25 +38,7 @@ export function LiveTranscript({
 }: LiveTranscriptProps) {
   const intrinsicMeasureRef = useRef<HTMLSpanElement>(null);
   const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
-  const splitRef = useRef({
-    fullText: "",
-    stableText: "",
-    appendedText: "",
-  });
-  if (splitRef.current.fullText !== text) {
-    const previousText = splitRef.current.fullText;
-    const appendedText = text.startsWith(previousText)
-      ? text.slice(previousText.length)
-      : "";
-    splitRef.current = {
-      fullText: text,
-      stableText: appendedText
-        ? text.slice(0, text.length - appendedText.length)
-        : text,
-      appendedText,
-    };
-  }
-  const { stableText, appendedText } = splitRef.current;
+  const maxIntrinsicWidthRef = useRef(0);
 
   useLayoutEffect(() => {
     const intrinsicWidth = Math.ceil(
@@ -63,14 +47,20 @@ export function LiveTranscript({
     const wrappedMeasure = wrappedMeasureRef.current;
     if (!wrappedMeasure) return;
 
+    // Streaming ASR can revise an earlier partial. Keep the layout extent from
+    // contracting when that happens; it resets when this component unmounts.
+    maxIntrinsicWidthRef.current = Math.max(
+      maxIntrinsicWidthRef.current,
+      intrinsicWidth,
+    );
     const { textWidth } = calculateLiveTranscriptWidth({
-      currentTextWidth: intrinsicWidth,
+      currentTextWidth: maxIntrinsicWidthRef.current,
       baseWidth,
       maxWidth,
     });
     wrappedMeasure.style.width = `${textWidth}px`;
     onTextMetricsChange({
-      textWidth: intrinsicWidth,
+      textWidth: maxIntrinsicWidthRef.current,
       wrappedTextHeight: Math.ceil(
         wrappedMeasure.getBoundingClientRect().height,
       ),
@@ -100,7 +90,7 @@ export function LiveTranscript({
 
       <div
         className={`live-transcript-viewport ${overflowing ? "is-overflowing" : ""}`}
-        style={{ height: visibleTextHeight }}
+        style={{ width: textWidth, height: visibleTextHeight }}
       >
         <m.span
           className="live-transcript-rail"
@@ -111,17 +101,7 @@ export function LiveTranscript({
               : { type: "spring", ...MOTION.springs.transcript }
           }
         >
-          <span>{stableText}</span>
-          {appendedText ? (
-            <m.span
-              key={`${text.length}:${appendedText}`}
-              initial={reducedMotion ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: reducedMotion ? 0 : 0.12, ease: "easeOut" }}
-            >
-              {appendedText}
-            </m.span>
-          ) : null}
+          {text}
         </m.span>
       </div>
 

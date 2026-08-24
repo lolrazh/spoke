@@ -73,4 +73,26 @@ describe("Pill live transcript", () => {
     ).toBe("Final words");
     expect(container.querySelector(".live-transcript-activity")).not.toBeNull();
   });
+
+  it("updates streaming revisions without creating animated text fragments", () => {
+    const { container, rerender } = render(
+      <Pill
+        {...commonProps}
+        pillState="LISTENING"
+        liveTranscript="The quick brown"
+      />,
+    );
+
+    rerender(
+      <Pill
+        {...commonProps}
+        pillState="LISTENING"
+        liveTranscript="The quick crown fox"
+      />,
+    );
+
+    const rail = container.querySelector(".live-transcript-rail");
+    expect(rail?.textContent).toBe("The quick crown fox");
+    expect(rail?.childElementCount).toBe(0);
+  });
 });

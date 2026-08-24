@@ -104,9 +104,10 @@ const Pill: React.FC<PillProps> = ({
   const previousStateRef = useRef<PillStateType>(pillState);
   const reduceMotion = useReducedMotion() ?? false;
   const [liveTranscriptMetrics, setLiveTranscriptMetrics] =
-    useState<LiveTranscriptMetrics>({
+    useState<LiveTranscriptMetrics & { maxWrappedTextHeight: number }>({
       textWidth: 0,
       wrappedTextHeight: 0,
+      maxWrappedTextHeight: 0,
     });
 
   // --- Metrics Reporting ---
@@ -135,7 +136,14 @@ const Pill: React.FC<PillProps> = ({
         previous.textWidth === metrics.textWidth &&
         previous.wrappedTextHeight === metrics.wrappedTextHeight
           ? previous
-          : metrics,
+          : {
+              textWidth: Math.max(previous.textWidth, metrics.textWidth),
+              wrappedTextHeight: metrics.wrappedTextHeight,
+              maxWrappedTextHeight: Math.max(
+                previous.maxWrappedTextHeight,
+                metrics.wrappedTextHeight,
+              ),
+            },
       );
     },
     [],
@@ -143,12 +151,17 @@ const Pill: React.FC<PillProps> = ({
 
   useEffect(() => {
     if (hasLiveTranscript) return;
-    setLiveTranscriptMetrics({ textWidth: 0, wrappedTextHeight: 0 });
+    setLiveTranscriptMetrics({
+      textWidth: 0,
+      wrappedTextHeight: 0,
+      maxWrappedTextHeight: 0,
+    });
   }, [hasLiveTranscript]);
 
   const liveTranscriptLayout = calculateLiveTranscriptLayout({
     currentTextWidth: liveTranscriptMetrics.textWidth,
     wrappedTextHeight: liveTranscriptMetrics.wrappedTextHeight,
+    maxWrappedTextHeight: liveTranscriptMetrics.maxWrappedTextHeight,
     baseWidth: dims.baseW,
     baseHeight: dims.baseH,
     maxWidth: dims.maxW,
@@ -443,6 +456,7 @@ const Pill: React.FC<PillProps> = ({
                     isProcessing={pillState === "PROCESSING"}
                     baseWidth={dims.baseW}
                     maxWidth={dims.maxW}
+                    textWidth={liveTranscriptLayout.textWidth}
                     visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
                     railOffsetY={liveTranscriptLayout.railOffsetY}
                     overflowing={liveTranscriptLayout.overflowing}

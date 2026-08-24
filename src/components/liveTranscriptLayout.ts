@@ -54,12 +54,14 @@ export function calculateLiveTranscriptWidth({
 export function calculateLiveTranscriptLayout({
   currentTextWidth,
   wrappedTextHeight,
+  maxWrappedTextHeight = wrappedTextHeight,
   baseWidth,
   baseHeight,
   maxWidth,
 }: {
   currentTextWidth: number;
   wrappedTextHeight: number;
+  maxWrappedTextHeight?: number;
   baseWidth: number;
   baseHeight: number;
   maxWidth: number;
@@ -73,9 +75,13 @@ export function calculateLiveTranscriptLayout({
     LIVE_TRANSCRIPT_LINE_HEIGHT,
     Math.ceil(Math.max(0, wrappedTextHeight)),
   );
+  const layoutTextHeight = Math.max(
+    fullTextHeight,
+    Math.ceil(Math.max(0, maxWrappedTextHeight)),
+  );
   const maxVisibleTextHeight =
     LIVE_TRANSCRIPT_LINE_HEIGHT * LIVE_TRANSCRIPT_MAX_LINES;
-  const visibleTextHeight = Math.min(fullTextHeight, maxVisibleTextHeight);
+  const visibleTextHeight = Math.min(layoutTextHeight, maxVisibleTextHeight);
   const pillHeight = Math.max(
     Math.max(0, baseHeight),
     LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + visibleTextHeight,
