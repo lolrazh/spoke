@@ -20,6 +20,29 @@ from mlx_audio.stt.models.nemotron_asr.streaming import stream_encode_chunks
 # encoder frames at 80 ms each give Spoke a 160 ms live update cadence.
 NEMOTRON_STREAM_CHUNK_SECONDS = 0.16
 NEMOTRON_ATT_CONTEXT_SIZE = [56, 1]
+NEMOTRON_FINAL_SILENCE_SECONDS = 0.4
+
+
+def _final_silence_sample_count(model: Any, total_samples: int) -> int:
+    """Return bounded endpoint padding for the RNN-T final hypothesis.
+
+    Nemotron can emit its last word and punctuation only after it decodes an
+    acoustic pause. Keep this padding inside inference so capture does not wait
+    for another 400 ms of microphone audio. Ending one mel hop past an 80 ms
+    encoder frame boundary also guarantees that finalization has a boundary
+    frame to decode instead of landing exactly between chunks.
+    """
+
+    sample_rate = model.preprocessor_config.sample_rate
+    hop_length = model.preprocessor_config.hop_length
+    encoder_frame_samples = model.encoder_config.subsampling_factor * hop_length
+    minimum_samples = round(sample_rate * NEMOTRON_FINAL_SILENCE_SECONDS)
+    target_remainder = hop_length
+    alignment_samples = (
+        target_remainder
+        - (max(0, total_samples) + minimum_samples) % encoder_frame_samples
+    ) % encoder_frame_samples
+    return minimum_samples + alignment_samples
 
 
 def stream_results(
@@ -41,6 +64,14 @@ def stream_results(
         while True:
             raw = read_pcm_frame()
             if raw is None:
+                silence_samples = _final_silence_sample_count(
+                    model,
+                    frontend.total_samples,
+                )
+                silence = mx.zeros((silence_samples,), dtype=mx.float32)
+                mel = frontend.push(silence)
+                if mel.shape[1] > 0:
+                    yield mel
                 mel = frontend.flush()
                 if mel.shape[1] > 0:
                     yield mel
