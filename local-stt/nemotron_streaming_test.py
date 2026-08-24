@@ -4,9 +4,28 @@ import unittest
 from types import SimpleNamespace
 
 from nemotron_streaming import (
+    NEMOTRON_ATT_CONTEXT_SIZE,
+    NEMOTRON_ENCODER_FRAME_SECONDS,
     NEMOTRON_FINAL_SILENCE_SECONDS,
+    NEMOTRON_STREAM_CHUNK_SECONDS,
+    NEMOTRON_SUPPORTED_RIGHT_CONTEXTS,
     _final_silence_sample_count,
 )
+
+
+class AttentionProfileContractTests(unittest.TestCase):
+    def test_uses_nvidias_supported_160_ms_profile(self) -> None:
+        self.assertIn(
+            NEMOTRON_ATT_CONTEXT_SIZE[1],
+            NEMOTRON_SUPPORTED_RIGHT_CONTEXTS,
+        )
+        self.assertEqual(NEMOTRON_ATT_CONTEXT_SIZE, [56, 1])
+        self.assertEqual(
+            NEMOTRON_STREAM_CHUNK_SECONDS,
+            (NEMOTRON_ATT_CONTEXT_SIZE[1] + 1)
+            * NEMOTRON_ENCODER_FRAME_SECONDS,
+        )
+        self.assertEqual(NEMOTRON_STREAM_CHUNK_SECONDS, 0.16)
 
 
 class FinalSilenceSampleCountTests(unittest.TestCase):

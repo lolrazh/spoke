@@ -16,10 +16,16 @@ from mlx_audio.stt.models.nemotron_asr.audio import StreamingLogMelSpectrogram
 from mlx_audio.stt.models.nemotron_asr.streaming import stream_encode_chunks
 
 
-# Nemotron exposes latency profiles through its encoder right-context. Two
-# encoder frames at 80 ms each give Spoke a 160 ms live update cadence.
-NEMOTRON_STREAM_CHUNK_SECONDS = 0.16
+# NVIDIA declares right contexts {0, 1, 3, 6, 13} as runtime operating points
+# for this checkpoint. The converted MLX config currently omits 1 from its
+# metadata, but NVIDIA explicitly maps [56, 1] to the supported 160 ms profile:
+# https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b#setting-up-streaming-configuration
+NEMOTRON_ENCODER_FRAME_SECONDS = 0.08
+NEMOTRON_SUPPORTED_RIGHT_CONTEXTS = frozenset({0, 1, 3, 6, 13})
 NEMOTRON_ATT_CONTEXT_SIZE = [56, 1]
+NEMOTRON_STREAM_CHUNK_SECONDS = (
+    NEMOTRON_ATT_CONTEXT_SIZE[1] + 1
+) * NEMOTRON_ENCODER_FRAME_SECONDS
 NEMOTRON_FINAL_SILENCE_SECONDS = 0.4
 
 
