@@ -215,7 +215,7 @@ describe("useTranscription", () => {
     expect(result.current.error).toBe(null);
   });
 
-  it("should ignore duplicate stop calls in local mode", async () => {
+  it("keeps batch results out of live text and ignores duplicate stops", async () => {
     (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockImplementation(
       () =>
@@ -255,6 +255,7 @@ describe("useTranscription", () => {
       expect(result.current.text).toBe("Local transcription");
     });
 
+    expect(result.current.liveText).toBe("");
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
     expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
     expect(window.stt.extractOcr).not.toHaveBeenCalled();

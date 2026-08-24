@@ -473,6 +473,7 @@ export function useTranscription(
       capturedAudioMs,
       vadResult,
       isCancelled,
+      reconcileLiveTranscript,
     }: {
       result: TranscriptionResult;
       timing: TranscriptionLatencyTiming;
@@ -480,6 +481,7 @@ export function useTranscription(
       capturedAudioMs: number;
       vadResult: VadAudioResult;
       isCancelled: () => boolean;
+      reconcileLiveTranscript: boolean;
     }) => {
       // Wait for OCR to finish, then enhance (no-op when the cloud path
       // already awaited it before transcribing)
@@ -504,9 +506,14 @@ export function useTranscription(
         if (isCancelled()) return;
       }
 
-      // Reconcile the transient hypothesis with the authoritative result while
-      // processing is still visible. Only `text` continues to history/paste.
-      setLiveText(finalText);
+      // Only a provider that emitted live hypotheses can reconcile one with
+      // the authoritative result. Batch models publish the final result to
+      // history/paste without imitating a late token stream in the pill.
+      if (reconcileLiveTranscript) {
+        setLiveText(finalText);
+      } else {
+        setLiveText("");
+      }
       setText(finalText);
 
       if (invokedBloodyMary(finalText)) {
@@ -682,6 +689,7 @@ export function useTranscription(
           capturedAudioMs,
           vadResult,
           isCancelled,
+          reconcileLiveTranscript: true,
         });
         return;
       }
@@ -751,6 +759,7 @@ export function useTranscription(
           capturedAudioMs,
           vadResult,
           isCancelled,
+          reconcileLiveTranscript: false,
         });
         return;
       }
@@ -847,6 +856,7 @@ export function useTranscription(
         capturedAudioMs,
         vadResult,
         isCancelled,
+        reconcileLiveTranscript: false,
       });
     } catch (err) {
       if (isCancelled()) return;
