@@ -37,7 +37,6 @@ export const SIDECAR_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 let idleTimer: NodeJS.Timeout | null = null;
 let transcriptionsInFlight = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
-let latestRequestedModelId: string | null = null;
 let prewarmGeneration = 0;
 let activePrewarm: {
   generation: number;
@@ -49,6 +48,12 @@ const transcriptionDrainWaiters = new Set<() => void>();
 function logSidecarShutdownFailure(context: string, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[STT] ${context}: ${message}`);
+}
+
+function logPrewarmFailure(reason: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[STT] Local sidecar prewarm failed (${reason}): ${message}`);
+  bootTimeline.mark("sidecar-prewarm:failed", { reason, error: message });
 }
 
 function buildWhisperPrompt(
@@ -171,9 +176,18 @@ export async function ensureLocalSidecarRunning(): Promise<void> {
   );
 }
 
-export function prewarmLocalSidecar(reason: string): void {
-  const generation = prewarmGeneration;
+function queueLocalSidecarPrewarm(
+  reason: string,
+  generation: number,
+  waitBeforeStart: Promise<void>,
+): void {
   void enqueueLifecycle(async () => {
+    try {
+      await waitBeforeStart;
+    } catch (error) {
+      logPrewarmFailure(reason, error);
+      return;
+    }
     if (generation !== prewarmGeneration) return;
 
     const modelId = getActiveModelId();
@@ -191,7 +205,16 @@ export function prewarmLocalSidecar(reason: string): void {
     };
     activePrewarm = task;
     try {
-      if (task.cancelled || generation !== prewarmGeneration) return;
+      await waitForTranscriptionsToDrain();
+      if (
+        task.cancelled ||
+        generation !== prewarmGeneration ||
+        getActiveModelId() !== modelId ||
+        !isPreferredProviderLocal() ||
+        getModelInstallState(modelId) !== "ready"
+      ) {
+        return;
+      }
       if (!isSidecarRunning()) {
         console.log(`[STT] Prewarming local sidecar (${reason})`);
         bootTimeline.mark("sidecar-prewarm:start", { reason });
@@ -202,13 +225,15 @@ export function prewarmLocalSidecar(reason: string): void {
       bootTimeline.mark("sidecar-prewarm:ready", { reason });
     } catch (err) {
       if (task.cancelled) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[STT] Local sidecar prewarm failed (${reason}): ${msg}`);
-      bootTimeline.mark("sidecar-prewarm:failed", { reason, error: msg });
+      logPrewarmFailure(reason, err);
     } finally {
       if (activePrewarm === task) activePrewarm = null;
     }
   });
+}
+
+export function prewarmLocalSidecar(reason: string): void {
+  queueLocalSidecarPrewarm(reason, prewarmGeneration, Promise.resolve());
 }
 
 export function stopLocalSidecar(): Promise<void> {
@@ -248,7 +273,7 @@ export async function installLocalModelAndSyncSidecar(
     getModelInstallState() !== "ready" &&
     getModelInstallState(modelId) === "ready"
   ) {
-    await setActiveModelAndResync(modelId);
+    selectActiveModel(modelId);
   }
   await syncLocalSidecarForCurrentProvider();
 }
@@ -272,66 +297,35 @@ export async function removeLocalModelAndStopSidecar(
 }
 
 /**
- * Switch the active model and resync the sidecar when the local provider is
- * selected so the new model family is loaded. Cloud provider selection still
- * persists a ready local model, but does not touch the local sidecar.
- *
- * The whole transition is serialized: an active request drains, the old PID
- * exits, and only the latest selected model is then allowed to start. This
- * avoids both transient double-model residency and the stale-prewarm race that
- * could leave no sidecar running after a rapid switch.
+ * Persist a ready model now, then load and warm it behind the renderer. The
+ * lifecycle queue keeps the old process alive until any pinned dictation has
+ * finished. A later dictation joins that queue and retries if prewarm failed.
  */
-export async function setActiveModelAndResync(modelId: string): Promise<void> {
-  latestRequestedModelId = modelId;
-  const isTargetReady = () => getModelInstallState(modelId) === "ready";
-  const stalePrewarmStop =
-    isTargetReady() && isPreferredProviderLocal()
-      ? cancelPendingPrewarm()
-      : Promise.resolve();
-  await enqueueLifecycle(async () => {
-    await stalePrewarmStop;
-    await waitForTranscriptionsToDrain();
-    // A later click superseded this transition while it waited in the queue.
-    // Validate before touching the current sidecar; a direct IPC call or a
-    // removal race must not leave the old process stopped for an unready model.
-    if (latestRequestedModelId !== modelId || !isTargetReady()) return;
-    if (!isPreferredProviderLocal()) {
-      setActiveModelId(modelId);
-      return;
-    }
-    clearIdleTimer();
-    setAutoRestart(false);
-    await killSidecar();
-    // Recheck after shutdown as the model can be removed while the old
-    // process drains. Do not spawn or persist a now-invalid selection.
-    if (latestRequestedModelId !== modelId || !isTargetReady()) return;
-    if (!isPreferredProviderLocal()) {
-      setActiveModelId(modelId);
-      return;
-    }
-    await ensureLocalSidecarRunningOnce(modelId);
-    // Persist only after the replacement is running and readiness still holds.
-    // If spawn throws, the previous model remains selected and the renderer
-    // refreshes back to truthful state.
-    if (
-      latestRequestedModelId === modelId &&
-      isTargetReady() &&
-      isPreferredProviderLocal()
-    ) {
-      setActiveModelId(modelId);
-    }
-  });
+export function selectActiveModel(modelId: string): void {
+  if (getModelInstallState(modelId) !== "ready") {
+    throw new Error(LOCAL_MODEL_NOT_INSTALLED_MESSAGE);
+  }
+
+  setActiveModelId(modelId);
+  if (!isPreferredProviderLocal()) return;
+
+  clearIdleTimer();
+  const stalePrewarmStop = cancelPendingPrewarm();
+  queueLocalSidecarPrewarm(
+    "model-switch",
+    prewarmGeneration,
+    stalePrewarmStop,
+  );
 }
 
 export async function transcribeWithLocalSidecar(
+  modelId: string,
   pcmBuffer: Buffer,
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
-  const modelId = await enqueueLifecycle(async () => {
-    const activeModelId = getActiveModelId();
-    await ensureLocalSidecarRunningOnce(activeModelId);
+  await enqueueLifecycle(async () => {
+    await ensureLocalSidecarRunningOnce(modelId);
     transcriptionsInFlight++;
-    return activeModelId;
   });
   // Reset on request; if the timer somehow elapses mid-flight the in-flight
   // guard blocks the stop.
@@ -358,6 +352,7 @@ export interface ManagedLocalStreamingSession {
 
 /** Acquire one lifecycle lease for a full live Nemotron dictation. */
 export async function beginLocalStreamingSession(
+  modelId: string,
   onPartial: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<ManagedLocalStreamingSession> {
@@ -369,13 +364,12 @@ export async function beginLocalStreamingSession(
 
   await enqueueLifecycle(async () => {
     throwIfAborted();
-    const activeModelId = getActiveModelId();
-    if (getModelFamily(activeModelId) !== "nemotron") {
+    if (getModelFamily(modelId) !== "nemotron") {
       throw new Error(
         "The active local model does not support live streaming.",
       );
     }
-    await ensureLocalSidecarRunningOnce(activeModelId);
+    await ensureLocalSidecarRunningOnce(modelId);
     // A renderer reload can occur while the model is loading. Preserve the
     // now-ready sidecar, but do not acquire a lease for the stale document.
     throwIfAborted();

@@ -20,8 +20,7 @@ export function useModels(options: UseModelsOptions = {}) {
   const [infos, setInfos] = useState<LocalModelInfo[]>([]);
   const [statuses, setStatuses] = useState<Record<string, ModelStatus>>({});
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
-  const [activatingModelId, setActivatingModelId] = useState<string | null>(null);
-  const activatingModelIdRef = useRef<string | null>(null);
+  const selectionGenerationRef = useRef(0);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -124,15 +123,16 @@ export function useModels(options: UseModelsOptions = {}) {
 
   const setActive = useCallback(
     async (modelId: string) => {
-      if (activatingModelIdRef.current) return;
-      activatingModelIdRef.current = modelId;
-      setActivatingModelId(modelId);
+      const generation = ++selectionGenerationRef.current;
+      setActiveModelId(modelId);
       try {
         await window.stt?.setActiveModel?.(modelId);
-      } finally {
-        await refresh();
-        activatingModelIdRef.current = null;
-        setActivatingModelId(null);
+      } catch {
+        // Only the latest failed request can reconcile renderer state. An older
+        // failure must not overwrite a newer optimistic selection.
+        if (generation === selectionGenerationRef.current) {
+          await refresh();
+        }
       }
     },
     [refresh],
@@ -158,7 +158,6 @@ export function useModels(options: UseModelsOptions = {}) {
   return {
     rows,
     activeModelId,
-    activatingModelId,
     install,
     remove,
     cancel,

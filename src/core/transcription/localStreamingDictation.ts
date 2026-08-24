@@ -1,6 +1,7 @@
 import type { LocalTranscribeResult } from "../../types/shared";
 
 export interface LocalStreamingDictationOptions {
+  modelId: string;
   sampleRateHz: number;
   batchMs?: number;
   maxDurationMs: number;
@@ -11,17 +12,20 @@ export interface LocalStreamingDictationOptions {
 /**
  * Bounded renderer adapter for a main-process live STT session.
  *
- * Only one send batch is retained. Main-process writes are serialized so IPC
+ * Fixed-size batches wait in memory while the pinned model starts. Recording
+ * duration bounds that queue. Main-process writes are serialized so IPC
  * backpressure cannot reorder PCM frames.
  */
 export class LocalStreamingDictation {
   private readonly batchSamples: number;
   private readonly maxSamples: number;
   private readonly pending: Int16Array[] = [];
+  private readonly queuedBatches: Int16Array[] = [];
   private pendingSamples = 0;
   private totalSamples = 0;
   private sessionId: string | null = null;
   private removePartialListener: (() => void) | null = null;
+  private startPromise: Promise<void> | null = null;
   private sendQueue = Promise.resolve();
   private failure: Error | null = null;
   private closed = false;
@@ -44,9 +48,12 @@ export class LocalStreamingDictation {
     return (this.totalSamples / this.options.sampleRateHz) * 1000;
   }
 
-  async start(): Promise<void> {
+  start(): void {
     if (this.closed) {
       throw new Error("Local streaming session was cancelled before startup.");
+    }
+    if (this.startPromise) {
+      throw new Error("Local streaming session is already starting.");
     }
     const bridge = window.stt;
     if (
@@ -62,19 +69,30 @@ export class LocalStreamingDictation {
         this.options.onPartial(payload.text);
       }
     });
+    let opening: Promise<{ sessionId: string }>;
     this.startPending = true;
     try {
-      const { sessionId } = await bridge.startLocalStream();
-      if (this.closed) {
-        throw new Error("Local streaming session was cancelled during startup.");
-      }
-      this.sessionId = sessionId;
+      opening = bridge.startLocalStream(this.options.modelId);
     } catch (error) {
+      this.startPending = false;
       this.cleanupListener();
       throw error;
-    } finally {
-      this.startPending = false;
     }
+    this.startPromise = opening
+      .then(({ sessionId }) => {
+        if (this.cancelRequested) return;
+        this.sessionId = sessionId;
+        this.drainQueuedBatches();
+      })
+      .catch((error) => {
+        if (!this.cancelRequested) {
+          this.failure = asError(error);
+        }
+        this.cleanupListener();
+      })
+      .finally(() => {
+        this.startPending = false;
+      });
   }
 
   pushFrame(frame: Int16Array): void {
@@ -87,13 +105,20 @@ export class LocalStreamingDictation {
     this.totalSamples += frame.length;
     this.pending.push(frame);
     this.pendingSamples += frame.length;
-    if (this.pendingSamples >= this.batchSamples) this.flushPending();
+    while (this.pendingSamples >= this.batchSamples) {
+      this.sealPending(this.batchSamples);
+    }
   }
 
   async finish(): Promise<LocalTranscribeResult> {
     if (this.closed) throw new Error("Local streaming session is closed.");
     this.closed = true;
-    this.flushPending();
+    if (!this.startPromise) {
+      throw new Error("Local streaming session did not start.");
+    }
+    if (this.pendingSamples > 0) this.sealPending(this.pendingSamples);
+    await this.startPromise;
+    this.drainQueuedBatches();
     await this.sendQueue;
     try {
       if (this.failure) throw this.failure;
@@ -115,39 +140,56 @@ export class LocalStreamingDictation {
     this.cancelRequested = true;
     this.closed = true;
     this.pending.length = 0;
+    this.queuedBatches.length = 0;
     this.pendingSamples = 0;
     this.cleanupListener();
     this.sessionId = null;
     if (shouldCancelRemote) void window.stt?.cancelLocalTranscription?.();
   }
 
-  private flushPending(): void {
-    if (this.pendingSamples === 0) return;
-    const pcm = new Int16Array(this.pendingSamples);
+  private sealPending(sampleCount: number): void {
+    if (sampleCount <= 0 || sampleCount > this.pendingSamples) return;
+    const pcm = new Int16Array(sampleCount);
     let offset = 0;
-    for (const frame of this.pending) {
-      pcm.set(frame, offset);
-      offset += frame.length;
-    }
-    this.pending.length = 0;
-    this.pendingSamples = 0;
-    const sessionId = this.sessionId;
-    if (!sessionId) {
-      this.failure = new Error("Local streaming session is not active.");
-      return;
-    }
-    this.sendQueue = this.sendQueue.then(async () => {
-      if (this.failure) return;
-      try {
-        await window.stt.pushLocalStream(sessionId, pcm.buffer);
-      } catch (error) {
-        this.failure = error instanceof Error ? error : new Error(String(error));
+    while (offset < sampleCount) {
+      const frame = this.pending[0];
+      const remaining = sampleCount - offset;
+      if (frame.length <= remaining) {
+        pcm.set(frame, offset);
+        offset += frame.length;
+        this.pending.shift();
+      } else {
+        pcm.set(frame.subarray(0, remaining), offset);
+        this.pending[0] = frame.slice(remaining);
+        offset += remaining;
       }
-    });
+    }
+    this.pendingSamples -= sampleCount;
+    this.queuedBatches.push(pcm);
+    this.drainQueuedBatches();
+  }
+
+  private drainQueuedBatches(): void {
+    const sessionId = this.sessionId;
+    if (!sessionId) return;
+    for (const pcm of this.queuedBatches.splice(0)) {
+      this.sendQueue = this.sendQueue.then(async () => {
+        if (this.failure || this.cancelRequested) return;
+        try {
+          await window.stt.pushLocalStream(sessionId, pcm.buffer as ArrayBuffer);
+        } catch (error) {
+          this.failure = asError(error);
+        }
+      });
+    }
   }
 
   private cleanupListener(): void {
     this.removePartialListener?.();
     this.removePartialListener = null;
   }
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }

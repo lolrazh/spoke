@@ -183,16 +183,17 @@ contextBridge.exposeInMainWorld("audioCapture", {
 
 // Local Whisper bridge
 contextBridge.exposeInMainWorld("stt", {
-  transcribeLocal: (pcmBuffer: ArrayBuffer, prompt?: string) =>
+  transcribeLocal: (modelId: string, pcmBuffer: ArrayBuffer, prompt?: string) =>
     ipcRenderer.invoke(
       "stt:transcribe-local",
+      modelId,
       new Uint8Array(pcmBuffer),
       prompt,
     ),
   cancelLocalTranscription: () =>
     ipcRenderer.invoke("stt:cancel-local-transcription"),
-  startLocalStream: (): Promise<{ sessionId: string }> =>
-    ipcRenderer.invoke("stt:start-local-stream"),
+  startLocalStream: (modelId: string): Promise<{ sessionId: string }> =>
+    ipcRenderer.invoke("stt:start-local-stream", modelId),
   pushLocalStream: (sessionId: string, pcmBuffer: ArrayBuffer) =>
     ipcRenderer.invoke(
       "stt:push-local-stream",

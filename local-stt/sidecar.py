@@ -1704,14 +1704,19 @@ class NemotronEngine(Engine):
         if self.model is None:
             raise RuntimeError("Nemotron model has not been loaded.")
         try:
+            from nemotron_streaming import (
+                NEMOTRON_ATT_CONTEXT_SIZE,
+                NEMOTRON_STREAM_CHUNK_SECONDS,
+            )
+
             log("sidecar: warming Nemotron streaming decode path")
             start = time.perf_counter()
             list(
                 self.model.stream_generate(
                     mx.zeros((SAMPLE_RATE,), dtype=mx.float32),
                     language=self.language,
-                    chunk_duration=0.32,
-                    att_context_size=[56, 3],
+                    chunk_duration=NEMOTRON_STREAM_CHUNK_SECONDS,
+                    att_context_size=NEMOTRON_ATT_CONTEXT_SIZE,
                 )
             )
             clear_cache_if_enabled()

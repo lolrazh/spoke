@@ -4,6 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import Pill from "./Pill";
 
+vi.mock("framer-motion", async () => {
+  const actual = await vi.importActual<typeof import("framer-motion")>(
+    "framer-motion",
+  );
+  return { ...actual, useReducedMotion: () => true };
+});
+
 const commonProps = {
   pillContext: {},
   notifWidth: null,
@@ -72,5 +79,32 @@ describe("Pill live transcript", () => {
       container.querySelector(".live-transcript-rail")?.textContent,
     ).toBe("Final words");
     expect(container.querySelector(".live-transcript-activity")).not.toBeNull();
+  });
+
+  it("keeps completed words separate from the tentative live tail", () => {
+    const { container, rerender } = render(
+      <Pill
+        {...commonProps}
+        pillState="LISTENING"
+        liveTranscript="The quick brown"
+      />,
+    );
+
+    rerender(
+      <Pill
+        {...commonProps}
+        pillState="LISTENING"
+        liveTranscript="The quick crown fox"
+      />,
+    );
+
+    const rail = container.querySelector(".live-transcript-rail");
+    expect(rail?.textContent).toBe("The quick crown fox");
+    expect(
+      container.querySelector(".live-transcript-committed")?.textContent,
+    ).toBe("The quick crown ");
+    expect(
+      container.querySelector(".live-transcript-tentative")?.textContent,
+    ).toBe("fox");
   });
 });

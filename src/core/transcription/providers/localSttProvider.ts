@@ -21,7 +21,7 @@ export const localSttProvider: TranscriptionProvider = {
     };
   },
   prepare: async () => {
-    if (!window.stt?.getModelStatus) {
+    if (!window.stt?.getModelStatus || !window.stt.getModelInfos) {
       throw new TranscriptionSessionError(
         "provider_unavailable",
         "Local model status is unavailable.",
@@ -29,9 +29,29 @@ export const localSttProvider: TranscriptionProvider = {
       );
     }
 
-    const status = await window.stt.getModelStatus();
+    const [status, modelInfos] = await Promise.all([
+      window.stt.getModelStatus(),
+      window.stt.getModelInfos(),
+    ]);
     if (status.state === "ready") {
-      return {};
+      const info = modelInfos.find((model) => model.modelId === status.modelId);
+      if (!status.modelId || !status.family || !info) {
+        throw new TranscriptionSessionError(
+          "provider_unavailable",
+          "Local model metadata is unavailable.",
+          { recoverable: false },
+        );
+      }
+      return {
+        localModel: {
+          modelId: status.modelId,
+          family: status.family,
+          streaming: info.streaming,
+          ...(info.streamingChunkMs
+            ? { streamingChunkMs: info.streamingChunkMs }
+            : {}),
+        },
+      };
     }
 
     const message =
@@ -45,7 +65,7 @@ export const localSttProvider: TranscriptionProvider = {
       details: { modelState: status.state },
     });
   },
-  transcribe: async ({ audio, context }) => {
+  transcribe: async ({ audio, context, prepareResult }) => {
     if (!audio) {
       throw new TranscriptionSessionError(
         "transcription_failed",
@@ -62,6 +82,15 @@ export const localSttProvider: TranscriptionProvider = {
       );
     }
 
+    const modelId = prepareResult?.localModel?.modelId;
+    if (!modelId) {
+      throw new TranscriptionSessionError(
+        "transcription_failed",
+        "Local transcription target is unavailable.",
+        { recoverable: false },
+      );
+    }
+
     // The trimmed VAD output is normally a tight, exact-length Int16Array
     // (trimPcm16 -> Int16Array.prototype.slice), so its backing ArrayBuffer can
     // be handed to the bridge as-is. Only copy into a fresh buffer when the
@@ -74,6 +103,6 @@ export const localSttProvider: TranscriptionProvider = {
     // SharedArrayBuffer), so this cast is safe.
     const pcmBuffer = (isExact ? pcm16.buffer : pcm16.slice().buffer) as ArrayBuffer;
 
-    return window.stt.transcribeLocal(pcmBuffer, context?.sttPrompt);
+    return window.stt.transcribeLocal(modelId, pcmBuffer, context?.sttPrompt);
   },
 };

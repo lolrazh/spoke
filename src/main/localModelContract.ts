@@ -265,6 +265,7 @@ function makeInfo(
     quantization: string;
     isDefault: boolean;
     streaming?: boolean;
+    streamingChunkMs?: number;
   },
 ): LocalModelInfo {
   return {
@@ -277,6 +278,9 @@ function makeInfo(
     totalBytes: totalBytes(manifest),
     isDefault: extra.isDefault,
     streaming: extra.streaming ?? false,
+    ...(extra.streamingChunkMs
+      ? { streamingChunkMs: extra.streamingChunkMs }
+      : {}),
   };
 }
 
@@ -289,6 +293,7 @@ export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
       quantization: "8-bit",
       isDefault: true,
       streaming: true,
+      streamingChunkMs: 160,
     }),
     requiredFilePaths: [
       "config.json",

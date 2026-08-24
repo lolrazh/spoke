@@ -143,7 +143,7 @@ Object.defineProperty(window, "stt", {
     ),
     transcribeLocal: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
     getActiveModel: vi.fn(() => Promise.resolve("test-model")),
-    getModelInfos: vi.fn(() => Promise.resolve([])),
+    getModelInfos: vi.fn(() => Promise.resolve([testModelInfo()])),
     startLocalStream: vi.fn(() => Promise.resolve({ sessionId: "stream-1" })),
     pushLocalStream: vi.fn(() => Promise.resolve()),
     finishLocalStream: vi.fn(() =>
@@ -171,7 +171,7 @@ describe("useTranscription", () => {
       metrics: {},
     });
     (window.stt.getActiveModel as any).mockResolvedValue("test-model");
-    (window.stt.getModelInfos as any).mockResolvedValue([]);
+    (window.stt.getModelInfos as any).mockResolvedValue([testModelInfo()]);
     (window.stt.startLocalStream as any).mockResolvedValue({
       sessionId: "stream-1",
     });
@@ -215,7 +215,7 @@ describe("useTranscription", () => {
     expect(result.current.error).toBe(null);
   });
 
-  it("should ignore duplicate stop calls in local mode", async () => {
+  it("keeps batch results out of live text and ignores duplicate stops", async () => {
     (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockImplementation(
       () =>
@@ -255,6 +255,7 @@ describe("useTranscription", () => {
       expect(result.current.text).toBe("Local transcription");
     });
 
+    expect(result.current.liveText).toBe("");
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
     expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
     expect(window.stt.extractOcr).not.toHaveBeenCalled();
@@ -768,8 +769,13 @@ describe("useTranscription", () => {
     await act(async () => result.current.start());
     emitPcmFrame(new Array(5_120).fill(1));
     await waitFor(() =>
-      expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(1),
+      expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2),
     );
+    expect(
+      new Int16Array(
+        (window.stt.pushLocalStream as ReturnType<typeof vi.fn>).mock.calls[0][1],
+      ),
+    ).toHaveLength(2_560);
 
     await act(async () => {
       stream.emitPartial("hello");
@@ -812,12 +818,24 @@ describe("useTranscription", () => {
     expect(window.clipboard.insertText).not.toHaveBeenCalled();
   });
 
-  it("keeps recording off when cancel wins a deferred streaming start", async () => {
+  it("records while streaming startup is pending and still lets cancel win", async () => {
     let resolveStart!: (value: { sessionId: string }) => void;
     const pendingStart = new Promise<{ sessionId: string }>((resolve) => {
       resolveStart = resolve;
     });
     (window.stt.getActiveModel as any).mockResolvedValue("nemotron");
+    (window.stt.getModelStatus as any).mockResolvedValue({
+      state: "ready",
+      family: "nemotron",
+      modelId: "nemotron",
+      displayName: "Nemotron",
+      version: "1.0.0",
+      manifestVersion: 1,
+      downloadProgress: 1,
+      downloadedBytes: 1,
+      totalBytes: 1,
+      error: null,
+    });
     (window.stt.getModelInfos as any).mockResolvedValue([
       {
         modelId: "nemotron",
@@ -829,6 +847,7 @@ describe("useTranscription", () => {
         totalBytes: 1,
         isDefault: false,
         streaming: true,
+        streamingChunkMs: 160,
       },
     ]);
     (window.stt.startLocalStream as any).mockReturnValue(pendingStart);
@@ -838,13 +857,15 @@ describe("useTranscription", () => {
     );
     await waitFor(() => expect(result.current.ready).toBe(true));
 
-    let startPromise!: Promise<void>;
     await act(async () => {
-      startPromise = result.current.start() as unknown as Promise<void>;
+      await result.current.start();
       await waitFor(() =>
         expect(window.stt.startLocalStream).toHaveBeenCalledOnce(),
       );
     });
+
+    expect(result.current.recording).toBe(true);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
 
     act(() => result.current.cancel());
     expect(window.stt.cancelLocalTranscription).toHaveBeenCalledOnce();
@@ -852,11 +873,10 @@ describe("useTranscription", () => {
 
     await act(async () => {
       resolveStart({ sessionId: "stale-stream" });
-      await startPromise;
+      await Promise.resolve();
     });
 
     expect(result.current.recording).toBe(false);
-    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
   });
 });
 
@@ -865,6 +885,18 @@ function configureStreamingModel(finalText: string) {
     | ((payload: { sessionId: string; text: string }) => void)
     | null = null;
   (window.stt.getActiveModel as any).mockResolvedValue("nemotron");
+  (window.stt.getModelStatus as any).mockResolvedValue({
+    state: "ready",
+    family: "nemotron",
+    modelId: "nemotron",
+    displayName: "Nemotron",
+    version: "1.0.0",
+    manifestVersion: 1,
+    downloadProgress: 1,
+    downloadedBytes: 1,
+    totalBytes: 1,
+    error: null,
+  });
   (window.stt.getModelInfos as any).mockResolvedValue([
     {
       modelId: "nemotron",
@@ -876,6 +908,7 @@ function configureStreamingModel(finalText: string) {
       totalBytes: 1,
       isDefault: false,
       streaming: true,
+      streamingChunkMs: 160,
     },
   ]);
   (window.stt.onLocalStreamPartial as any).mockImplementation((
@@ -893,6 +926,20 @@ function configureStreamingModel(finalText: string) {
     emitPartial(text: string) {
       partialListener?.({ sessionId: "stream-1", text });
     },
+  };
+}
+
+function testModelInfo() {
+  return {
+    modelId: "test-model",
+    family: "whisper",
+    displayName: "Test Model",
+    tagline: "Test",
+    languageCount: 1,
+    quantization: "4-bit",
+    totalBytes: 1,
+    isDefault: true,
+    streaming: false,
   };
 }
 

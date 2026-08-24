@@ -1,20 +1,19 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { m } from "framer-motion";
 
-import { MOTION } from "../config/motionTokens";
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
-import { calculateLiveTranscriptWidth } from "./liveTranscriptLayout";
+import { splitLiveTranscriptText } from "./liveTranscriptText";
+
+export const LIVE_TRANSCRIPT_CARET_IDLE_MS = 480;
 
 export type LiveTranscriptMetrics = {
-  textWidth: number;
   wrappedTextHeight: number;
 };
 
 type LiveTranscriptProps = {
   text: string;
   isProcessing: boolean;
-  baseWidth: number;
-  maxWidth: number;
+  textWidth: number;
   visibleTextHeight: number;
   railOffsetY: number;
   overflowing: boolean;
@@ -26,59 +25,52 @@ type LiveTranscriptProps = {
 export function LiveTranscript({
   text,
   isProcessing,
-  baseWidth,
-  maxWidth,
+  textWidth,
   visibleTextHeight,
   railOffsetY,
   overflowing,
   reducedMotion,
   onTextMetricsChange,
 }: LiveTranscriptProps) {
-  const intrinsicMeasureRef = useRef<HTMLSpanElement>(null);
   const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
-  const splitRef = useRef({
-    fullText: "",
-    stableText: "",
-    appendedText: "",
-  });
-  if (splitRef.current.fullText !== text) {
-    const previousText = splitRef.current.fullText;
-    const appendedText = text.startsWith(previousText)
-      ? text.slice(previousText.length)
-      : "";
-    splitRef.current = {
-      fullText: text,
-      stableText: appendedText
-        ? text.slice(0, text.length - appendedText.length)
-        : text,
-      appendedText,
-    };
-  }
-  const { stableText, appendedText } = splitRef.current;
+  const [caretIdle, setCaretIdle] = useState(false);
+  const displayText = splitLiveTranscriptText(text, isProcessing);
 
   useLayoutEffect(() => {
-    const intrinsicWidth = Math.ceil(
-      intrinsicMeasureRef.current?.getBoundingClientRect().width ?? 0,
+    setCaretIdle(false);
+    if (isProcessing || reducedMotion) return;
+
+    const timeoutId = window.setTimeout(
+      () => setCaretIdle(true),
+      LIVE_TRANSCRIPT_CARET_IDLE_MS,
     );
+    return () => window.clearTimeout(timeoutId);
+  }, [isProcessing, reducedMotion, text]);
+
+  useLayoutEffect(() => {
     const wrappedMeasure = wrappedMeasureRef.current;
     if (!wrappedMeasure) return;
 
-    const { textWidth } = calculateLiveTranscriptWidth({
-      currentTextWidth: intrinsicWidth,
-      baseWidth,
-      maxWidth,
-    });
     wrappedMeasure.style.width = `${textWidth}px`;
     onTextMetricsChange({
-      textWidth: intrinsicWidth,
       wrappedTextHeight: Math.ceil(
         wrappedMeasure.getBoundingClientRect().height,
       ),
     });
-  }, [baseWidth, maxWidth, onTextMetricsChange, text]);
+  }, [onTextMetricsChange, text, textWidth]);
 
   return (
-    <div className="live-transcript" aria-hidden="true">
+    <m.div
+      className="live-transcript"
+      aria-hidden="true"
+      initial={reducedMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{
+        duration: reducedMotion ? 0 : 0.16,
+        delay: reducedMotion ? 0 : 0.06,
+        ease: "easeOut",
+      }}
+    >
       <div className="live-transcript-activity">
         {isProcessing ? (
           <FrequencyBars
@@ -108,35 +100,38 @@ export function LiveTranscript({
           transition={
             reducedMotion
               ? { duration: 0 }
-              : { type: "spring", ...MOTION.springs.transcript }
+              : { duration: 0.14, ease: [0.2, 0, 0, 1] }
           }
         >
-          <span>{stableText}</span>
-          {appendedText ? (
-            <m.span
-              key={`${text.length}:${appendedText}`}
-              initial={reducedMotion ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: reducedMotion ? 0 : 0.12, ease: "easeOut" }}
-            >
-              {appendedText}
-            </m.span>
-          ) : null}
+          <span className="live-transcript-committed">
+            {displayText.committed}
+          </span>
+          <m.span
+            key={displayText.committed}
+            className="live-transcript-tentative"
+            initial={reducedMotion ? false : { opacity: 0.72 }}
+            animate={{ opacity: 1 }}
+            transition={{
+              duration: reducedMotion ? 0 : 0.1,
+              ease: "easeOut",
+            }}
+          >
+            {displayText.tentative}
+          </m.span>
+          {!isProcessing && (
+            <span
+              className={`live-transcript-caret ${caretIdle ? "is-blinking" : ""}`}
+            />
+          )}
         </m.span>
       </div>
 
-      <span
-        ref={intrinsicMeasureRef}
-        className="live-transcript-measure live-transcript-measure-intrinsic"
-      >
-        {text}
-      </span>
       <span
         ref={wrappedMeasureRef}
         className="live-transcript-measure live-transcript-measure-wrapped"
       >
         {text}
       </span>
-    </div>
+    </m.div>
   );
 }

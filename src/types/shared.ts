@@ -182,4 +182,14 @@ export type LocalModelInfo = {
   isDefault: boolean;
   /** True when this model accepts live PCM and returns cumulative partials. */
   streaming: boolean;
+  /** Preferred PCM delivery cadence for a streaming model. */
+  streamingChunkMs?: number;
+};
+
+/** Immutable model choice captured when one local dictation starts. */
+export type LocalModelTarget = {
+  modelId: string;
+  family: LocalModelFamily;
+  streaming: boolean;
+  streamingChunkMs?: number;
 };

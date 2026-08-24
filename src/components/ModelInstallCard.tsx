@@ -5,7 +5,6 @@ import { Button } from "./ui/button";
 import SettingsCard, { CardTrailing } from "./SettingsCard";
 import IconButton from "./ui/IconButton";
 import ProgressRing from "./ui/ProgressRing";
-import Spinner from "./ui/Spinner";
 import { glyphForFamily } from "./ModelGlyph";
 import { DownloadGlyph } from "./SettingsPanel";
 
@@ -80,8 +79,6 @@ interface ModelInstallCardProps {
   status: ModelStatus;
   isActive: boolean;
   loaded: boolean;
-  activationLocked?: boolean;
-  isActivating?: boolean;
   onInstall: () => void;
   onRemove: () => void;
   onCancel: () => void;
@@ -113,8 +110,6 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
   status,
   isActive,
   loaded,
-  activationLocked = false,
-  isActivating = false,
   onInstall,
   onRemove,
   onCancel,
@@ -125,14 +120,13 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
   // clicking a ready-but-inactive row activates it. The active row is a no-op,
   // and busy/broken rows defer to their inline controls. Only attach the click
   // once `loaded` so we never react before the real status resolves.
-  const rowClick =
-    !loaded || activationLocked
-      ? undefined
-      : status.state === "not_installed"
-        ? onInstall
-        : status.state === "ready" && !isActive
-          ? onActivate
-          : undefined;
+  const rowClick = !loaded
+    ? undefined
+    : status.state === "not_installed"
+      ? onInstall
+      : status.state === "ready" && !isActive
+        ? onActivate
+        : undefined;
 
   return (
     <SettingsCard
@@ -143,7 +137,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
       inGroup={inGroup}
       // Every loaded card highlights on hover for visual consistency; this is
       // decoupled from clickability, so the active (inert) row still lights up.
-      interactive={loaded && !activationLocked}
+      interactive={loaded}
       onClick={rowClick}
     >
       <div className="ml-2 flex items-center justify-end">
@@ -188,19 +182,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               <CardTrailing
                 primary={
                   <AnimatePresence mode="popLayout" initial={false}>
-                    {isActivating ? (
-                      <m.span
-                        key="activating"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="inline-flex"
-                        role="status"
-                        aria-label="Switching model"
-                      >
-                        <Spinner />
-                      </m.span>
-                    ) : status.state === "ready" ? (
+                    {status.state === "ready" ? (
                       <m.span
                         key="check"
                         initial={{ opacity: 0 }}
@@ -239,13 +221,11 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                 }
                 action={
                   status.state === "ready" ? (
-                    activationLocked ? undefined : (
-                      <TrashAction
-                        onClick={onRemove}
-                        title="Uninstall"
-                        ariaLabel="Uninstall model"
-                      />
-                    )
+                    <TrashAction
+                      onClick={onRemove}
+                      title="Uninstall"
+                      ariaLabel="Uninstall model"
+                    />
                   ) : (
                     // Same reveal trash, but mid-install it cancels the download
                     // (which resets the model to not_installed).

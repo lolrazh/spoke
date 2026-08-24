@@ -15,15 +15,9 @@ const ModelsList: React.FC<{ enabled?: boolean; inGroup?: boolean }> = ({
   enabled,
   inGroup = true,
 }) => {
-  const {
-    rows,
-    install,
-    remove,
-    cancel,
-    setActive,
-    loaded,
-    activatingModelId,
-  } = useModels({ enabled });
+  const { rows, install, remove, cancel, setActive, loaded } = useModels({
+    enabled,
+  });
 
   return (
     <>
@@ -34,8 +28,6 @@ const ModelsList: React.FC<{ enabled?: boolean; inGroup?: boolean }> = ({
           status={row.status}
           isActive={row.isActive}
           loaded={loaded}
-          activationLocked={activatingModelId !== null}
-          isActivating={activatingModelId === row.info.modelId}
           onInstall={() => install(row.info.modelId)}
           onRemove={() => remove(row.info.modelId)}
           onCancel={() => cancel(row.info.modelId)}

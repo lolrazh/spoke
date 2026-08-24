@@ -41,8 +41,6 @@ function renderCard(
     status?: Partial<ModelStatus>;
     isActive?: boolean;
     loaded?: boolean;
-    activationLocked?: boolean;
-    isActivating?: boolean;
   } = {},
 ) {
   const props = {
@@ -50,8 +48,6 @@ function renderCard(
     status: { ...baseStatus, ...overrides.status },
     isActive: overrides.isActive ?? false,
     loaded: overrides.loaded ?? true,
-    activationLocked: overrides.activationLocked ?? false,
-    isActivating: overrides.isActivating ?? false,
     onInstall: vi.fn(),
     onRemove: vi.fn(),
     onCancel: vi.fn(),
@@ -133,28 +129,6 @@ describe("ModelInstallCard", () => {
     const props = renderCard({ status: { state: "ready" }, isActive: false });
     fireEvent.click(screen.getByRole("button", { name: "Uninstall model" }));
     expect(props.onRemove).toHaveBeenCalledTimes(1);
-    expect(props.onActivate).not.toHaveBeenCalled();
-  });
-
-  it("keeps installed details visible and locks actions while switching", () => {
-    const props = renderCard({
-      status: { state: "ready" },
-      activationLocked: true,
-      isActivating: true,
-    });
-
-    expect(screen.getByText("14 languages · 4-bit · 1.5 GB")).toBeTruthy();
-    expect(screen.queryByText("Loading model…")).toBeNull();
-    expect(
-      screen.getByRole("status", { name: "Switching model" }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: info.displayName })).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Uninstall model" }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Cancel download" }),
-    ).toBeNull();
     expect(props.onActivate).not.toHaveBeenCalled();
   });
 
