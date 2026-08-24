@@ -769,8 +769,13 @@ describe("useTranscription", () => {
     await act(async () => result.current.start());
     emitPcmFrame(new Array(5_120).fill(1));
     await waitFor(() =>
-      expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(1),
+      expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2),
     );
+    expect(
+      new Int16Array(
+        (window.stt.pushLocalStream as ReturnType<typeof vi.fn>).mock.calls[0][1],
+      ),
+    ).toHaveLength(2_560);
 
     await act(async () => {
       stream.emitPartial("hello");
@@ -842,6 +847,7 @@ describe("useTranscription", () => {
         totalBytes: 1,
         isDefault: false,
         streaming: true,
+        streamingChunkMs: 160,
       },
     ]);
     (window.stt.startLocalStream as any).mockReturnValue(pendingStart);
@@ -902,6 +908,7 @@ function configureStreamingModel(finalText: string) {
       totalBytes: 1,
       isDefault: false,
       streaming: true,
+      streamingChunkMs: 160,
     },
   ]);
   (window.stt.onLocalStreamPartial as any).mockImplementation((

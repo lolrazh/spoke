@@ -16,7 +16,10 @@ from mlx_audio.stt.models.nemotron_asr.audio import StreamingLogMelSpectrogram
 from mlx_audio.stt.models.nemotron_asr.streaming import stream_encode_chunks
 
 
-NEMOTRON_ATT_CONTEXT_SIZE = [56, 3]
+# Nemotron exposes latency profiles through its encoder right-context. Two
+# encoder frames at 80 ms each give Spoke a 160 ms live update cadence.
+NEMOTRON_STREAM_CHUNK_SECONDS = 0.16
+NEMOTRON_ATT_CONTEXT_SIZE = [56, 1]
 
 
 def stream_results(

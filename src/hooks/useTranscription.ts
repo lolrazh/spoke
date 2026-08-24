@@ -293,7 +293,7 @@ export function useTranscription(
         localStreamingDictation = new LocalStreamingDictation({
           modelId: prepareResult.localModel.modelId,
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
-          batchMs: 320,
+          batchMs: prepareResult.localModel.streamingChunkMs ?? 320,
           maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
           onPartial: setLiveText,
           onLimitReached: () => {

@@ -19,6 +19,7 @@ describe("localModelContract", () => {
       quantization: "8-bit",
       isDefault: true,
       streaming: true,
+      streamingChunkMs: 160,
     });
     expect(infos.filter((info) => info.isDefault)).toHaveLength(1);
   });

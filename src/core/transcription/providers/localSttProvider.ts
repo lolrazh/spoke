@@ -47,6 +47,9 @@ export const localSttProvider: TranscriptionProvider = {
           modelId: status.modelId,
           family: status.family,
           streaming: info.streaming,
+          ...(info.streamingChunkMs
+            ? { streamingChunkMs: info.streamingChunkMs }
+            : {}),
         },
       };
     }
