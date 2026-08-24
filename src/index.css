@@ -257,6 +257,14 @@
     transition: box-shadow var(--duration-fast) var(--ease-standard);
   }
 
+  .pill-core.has-live-transcript {
+    border-color: rgba(255, 255, 255, 0.05);
+    box-shadow:
+      var(--pill-shadow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.035),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.015);
+  }
+
   /* Afterglow overlay for micro-physics impact */
   .impact-glow-overlay {
     position: absolute;
@@ -445,7 +453,7 @@
   .live-transcript-rail {
     display: block;
     width: 100%;
-    text-align: center;
+    text-align: start;
     white-space: normal;
     overflow-wrap: break-word;
     transform-origin: center bottom;
@@ -462,7 +470,7 @@
 
   .live-transcript-measure-wrapped {
     display: block;
-    text-align: center;
+    text-align: start;
     white-space: normal;
     overflow-wrap: break-word;
   }
@@ -471,6 +479,18 @@
   .live-transcript-tentative {
     color: inherit;
     font: inherit;
+  }
+
+  .live-transcript-tentative:not(:empty)::after {
+    content: "";
+    display: inline-block;
+    width: 2px;
+    height: 0.8em;
+    margin-inline-start: 3px;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 255, 255, 0.32);
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.08);
+    vertical-align: -0.06em;
   }
 
   /* Frequency bars container - denser layout */

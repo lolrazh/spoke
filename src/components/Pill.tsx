@@ -350,7 +350,9 @@ const Pill: React.FC<PillProps> = ({
     >
       <m.div
         ref={pillCoreRef}
-        className={`pill-core ${isExpanded ? "expanded" : ""}`}
+        className={`pill-core ${isExpanded ? "expanded" : ""} ${
+          hasLiveTranscript ? "has-live-transcript" : ""
+        }`}
         initial={false}
         animate={animateWithImpact}
         transition={transitionWithImpact}

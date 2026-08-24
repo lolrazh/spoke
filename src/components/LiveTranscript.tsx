@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { m } from "framer-motion";
 
-import { MOTION } from "../config/motionTokens";
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
 import { splitLiveTranscriptText } from "./liveTranscriptText";
 
@@ -87,15 +86,24 @@ export function LiveTranscript({
           transition={
             reducedMotion
               ? { duration: 0 }
-              : { type: "spring", ...MOTION.springs.transcript }
+              : { duration: 0.14, ease: [0.2, 0, 0, 1] }
           }
         >
           <span className="live-transcript-committed">
             {displayText.committed}
           </span>
-          <span className="live-transcript-tentative">
+          <m.span
+            key={displayText.committed}
+            className="live-transcript-tentative"
+            initial={reducedMotion ? false : { opacity: 0.72 }}
+            animate={{ opacity: 1 }}
+            transition={{
+              duration: reducedMotion ? 0 : 0.1,
+              ease: "easeOut",
+            }}
+          >
             {displayText.tentative}
-          </span>
+          </m.span>
         </m.span>
       </div>
 
