@@ -1,8 +1,10 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { m } from "framer-motion";
 
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
 import { splitLiveTranscriptText } from "./liveTranscriptText";
+
+export const LIVE_TRANSCRIPT_CARET_IDLE_MS = 480;
 
 export type LiveTranscriptMetrics = {
   wrappedTextHeight: number;
@@ -31,7 +33,19 @@ export function LiveTranscript({
   onTextMetricsChange,
 }: LiveTranscriptProps) {
   const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
+  const [caretIdle, setCaretIdle] = useState(false);
   const displayText = splitLiveTranscriptText(text, isProcessing);
+
+  useLayoutEffect(() => {
+    setCaretIdle(false);
+    if (isProcessing || reducedMotion) return;
+
+    const timeoutId = window.setTimeout(
+      () => setCaretIdle(true),
+      LIVE_TRANSCRIPT_CARET_IDLE_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [isProcessing, reducedMotion, text]);
 
   useLayoutEffect(() => {
     const wrappedMeasure = wrappedMeasureRef.current;
@@ -104,6 +118,11 @@ export function LiveTranscript({
           >
             {displayText.tentative}
           </m.span>
+          {!isProcessing && (
+            <span
+              className={`live-transcript-caret ${caretIdle ? "is-blinking" : ""}`}
+            />
+          )}
         </m.span>
       </div>
 

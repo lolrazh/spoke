@@ -481,16 +481,37 @@
     font: inherit;
   }
 
-  .live-transcript-tentative:not(:empty)::after {
-    content: "";
+  .live-transcript-caret {
     display: inline-block;
-    width: 2px;
-    height: 0.8em;
-    margin-inline-start: 3px;
-    border-radius: var(--radius-pill);
-    background: rgba(255, 255, 255, 0.32);
-    box-shadow: 0 0 5px rgba(255, 255, 255, 0.08);
-    vertical-align: -0.06em;
+    width: 1px;
+    height: 1.08em;
+    margin: 0;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.58);
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.1);
+    vertical-align: -0.14em;
+    opacity: 1;
+  }
+
+  .live-transcript-caret.is-blinking {
+    animation: live-transcript-caret-blink 1.05s step-end infinite;
+  }
+
+  @keyframes live-transcript-caret-blink {
+    0%,
+    46% {
+      opacity: 1;
+    }
+    47%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .live-transcript-caret {
+      animation: none;
+    }
   }
 
   /* Frequency bars container - denser layout */
