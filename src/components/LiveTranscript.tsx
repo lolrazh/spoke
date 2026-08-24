@@ -4,6 +4,7 @@ import { m } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
 import { calculateLiveTranscriptWidth } from "./liveTranscriptLayout";
+import { useSmoothTranscriptText } from "./useSmoothTranscriptText";
 
 export type LiveTranscriptMetrics = {
   textWidth: number;
@@ -15,7 +16,6 @@ type LiveTranscriptProps = {
   isProcessing: boolean;
   baseWidth: number;
   maxWidth: number;
-  textWidth: number;
   visibleTextHeight: number;
   railOffsetY: number;
   overflowing: boolean;
@@ -29,7 +29,6 @@ export function LiveTranscript({
   isProcessing,
   baseWidth,
   maxWidth,
-  textWidth,
   visibleTextHeight,
   railOffsetY,
   overflowing,
@@ -39,6 +38,9 @@ export function LiveTranscript({
   const intrinsicMeasureRef = useRef<HTMLSpanElement>(null);
   const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
   const maxIntrinsicWidthRef = useRef(0);
+  const displayedText = useSmoothTranscriptText(text, {
+    enabled: !reducedMotion,
+  });
 
   useLayoutEffect(() => {
     const intrinsicWidth = Math.ceil(
@@ -90,7 +92,7 @@ export function LiveTranscript({
 
       <div
         className={`live-transcript-viewport ${overflowing ? "is-overflowing" : ""}`}
-        style={{ width: textWidth, height: visibleTextHeight }}
+        style={{ height: visibleTextHeight }}
       >
         <m.span
           className="live-transcript-rail"
@@ -101,7 +103,7 @@ export function LiveTranscript({
               : { type: "spring", ...MOTION.springs.transcript }
           }
         >
-          {text}
+          {displayedText}
         </m.span>
       </div>
 

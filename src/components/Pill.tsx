@@ -456,7 +456,6 @@ const Pill: React.FC<PillProps> = ({
                     isProcessing={pillState === "PROCESSING"}
                     baseWidth={dims.baseW}
                     maxWidth={dims.maxW}
-                    textWidth={liveTranscriptLayout.textWidth}
                     visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
                     railOffsetY={liveTranscriptLayout.railOffsetY}
                     overflowing={liveTranscriptLayout.overflowing}

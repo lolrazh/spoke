@@ -412,7 +412,7 @@
     width: 100%;
     min-width: 0;
     overflow: hidden;
-    line-height: 19px;
+    line-height: 20px;
   }
 
   .live-transcript-viewport.is-overflowing {
@@ -433,11 +433,13 @@
   .live-transcript-rail,
   .live-transcript-measure {
     font-family: "Inter", sans-serif;
-    color: #d0d0d0;
-    font-size: 13px;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 14px;
     font-weight: 500;
-    letter-spacing: -0.01em;
-    line-height: 19px;
+    font-optical-sizing: auto;
+    letter-spacing: 0;
+    line-height: 20px;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.36);
   }
 
   .live-transcript-rail {

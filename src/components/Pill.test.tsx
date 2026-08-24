@@ -4,6 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import Pill from "./Pill";
 
+vi.mock("framer-motion", async () => {
+  const actual = await vi.importActual<typeof import("framer-motion")>(
+    "framer-motion",
+  );
+  return { ...actual, useReducedMotion: () => true };
+});
+
 const commonProps = {
   pillContext: {},
   notifWidth: null,
