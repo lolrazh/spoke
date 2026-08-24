@@ -81,7 +81,7 @@ describe("Pill live transcript", () => {
     expect(container.querySelector(".live-transcript-activity")).not.toBeNull();
   });
 
-  it("updates streaming revisions without creating animated text fragments", () => {
+  it("keeps completed words separate from the tentative live tail", () => {
     const { container, rerender } = render(
       <Pill
         {...commonProps}
@@ -100,6 +100,11 @@ describe("Pill live transcript", () => {
 
     const rail = container.querySelector(".live-transcript-rail");
     expect(rail?.textContent).toBe("The quick crown fox");
-    expect(rail?.childElementCount).toBe(0);
+    expect(
+      container.querySelector(".live-transcript-committed")?.textContent,
+    ).toBe("The quick crown ");
+    expect(
+      container.querySelector(".live-transcript-tentative")?.textContent,
+    ).toBe("fox");
   });
 });

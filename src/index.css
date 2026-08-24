@@ -460,17 +460,17 @@
     pointer-events: none;
   }
 
-  .live-transcript-measure-intrinsic {
-    display: inline-block;
-    width: max-content;
-    white-space: pre;
-  }
-
   .live-transcript-measure-wrapped {
     display: block;
     text-align: center;
     white-space: normal;
     overflow-wrap: break-word;
+  }
+
+  .live-transcript-committed,
+  .live-transcript-tentative {
+    color: inherit;
+    font: inherit;
   }
 
   /* Frequency bars container - denser layout */

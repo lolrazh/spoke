@@ -4,59 +4,77 @@ import {
   LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
   LIVE_TRANSCRIPT_LINE_HEIGHT,
   LIVE_TRANSCRIPT_MAX_LINES,
+  LIVE_TRANSCRIPT_PANEL_WIDTH,
   LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT,
   calculateLiveTranscriptLayout,
 } from "./liveTranscriptLayout";
 
 describe("calculateLiveTranscriptLayout", () => {
-  it("keeps the base pill width while a short phrase still fits", () => {
+  it("opens to one stable panel width", () => {
     expect(
       calculateLiveTranscriptLayout({
-        currentTextWidth: 50,
         wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT,
         baseWidth: 196,
         baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
-      pillWidth: 196,
+      pillWidth: LIVE_TRANSCRIPT_PANEL_WIDTH,
       pillHeight:
         LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT +
         LIVE_TRANSCRIPT_LINE_HEIGHT,
-      textWidth: 196 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
+      textWidth:
+        LIVE_TRANSCRIPT_PANEL_WIDTH - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
       visibleTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT,
       railOffsetY: 0,
       overflowing: false,
     });
   });
 
-  it("grows from measured text width before reaching the cap", () => {
+  it("does not retarget its width as partial text changes", () => {
+    const short = calculateLiveTranscriptLayout({
+      wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT,
+      baseWidth: 196,
+      baseHeight: 30,
+      maxWidth: 560,
+    });
+    const long = calculateLiveTranscriptLayout({
+      wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 3,
+      baseWidth: 196,
+      baseHeight: 30,
+      maxWidth: 560,
+    });
+
+    expect(short.pillWidth).toBe(LIVE_TRANSCRIPT_PANEL_WIDTH);
+    expect(long.pillWidth).toBe(LIVE_TRANSCRIPT_PANEL_WIDTH);
+  });
+
+  it("clamps the panel width to the available maximum", () => {
     expect(
       calculateLiveTranscriptLayout({
-        currentTextWidth: 250,
         wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT,
         baseWidth: 196,
         baseHeight: 30,
-        maxWidth: 560,
+        maxWidth: 360,
       }).pillWidth,
-    ).toBe(250 + LIVE_TRANSCRIPT_HORIZONTAL_PADDING);
+    ).toBe(360);
   });
 
-  it("holds the max width and grows down when text wraps", () => {
+  it("grows down by complete rows when text wraps", () => {
     expect(
       calculateLiveTranscriptLayout({
-        currentTextWidth: 600,
         wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
         baseWidth: 196,
         baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
-      pillWidth: 560,
+      pillWidth: LIVE_TRANSCRIPT_PANEL_WIDTH,
       pillHeight:
         LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT +
         LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
-      textWidth: 560 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
+      textWidth:
+        LIVE_TRANSCRIPT_PANEL_WIDTH - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
       visibleTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
       railOffsetY: 0,
       overflowing: false,
@@ -70,17 +88,17 @@ describe("calculateLiveTranscriptLayout", () => {
       LIVE_TRANSCRIPT_LINE_HEIGHT * (LIVE_TRANSCRIPT_MAX_LINES + 2);
     expect(
       calculateLiveTranscriptLayout({
-        currentTextWidth: 900,
         wrappedTextHeight: fullTextHeight,
         baseWidth: 196,
         baseHeight: 30,
         maxWidth: 560,
       }),
     ).toEqual({
-      pillWidth: 560,
+      pillWidth: LIVE_TRANSCRIPT_PANEL_WIDTH,
       pillHeight:
         LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + visibleTextHeight,
-      textWidth: 560 - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
+      textWidth:
+        LIVE_TRANSCRIPT_PANEL_WIDTH - LIVE_TRANSCRIPT_HORIZONTAL_PADDING,
       visibleTextHeight,
       railOffsetY: -(fullTextHeight - visibleTextHeight),
       overflowing: true,
@@ -90,7 +108,6 @@ describe("calculateLiveTranscriptLayout", () => {
   it("keeps its largest height when a streaming revision gets shorter", () => {
     expect(
       calculateLiveTranscriptLayout({
-        currentTextWidth: 900,
         wrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 2,
         maxWrappedTextHeight: LIVE_TRANSCRIPT_LINE_HEIGHT * 4,
         baseWidth: 196,
@@ -98,7 +115,7 @@ describe("calculateLiveTranscriptLayout", () => {
         maxWidth: 560,
       }),
     ).toMatchObject({
-      pillWidth: 560,
+      pillWidth: LIVE_TRANSCRIPT_PANEL_WIDTH,
       pillHeight:
         LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT +
         LIVE_TRANSCRIPT_LINE_HEIGHT * 4,
