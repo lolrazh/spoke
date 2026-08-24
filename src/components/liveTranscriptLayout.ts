@@ -1,7 +1,6 @@
 export const LIVE_TRANSCRIPT_HORIZONTAL_PADDING = 28;
 export const LIVE_TRANSCRIPT_LINE_HEIGHT = 20;
-export const LIVE_TRANSCRIPT_INITIAL_LINES = 4;
-export const LIVE_TRANSCRIPT_EXPANDED_LINES = 10;
+export const LIVE_TRANSCRIPT_MAX_LINES = 10;
 export const LIVE_TRANSCRIPT_PANEL_WIDTH = 420;
 export const LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT = 40;
 
@@ -17,9 +16,8 @@ export type LiveTranscriptLayout = {
 /**
  * Derive one stable live panel target.
  *
- * The panel opens to one width and reserves four rows. It expands once to ten
- * rows when needed, instead of reacting to every line wrap. Longer transcripts
- * keep their newest rows visible without taking over the screen.
+ * The panel opens to one width, then grows with each wrapped line. Longer
+ * transcripts keep their newest rows visible without taking over the screen.
  */
 export function calculateLiveTranscriptLayout({
   wrappedTextHeight,
@@ -52,16 +50,11 @@ export function calculateLiveTranscriptLayout({
     fullTextHeight,
     Math.ceil(Math.max(0, maxWrappedTextHeight)),
   );
-  const layoutLineCount = Math.max(
-    1,
+  const visibleLineCount = Math.min(
+    LIVE_TRANSCRIPT_MAX_LINES,
     Math.ceil(layoutTextHeight / LIVE_TRANSCRIPT_LINE_HEIGHT),
   );
-  const reservedLineCount =
-    layoutLineCount <= LIVE_TRANSCRIPT_INITIAL_LINES
-      ? LIVE_TRANSCRIPT_INITIAL_LINES
-      : LIVE_TRANSCRIPT_EXPANDED_LINES;
-  const visibleTextHeight =
-    LIVE_TRANSCRIPT_LINE_HEIGHT * reservedLineCount;
+  const visibleTextHeight = LIVE_TRANSCRIPT_LINE_HEIGHT * visibleLineCount;
   const pillHeight = Math.max(
     Math.max(0, baseHeight),
     LIVE_TRANSCRIPT_VERTICAL_CHROME_HEIGHT + visibleTextHeight,
