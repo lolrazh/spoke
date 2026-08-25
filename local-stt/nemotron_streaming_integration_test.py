@@ -26,7 +26,7 @@ class RealSpeechStreamingTests(unittest.TestCase):
         "4e25e22555cd16e90edb0a3b49fdcf1fe652b2a1250ab643634db33895c75b41"
     )
     EXPECTED_TEXT = (
-        "Mr. Quilter is the apostle of the middle classes, and we are glad "
+        "Mister Quilter is the apostle of the middle classes, and we are glad "
         "to welcome his gospel."
     )
 
