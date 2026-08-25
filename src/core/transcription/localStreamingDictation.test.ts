@@ -61,7 +61,7 @@ describe("LocalStreamingDictation", () => {
     partialListener?.({ sessionId: "stream-1", text: "hello" });
     expect(onPartial).toHaveBeenCalledOnce();
     expect(onPartial).toHaveBeenCalledWith("hello");
-    stream.cancel();
+    await stream.cancel();
   });
 
   it("queues bounded batches until model startup completes", async () => {

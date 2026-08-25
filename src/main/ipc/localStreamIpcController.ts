@@ -38,9 +38,18 @@ export class LocalStreamIpcController {
     private readonly createId: () => string,
   ) {}
 
-  async start(owner: WebContents, modelId: string): Promise<{ sessionId: string }> {
+  async start(
+    owner: WebContents,
+    modelId: string,
+  ): Promise<{ sessionId: string }> {
     if (this.current) {
-      throw new Error("A local streaming session is already active.");
+      if (this.current.owner.id !== owner.id) {
+        throw new Error("A local streaming session is already active.");
+      }
+      // A second request from the same renderer means it no longer owns the
+      // previous adapter. Replace that abandoned session instead of trapping
+      // every later recording behind stale main-process state.
+      this.cancelRecord(this.current);
     }
 
     const record: StreamRecord = {

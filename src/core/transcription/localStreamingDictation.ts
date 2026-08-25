@@ -26,6 +26,7 @@ export class LocalStreamingDictation {
   private sessionId: string | null = null;
   private removePartialListener: (() => void) | null = null;
   private startPromise: Promise<void> | null = null;
+  private cancelPromise: Promise<void> | null = null;
   private sendQueue = Promise.resolve();
   private failure: Error | null = null;
   private closed = false;
@@ -125,7 +126,11 @@ export class LocalStreamingDictation {
       if (!this.sessionId) throw new Error("Local streaming session did not start.");
       return await window.stt.finishLocalStream(this.sessionId);
     } catch (error) {
-      void window.stt?.cancelLocalTranscription?.();
+      try {
+        await this.cancel();
+      } catch {
+        // Preserve the transcription failure that made cancellation necessary.
+      }
       throw error;
     } finally {
       this.cleanupListener();
@@ -133,10 +138,9 @@ export class LocalStreamingDictation {
     }
   }
 
-  cancel(): void {
+  async cancel(): Promise<void> {
     const shouldCancelRemote =
-      !this.cancelRequested &&
-      (this.startPending || this.sessionId !== null);
+      !this.cancelRequested && (this.startPending || this.sessionId !== null);
     this.cancelRequested = true;
     this.closed = true;
     this.pending.length = 0;
@@ -144,7 +148,11 @@ export class LocalStreamingDictation {
     this.pendingSamples = 0;
     this.cleanupListener();
     this.sessionId = null;
-    if (shouldCancelRemote) void window.stt?.cancelLocalTranscription?.();
+    if (shouldCancelRemote && !this.cancelPromise) {
+      this.cancelPromise =
+        window.stt?.cancelLocalTranscription?.() ?? Promise.resolve();
+    }
+    await (this.cancelPromise ?? Promise.resolve());
   }
 
   private sealPending(sampleCount: number): void {

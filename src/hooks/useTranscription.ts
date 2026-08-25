@@ -114,6 +114,7 @@ export function useTranscription(
     null,
   );
   const requestStopRef = useRef<() => void>(() => undefined);
+  const requestCancelRef = useRef<() => void>(() => undefined);
   const stopInFlightRef = useRef(false);
   // A start attempt keeps this generation until it either commits recording
   // state or exits. Cancel invalidates the generation before touching any
@@ -196,7 +197,7 @@ export function useTranscription(
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
       recorderRef.current?.cancel();
-      localStreamingDictationRef.current?.cancel();
+      void localStreamingDictationRef.current?.cancel().catch(() => undefined);
       prepareResultRef.current = null;
     };
   }, [initStream, options.autoInitStream]);
@@ -361,7 +362,7 @@ export function useTranscription(
               onError: (err) => {
                 log.error("Native PCM capture error:", err);
                 reportTranscriptionError(err.message);
-                setRecording(false);
+                requestCancelRef.current();
               },
               onPcmFrame: (frame) => {
                 streamingVadSession.pushFrame(frame);
@@ -375,7 +376,7 @@ export function useTranscription(
               onError: (err) => {
                 log.error("PCM capture error:", err);
                 reportTranscriptionError(err.message);
-                setRecording(false);
+                requestCancelRef.current();
               },
               onPcmFrame: (frame) => {
                 streamingVadSession.pushFrame(frame);
@@ -435,7 +436,11 @@ export function useTranscription(
       streamingVadRef.current = null;
       localChunkedDictationRef.current?.discardPendingAudio();
       localChunkedDictationRef.current = null;
-      localStreamingDictationRef.current?.cancel();
+      try {
+        await localStreamingDictationRef.current?.cancel();
+      } catch (cancelError) {
+        log.warn("Failed to release local streaming session:", cancelError);
+      }
       localStreamingDictationRef.current = null;
       // Release microphone stream on failure so the mic indicator turns off
       if (streamRef.current) {
@@ -593,6 +598,7 @@ export function useTranscription(
     };
 
     const streamingVadSession = streamingVadRef.current;
+    const localStreamingDictation = localStreamingDictationRef.current;
     // Keep the shared reference until stop() finishes so cancel() can dispose
     // a session while its async finish() is still finalizing.
 
@@ -635,7 +641,6 @@ export function useTranscription(
       timing.pcmStopStartedAt = performance.now();
 
       const localChunkedDictation = localChunkedDictationRef.current;
-      const localStreamingDictation = localStreamingDictationRef.current;
       let capturedAudio: CapturedAudio | null = await recorder.stop();
       recorderRef.current = null;
       timing.pcmReadyAt = performance.now();
@@ -875,6 +880,17 @@ export function useTranscription(
       // If cancel() interrupted this pipeline it already performed the
       // cleanup below and a new session may have started since; leave it be.
       if (!isCancelled()) {
+        if (
+          localStreamingDictation &&
+          localStreamingDictationRef.current === localStreamingDictation
+        ) {
+          localStreamingDictationRef.current = null;
+          try {
+            await localStreamingDictation.cancel();
+          } catch (cancelError) {
+            log.warn("Failed to release local streaming session:", cancelError);
+          }
+        }
         stopInFlightRef.current = false;
         activeProviderIdRef.current = null;
         prepareResultRef.current = null;
@@ -934,7 +950,9 @@ export function useTranscription(
     localChunkedDictationRef.current = null;
     const localStreamingDictation = localStreamingDictationRef.current;
     localStreamingDictationRef.current = null;
-    localStreamingDictation?.cancel();
+    void localStreamingDictation?.cancel().catch((cancelError) => {
+      log.warn("Failed to release local streaming session:", cancelError);
+    });
     if (
       activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID &&
       !localStreamingDictation
@@ -962,6 +980,15 @@ export function useTranscription(
     ocrWordsRef.current = [];
     ocrPromiseRef.current = null;
   }, []);
+
+  useEffect(() => {
+    requestCancelRef.current = cancel;
+    return () => {
+      if (requestCancelRef.current === cancel) {
+        requestCancelRef.current = () => undefined;
+      }
+    };
+  }, [cancel]);
 
   return {
     recording,

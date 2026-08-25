@@ -797,6 +797,79 @@ describe("useTranscription", () => {
     expect(window.clipboard.insertText).toHaveBeenCalledWith("hello world");
   });
 
+  it("releases a live stream before a failed stop becomes retryable", async () => {
+    configureStreamingModel("unused");
+    mockCreateStreamingVadSession.mockReturnValueOnce(
+      createUsableStreamingVadSessionFake({
+        waitForQuiet: async () => {
+          throw new Error("VAD worker failed");
+        },
+      }),
+    );
+    let releaseRemote!: () => void;
+    (window.stt.cancelLocalTranscription as any).mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseRemote = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useTranscription());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    await act(async () => result.current.start());
+
+    act(() => {
+      void result.current.stop();
+    });
+    await waitFor(() =>
+      expect(window.stt.cancelLocalTranscription).toHaveBeenCalledOnce(),
+    );
+    expect(result.current.processing).toBe(true);
+
+    await act(async () => {
+      releaseRemote();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.processing).toBe(false));
+
+    await act(async () => result.current.start());
+    expect(window.stt.startLocalStream).toHaveBeenCalledTimes(2);
+    act(() => result.current.cancel());
+  });
+
+  it("cancels the live stream when native audio capture fails", async () => {
+    configureStreamingModel("unused");
+    let emitCaptureError: ((message: string) => void) | null = null;
+    const originalAudioCapture = window.audioCapture;
+    window.audioCapture = {
+      isAvailable: vi.fn(async () => true),
+      listDevices: vi.fn(async () => []),
+      start: vi.fn(async () => ({ ok: true })),
+      stop: vi.fn(async () => ({ ok: true })),
+      cancel: vi.fn(async () => ({ ok: true })),
+      onFrame: vi.fn(() => vi.fn()),
+      onStopped: vi.fn(() => vi.fn()),
+      onError: vi.fn((listener) => {
+        emitCaptureError = listener;
+        return vi.fn();
+      }),
+    };
+
+    try {
+      const { result } = renderHook(() => useTranscription());
+      await waitFor(() => expect(result.current.ready).toBe(true));
+      await act(async () => result.current.start());
+      expect(result.current.recording).toBe(true);
+
+      act(() => emitCaptureError?.("microphone disconnected"));
+
+      await waitFor(() => expect(result.current.recording).toBe(false));
+      expect(result.current.error).toBe("microphone disconnected");
+      expect(window.stt.cancelLocalTranscription).toHaveBeenCalledOnce();
+    } finally {
+      window.audioCapture = originalAudioCapture;
+    }
+  });
+
   it("clears a live hypothesis on cancel and ignores stale partials", async () => {
     const stream = configureStreamingModel("should not publish");
     const { result } = renderHook(() =>

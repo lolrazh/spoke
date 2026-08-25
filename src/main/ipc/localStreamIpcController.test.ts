@@ -98,6 +98,27 @@ describe("LocalStreamIpcController", () => {
     });
   });
 
+  it("replaces an abandoned stream when the same renderer starts again", async () => {
+    const firstSession = createSession();
+    const secondSession = createSession();
+    const controller = new LocalStreamIpcController(
+      vi
+        .fn()
+        .mockResolvedValueOnce(firstSession)
+        .mockResolvedValueOnce(secondSession),
+      vi.fn(),
+      vi.fn().mockReturnValueOnce("first").mockReturnValueOnce("second"),
+    );
+    const owner = createOwner();
+
+    await controller.start(owner, "nemotron");
+
+    await expect(controller.start(owner, "nemotron")).resolves.toEqual({
+      sessionId: "second",
+    });
+    expect(firstSession.cancel).toHaveBeenCalledOnce();
+  });
+
   it("does not cancel for a same-document navigation", async () => {
     const session = createSession();
     const controller = new LocalStreamIpcController(
