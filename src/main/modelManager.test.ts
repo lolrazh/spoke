@@ -79,6 +79,8 @@ import {
 
 // The default (active) model the no-arg accessors operate on.
 const ENTRY = getModelEntry(DEFAULT_MODEL_ID)!;
+const LEGACY_NEMOTRON_ID =
+  "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
 const FAMILY = ENTRY.manifest.family;
 const DISPLAY = ENTRY.manifest.displayName;
 const VERSION = ENTRY.manifest.version;
@@ -251,6 +253,33 @@ describe("modelManager", () => {
       expect(status.modelId).toBe(DEFAULT_MODEL_ID);
       expect(status.totalBytes).toBe(TOTAL_BYTES);
       expect(status.downloadedBytes).toBe(TOTAL_BYTES);
+    });
+
+    it("migrates the previous Nemotron ID without downloading weights again", () => {
+      mockStateWithWeights({
+        activeModelId: LEGACY_NEMOTRON_ID,
+        models: {
+          [LEGACY_NEMOTRON_ID]: readyEntry({
+            modelId: LEGACY_NEMOTRON_ID,
+          }),
+        },
+      });
+
+      initModelManager(makeCallbacks());
+
+      expect(getActiveModelId()).toBe(DEFAULT_MODEL_ID);
+      expect(getModelStatus().state).toBe("ready");
+      expect(getModelStatus().modelId).toBe(DEFAULT_MODEL_ID);
+      const persistedJson = (
+        fs.writeFileSync as ReturnType<typeof vi.fn>
+      ).mock.calls.at(-1)?.[1] as string;
+      const persistedState = JSON.parse(persistedJson);
+      expect(persistedState.activeModelId).toBe(DEFAULT_MODEL_ID);
+      expect(persistedState.models[DEFAULT_MODEL_ID]).toMatchObject({
+        state: "ready",
+        modelId: DEFAULT_MODEL_ID,
+      });
+      expect(persistedState.models[LEGACY_NEMOTRON_ID]).toBeUndefined();
     });
 
     it("marks ready-but-missing files as broken", () => {

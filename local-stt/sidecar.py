@@ -80,7 +80,7 @@ PARAKEET_QUANT_GROUP_SIZE = 64
 
 # Nemotron model identity / files. The model is already quantized by the MLX
 # conversion, and mlx-audio restores that layout from config.json.
-NEMOTRON_MODEL_ID = "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit"
+NEMOTRON_MODEL_ID = "spokedotso/nemotron-3.5-asr-streaming-0.6b-8bit"
 NEMOTRON_MODEL_DISPLAY_NAME = "Nemotron 3.5 ASR Streaming 0.6B 8-bit"
 NEMOTRON_REQUIRED_MODEL_FILES = (
     "config.json",

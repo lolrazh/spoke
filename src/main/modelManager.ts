@@ -20,6 +20,7 @@ import {
   LOCAL_MODEL_IDS,
   LOCAL_MODEL_MANIFEST_VERSION,
   LOCAL_MODELS,
+  resolveLocalModelId,
 } from "./localModelContract";
 import type {
   ModelInstallState,
@@ -197,28 +198,48 @@ function migratePersistedState(raw: unknown): PersistedState | null {
   const obj = raw as Record<string, unknown>;
 
   if (obj.models && typeof obj.models === "object") {
-    return {
+    return migratePersistedModelIds({
       activeModelId:
-        typeof obj.activeModelId === "string" &&
-        isKnownModelId(obj.activeModelId)
+        typeof obj.activeModelId === "string"
           ? obj.activeModelId
           : DEFAULT_MODEL_ID,
       models: obj.models as Record<string, PersistedModelEntry>,
-    };
+    });
   }
 
   // Legacy single-model state: lift it into the new map under its modelId.
   if (typeof obj.state === "string" && typeof obj.modelId === "string") {
     const legacy = obj as unknown as PersistedModelEntry;
-    return {
-      activeModelId: isKnownModelId(legacy.modelId)
-        ? legacy.modelId
-        : DEFAULT_MODEL_ID,
+    return migratePersistedModelIds({
+      activeModelId: legacy.modelId,
       models: { [legacy.modelId]: legacy },
-    };
+    });
   }
 
   return null;
+}
+
+function migratePersistedModelIds(state: PersistedState): PersistedState {
+  const models: Record<string, PersistedModelEntry> = {};
+  for (const [savedId, entry] of Object.entries(state.models)) {
+    const canonicalId = resolveLocalModelId(savedId);
+    if (!canonicalId) {
+      models[savedId] = entry;
+      continue;
+    }
+
+    // Prefer an entry already stored under the canonical ID. Otherwise move
+    // the alias in place; family-scoped weights remain on disk unchanged.
+    if (savedId === canonicalId || !models[canonicalId]) {
+      models[canonicalId] = { ...entry, modelId: canonicalId };
+    }
+  }
+
+  return {
+    activeModelId:
+      resolveLocalModelId(state.activeModelId) ?? DEFAULT_MODEL_ID,
+    models,
+  };
 }
 
 /**

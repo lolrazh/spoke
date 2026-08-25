@@ -199,8 +199,10 @@ const PARAKEET_MANIFEST: ModelManifest = {
 
 // ── Nemotron 3.5 ASR Streaming 0.6B (8-bit) ──────────────────────────
 
-const NEMOTRON_ID = "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
-const NEMOTRON_VERSION = "7279359e4481b5e9e185a318bd618e429c6d86cd";
+const LEGACY_NEMOTRON_ID =
+  "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
+const NEMOTRON_ID = "spokedotso/nemotron-3.5-asr-streaming-0.6b-8bit";
+const NEMOTRON_VERSION = "878a3877a0dbf2aa942070fec21a909b14f3c893";
 const NEMOTRON_BASE = hfResolveBase(NEMOTRON_ID, NEMOTRON_VERSION);
 
 const NEMOTRON_MANIFEST: ModelManifest = {
@@ -357,6 +359,16 @@ export function getModelEntry(modelId: string): LocalModelEntry | undefined {
 
 export function isKnownModelId(modelId: string | null | undefined): boolean {
   return !!modelId && modelId in LOCAL_MODELS;
+}
+
+/** Resolve model IDs renamed between releases without losing installed state. */
+export function resolveLocalModelId(
+  modelId: string | null | undefined,
+): string | undefined {
+  if (!modelId) return undefined;
+  const canonicalId =
+    modelId === LEGACY_NEMOTRON_ID ? NEMOTRON_ID : modelId;
+  return isKnownModelId(canonicalId) ? canonicalId : undefined;
 }
 
 export function getModelFamily(modelId: string): LocalModelFamily | undefined {
