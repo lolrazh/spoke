@@ -27,6 +27,10 @@ class FakeWorker {
   respond(response: VadWorkerResponse): void {
     this.onmessage?.({ data: response } as MessageEvent<VadWorkerResponse>);
   }
+
+  crash(message = "VAD worker crashed"): void {
+    this.onerror?.({ message } as ErrorEvent);
+  }
 }
 
 describe("vadWorkerClient", () => {
@@ -79,6 +83,17 @@ describe("vadWorkerClient", () => {
     client.dispose();
 
     await expect(ready).rejects.toThrow("disposed");
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects pending initialization when the browser worker crashes", async () => {
+    const client = createVadWorkerClient();
+    const worker = FakeWorker.instances[0];
+    const ready = client.ready();
+
+    worker.crash();
+
+    await expect(ready).rejects.toThrow("VAD worker crashed");
     expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
 });

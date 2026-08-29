@@ -657,9 +657,11 @@ describe("useTranscription", () => {
     expect(usableSession.waitForQuiet).toHaveBeenCalledWith(240);
   });
 
-  it("falls back to post-hoc VAD if the streaming session's finish() returns null mid-recording", async () => {
+  it("falls back to post-hoc VAD if the streaming session's finish() rejects", async () => {
     const usableSession = createUsableStreamingVadSessionFake({
-      finish: async () => null,
+      finish: async () => {
+        throw new Error("VAD worker crashed during finish");
+      },
     });
     mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
     (window.stt.transcribeLocal as any).mockResolvedValue({
@@ -689,6 +691,48 @@ describe("useTranscription", () => {
     });
     expect(usableSession.finish).toHaveBeenCalledTimes(1);
     expect(trimCapturedAudioWithVad).toHaveBeenCalledTimes(1);
+  });
+
+  it("transcribes the full recording when both VAD workers fail", async () => {
+    const usableSession = createUsableStreamingVadSessionFake({
+      finish: async () => null,
+    });
+    mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
+    vi.mocked(trimCapturedAudioWithVad).mockRejectedValueOnce(
+      new Error("VAD worker crashed"),
+    );
+    (window.stt.transcribeLocal as any).mockResolvedValue({
+      text: "Recovered full recording",
+      metrics: {},
+    });
+
+    const { result } = renderHook(() => useTranscription());
+    await waitFor(() => expect(result.current.ready).toBe(true));
+
+    await act(async () => {
+      result.current.start();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      emitPcmFrame([1, 2, 3, 4]);
+    });
+
+    await act(async () => {
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+
+    await waitFor(() => {
+      expect(result.current.text).toBe("Recovered full recording");
+    });
+    expect(result.current.error).toBeNull();
+    expect(trimCapturedAudioWithVad).toHaveBeenCalledTimes(1);
+    expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+    const transcribeLocal = window.stt.transcribeLocal as ReturnType<
+      typeof vi.fn
+    >;
+    const transcribedPcm = new Int16Array(
+      transcribeLocal.mock.calls[0][1] as ArrayBuffer,
+    );
+    expect(Array.from(transcribedPcm)).toEqual([1, 2, 3, 4]);
   });
 
   it("disposes the streaming VAD session on cancel()", async () => {
@@ -797,8 +841,8 @@ describe("useTranscription", () => {
     expect(window.clipboard.insertText).toHaveBeenCalledWith("hello world");
   });
 
-  it("releases a live stream before a failed stop becomes retryable", async () => {
-    configureStreamingModel("unused");
+  it("finishes a live stream when VAD post-roll fails", async () => {
+    configureStreamingModel("Recovered live stream");
     mockCreateStreamingVadSession.mockReturnValueOnce(
       createUsableStreamingVadSessionFake({
         waitForQuiet: async () => {
@@ -806,34 +850,21 @@ describe("useTranscription", () => {
         },
       }),
     );
-    let releaseRemote!: () => void;
-    (window.stt.cancelLocalTranscription as any).mockReturnValueOnce(
-      new Promise<void>((resolve) => {
-        releaseRemote = resolve;
-      }),
-    );
 
     const { result } = renderHook(() => useTranscription());
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
 
-    act(() => {
-      void result.current.stop();
-    });
-    await waitFor(() =>
-      expect(window.stt.cancelLocalTranscription).toHaveBeenCalledOnce(),
-    );
-    expect(result.current.processing).toBe(true);
-
     await act(async () => {
-      releaseRemote();
-      await Promise.resolve();
+      result.current.stop();
+      await new Promise((resolve) => setTimeout(resolve, 400));
     });
-    await waitFor(() => expect(result.current.processing).toBe(false));
 
-    await act(async () => result.current.start());
-    expect(window.stt.startLocalStream).toHaveBeenCalledTimes(2);
-    act(() => result.current.cancel());
+    await waitFor(() => expect(result.current.processing).toBe(false));
+    expect(result.current.text).toBe("Recovered live stream");
+    expect(result.current.error).toBeNull();
+    expect(window.stt.finishLocalStream).toHaveBeenCalledWith("stream-1");
+    expect(window.stt.cancelLocalTranscription).not.toHaveBeenCalled();
   });
 
   it("cancels the live stream when native audio capture fails", async () => {

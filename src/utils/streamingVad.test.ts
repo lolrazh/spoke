@@ -217,6 +217,22 @@ describe("streamingVad", () => {
     expect(worker.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it("returns an unusable session when the browser cannot create a worker", async () => {
+    mocks.createVadWorkerClient.mockImplementationOnce(() => {
+      throw new Error("worker construction failed");
+    });
+
+    const session = createStreamingVadSession();
+
+    expect(session.isUsable()).toBe(false);
+    expect(() => session.pushFrame(new Int16Array(1536))).not.toThrow();
+    await expect(session.waitForQuiet(240)).resolves.toBe(0);
+    await expect(
+      session.finish(createCapturedAudio(new Int16Array(1600))),
+    ).resolves.toBeNull();
+    expect(() => session.dispose()).not.toThrow();
+  });
+
   it("creates and terminates a new worker for each sequential session", async () => {
     const firstWorker = createWorkerForFrameProcessor(createManualFrameProcessor());
     const secondWorker = createWorkerForFrameProcessor(createManualFrameProcessor());

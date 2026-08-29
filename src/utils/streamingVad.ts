@@ -73,13 +73,28 @@ export interface StreamingVadSessionOptions {
 export function createStreamingVadSession(
   options: StreamingVadSessionOptions = {},
 ): StreamingVadSessionHandle {
-  return new StreamingVadSession(
-    undefined,
-    undefined,
-    options.onSpeechStart,
-    options.onSpeechEnd,
-  );
+  try {
+    return new StreamingVadSession(
+      undefined,
+      undefined,
+      options.onSpeechStart,
+      options.onSpeechEnd,
+    );
+  } catch (error) {
+    // VAD only improves trimming and post-roll latency. A browser that cannot
+    // construct the worker must still be able to record and transcribe.
+    log.warn("Worker creation failed, streaming VAD unavailable:", error);
+    return UNAVAILABLE_STREAMING_VAD_SESSION;
+  }
 }
+
+const UNAVAILABLE_STREAMING_VAD_SESSION: StreamingVadSessionHandle = {
+  isUsable: () => false,
+  pushFrame: () => undefined,
+  waitForQuiet: async () => 0,
+  finish: async () => null,
+  dispose: () => undefined,
+};
 
 class StreamingVadSession implements StreamingVadSessionHandle {
   private status: SessionStatus = "pending";

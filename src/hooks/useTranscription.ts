@@ -618,7 +618,19 @@ export function useTranscription(
       // today's fixed wait exactly.
       timing.postRollStartedAt = performance.now();
       if (streamingVadSession && streamingVadSession.isUsable()) {
-        await streamingVadSession.waitForQuiet(POST_ROLL_MS);
+        try {
+          await streamingVadSession.waitForQuiet(POST_ROLL_MS);
+        } catch (vadError) {
+          // VAD is an optional latency optimization. Preserve the full tail
+          // and continue if its worker fails while the key-up settles.
+          vadLog.warn(
+            "Streaming VAD post-roll failed; using fixed post-roll:",
+            vadError,
+          );
+          const elapsedMs = performance.now() - timing.postRollStartedAt;
+          const remainingMs = Math.max(0, POST_ROLL_MS - elapsedMs);
+          await new Promise((resolve) => setTimeout(resolve, remainingMs));
+        }
       } else {
         await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
       }
@@ -786,14 +798,37 @@ export function useTranscription(
       vadLog.info(`Starting trim for ${capturedAudioMs}ms audio`);
       let vadResult: VadAudioResult | null = null;
       if (streamingVadSession && streamingVadSession.isUsable()) {
-        vadResult = await streamingVadSession.finish(capturedAudio);
+        try {
+          vadResult = await streamingVadSession.finish(capturedAudio);
+        } catch (vadError) {
+          // Keep the capture intact even if a session implementation rejects
+          // instead of returning null after its worker fails.
+          vadLog.warn(
+            "Streaming VAD finish failed; falling back to post-hoc VAD:",
+            vadError,
+          );
+        }
       }
       if (!vadResult) {
         if (isCancelled()) return;
         // Streaming VAD never became usable (model init failed, or it
         // failed mid-recording) — fall back to the post-hoc full-clip pass.
         vadLog.warn("Streaming VAD unavailable; falling back to post-hoc VAD");
-        vadResult = await trimCapturedAudioWithVad(capturedAudio);
+        const fallbackStartedAt = performance.now();
+        try {
+          vadResult = await trimCapturedAudioWithVad(capturedAudio);
+        } catch (vadError) {
+          // Never discard a valid recording because the optional speech
+          // detector failed. STT can consume the untrimmed PCM directly.
+          vadLog.warn(
+            "Post-hoc VAD failed; transcribing the full recording:",
+            vadError,
+          );
+          vadResult = createUntrimmedVadResult(
+            capturedAudio,
+            Math.round(performance.now() - fallbackStartedAt),
+          );
+        }
       }
       timing.vadDoneAt = performance.now();
       if (isCancelled()) return;
@@ -1026,6 +1061,26 @@ function toUserFacingTranscriptionError(err: unknown) {
   }
 
   return message;
+}
+
+function createUntrimmedVadResult(
+  audio: CapturedAudio,
+  vadMs: number,
+): VadAudioResult {
+  return {
+    audio,
+    // A non-empty capture is worth sending to STT when VAD is unavailable.
+    // The provider remains the authority on whether it contains speech.
+    speechDetected: audio.pcm16.length > 0,
+    segments: [],
+    trimRange: {
+      startSample: 0,
+      endSample: audio.pcm16.length,
+    },
+    leadingTrimmedMs: 0,
+    trailingTrimmedMs: 0,
+    vadMs,
+  };
 }
 
 interface TranscriptionLatencyTiming {
