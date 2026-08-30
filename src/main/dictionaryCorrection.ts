@@ -51,7 +51,6 @@ function expandEntries(dictionary: readonly string[]): string[] {
 type Index = {
   canonical: Map<string, string>;
   phonetic: Map<string, string[]>;
-  words: string[];
   phraseCanonical: Map<string, PhraseKey[]>;
   phrasePhonetic: Map<string, PhraseKey[]>;
   phraseKeys: PhraseKey[];
@@ -140,7 +139,6 @@ function buildIndex(dictionary: readonly string[]): Index {
   return {
     canonical,
     phonetic,
-    words: [...canonical.values()],
     phraseCanonical,
     phrasePhonetic,
     phraseKeys: indexedPhraseKeys,
@@ -192,16 +190,15 @@ function bestFrom(
 }
 
 function bestFromUnique(
-  candidates: string[],
+  candidates: ReadonlyMap<string, string>,
   lower: string,
   threshold: number,
 ): Scored[] {
   const minLength = Math.ceil(lower.length * threshold);
   const maxLength = Math.floor(lower.length / threshold);
   const scored: Scored[] = [];
-  for (const word of candidates) {
-    if (word.length < minLength || word.length > maxLength) continue;
-    const key = word.toLowerCase();
+  for (const [key, word] of candidates) {
+    if (key.length < minLength || key.length > maxLength) continue;
     const sim = similarity(lower, key);
     if (sim >= threshold) scored.push({ word, sim });
   }
@@ -306,7 +303,7 @@ function findMatch(stem: string, lower: string, index: Index): Match | null {
   if (scored.length === 0) {
     // canonical values are already unique by lowercase spelling, so avoid a
     // fresh de-duplication Set for every fuzzy fallback token.
-    scored = bestFromUnique(index.words, lower, FUZZY_THRESHOLD);
+    scored = bestFromUnique(index.canonical, lower, FUZZY_THRESHOLD);
     path = "fuzzy";
   }
   if (scored.length === 0) return null;
