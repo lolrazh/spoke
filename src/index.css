@@ -202,7 +202,7 @@
     /* Smooth shadow transitions for hover/state changes */
     transition: box-shadow var(--duration-fast) var(--ease-standard);
     /* Performance: avoid flicker by promoting and isolating */
-    will-change: transform, opacity, filter;
+    will-change: transform;
     transform: translateZ(0);
     backface-visibility: hidden;
     contain: paint;
