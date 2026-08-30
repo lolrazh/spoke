@@ -154,5 +154,3 @@ export const ParticlesCanvas: React.FC<ParticlesCanvasProps> = ({
 
   return <canvas ref={canvasRef} className="sf-intro-particles" aria-hidden />;
 };
-
-export default ParticlesCanvas;
