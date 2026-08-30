@@ -55,6 +55,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private flushResolver: (() => void) | null = null;
+  private ignoreWorkletAudio = false;
   private stopped = false;
 
   constructor(options: PcmCaptureSessionOptions = {}) {
@@ -120,6 +121,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
 
   cancel(): void {
     this.stopped = true;
+    this.ignoreWorkletAudio = true;
     this.cleanup().catch((error) => {
       this.onError?.(asError(error));
     });
@@ -128,6 +130,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
   private handleWorkletMessage(message: WorkletMessage): void {
     if (message.type === "audio") {
       const frame = message.samples;
+      if (this.ignoreWorkletAudio) return;
       if (this.retainPcm) this.retainedPcm.append(frame);
       try {
         this.onAudioLevel?.(calculatePcm16Level(frame));
@@ -155,6 +158,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
       const finish = () => {
         if (settled) return;
         settled = true;
+        this.ignoreWorkletAudio = true;
         window.clearTimeout(timeout);
         if (this.flushResolver === finish) {
           this.flushResolver = null;

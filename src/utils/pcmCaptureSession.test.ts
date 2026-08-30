@@ -61,4 +61,28 @@ describe("PcmCaptureSession", () => {
     ).retainedPcm;
     expect(Array.from(retainedPcm.take())).toEqual([1, -2, 3]);
   });
+
+  it("ignores queued worklet frames after cancellation", () => {
+    const onPcmFrame = vi.fn();
+    const postMessage = vi.fn();
+    const session = new PcmCaptureSession({
+      retainPcm: true,
+      recyclePcmFrames: true,
+      onPcmFrame,
+    });
+    const testSession = session as unknown as TestSession;
+    testSession.workletNode = { port: { postMessage } };
+
+    session.cancel();
+    testSession.handleWorkletMessage({
+      type: "audio",
+      samples: new Int16Array([1, 2, 3]),
+    });
+
+    expect(onPcmFrame).not.toHaveBeenCalled();
+    const retainedPcm = (
+      session as unknown as { retainedPcm: { take: () => Int16Array } }
+    ).retainedPcm;
+    expect(retainedPcm.take()).toHaveLength(0);
+  });
 });
