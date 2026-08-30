@@ -15,11 +15,9 @@ describe("useModelStatus", () => {
     });
   });
 
-  it("provides install and remove functions", () => {
+  it("provides the status refresh function", () => {
     const { result } = renderHook(() => useModelStatus());
 
-    expect(typeof result.current.install).toBe("function");
-    expect(typeof result.current.remove).toBe("function");
     expect(typeof result.current.refresh).toBe("function");
   });
 
@@ -39,7 +37,6 @@ describe("useModelStatus", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.loaded).toBe(true);
       expect(result.current.status.modelId).toBe(
         "spokedotso/whisper-large-v3-turbo-4bit",
       );
@@ -58,48 +55,4 @@ describe("useModelStatus", () => {
     expect(renderCount).toBe(0);
   });
 
-  it("calls installModel on the bridge when install is invoked", async () => {
-    const { result } = renderHook(() => useModelStatus());
-
-    await result.current.install();
-
-    expect(window.stt.installModel).toHaveBeenCalled();
-  });
-
-  it("calls removeModel on the bridge when remove is invoked", async () => {
-    const { result } = renderHook(() => useModelStatus());
-
-    await result.current.remove();
-
-    expect(window.stt.removeModel).toHaveBeenCalled();
-  });
-
-  it("sets error state when install fails", async () => {
-    vi.mocked(window.stt.installModel).mockRejectedValueOnce(
-      new Error("Network error"),
-    );
-
-    const { result } = renderHook(() => useModelStatus());
-
-    await result.current.install();
-
-    await waitFor(() => {
-      expect(result.current.status.state).toBe("broken");
-      expect(result.current.status.error).toBe("Network error");
-    });
-  });
-
-  it("sets error when remove fails", async () => {
-    vi.mocked(window.stt.removeModel).mockRejectedValueOnce(
-      new Error("Permission denied"),
-    );
-
-    const { result } = renderHook(() => useModelStatus());
-
-    await result.current.remove();
-
-    await waitFor(() => {
-      expect(result.current.status.error).toBe("Permission denied");
-    });
-  });
 });

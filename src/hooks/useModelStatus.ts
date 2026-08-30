@@ -37,10 +37,6 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
   const enabled = options.enabled ?? true;
   const [status, setStatus] = useState<ModelStatus>(DEFAULT_MODEL_STATUS);
   const statusRef = useRef(status);
-  // False until the first real status arrives, so consumers can avoid
-  // rendering a default ("not_installed") state before the truth is known.
-  const [loaded, setLoaded] = useState(false);
-  const loadedRef = useRef(false);
 
   const updateStatus = useCallback(
     (nextOrUpdater: ModelStatus | ((previous: ModelStatus) => ModelStatus)) => {
@@ -56,24 +52,16 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
     [],
   );
 
-  const markLoaded = useCallback(() => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-    setLoaded(true);
-  }, []);
-
   const refresh = useCallback(async () => {
     try {
       const s = await window.stt?.getModelStatus?.();
       if (s) updateStatus(s);
     } catch {
       // ignore
-    } finally {
-      markLoaded();
     }
-  }, [markLoaded, updateStatus]);
+  }, [updateStatus]);
 
-  // Load on mount + subscribe to progress events
+  // Load on mount and refresh when the window regains focus.
   useEffect(() => {
     if (!enabled) return;
 
@@ -86,40 +74,7 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
     return () => {
       window.removeEventListener("focus", onFocus);
     };
-  }, [enabled, markLoaded, refresh]);
+  }, [enabled, refresh]);
 
-  const install = useCallback(async () => {
-    try {
-      updateStatus((prev) => ({
-        ...prev,
-        state: "downloading",
-        downloadProgress: 0,
-        error: null,
-      }));
-      await window.stt?.installModel?.();
-      await refresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Install failed";
-      updateStatus((prev) => ({
-        ...prev,
-        state: "broken",
-        error: message,
-      }));
-    }
-  }, [refresh, updateStatus]);
-
-  const remove = useCallback(async () => {
-    try {
-      await window.stt?.removeModel?.();
-      await refresh();
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Remove failed";
-      updateStatus((prev) => ({
-        ...prev,
-        error: message,
-      }));
-    }
-  }, [refresh, updateStatus]);
-
-  return { status, install, remove, refresh, loaded };
+  return { status, refresh };
 }
