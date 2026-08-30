@@ -465,6 +465,126 @@ const UpdateCapsule: React.FC<{
   );
 };
 
+const UpdateCapsuleRow: React.FC<{ appVersion: string }> = React.memo(
+  ({ appVersion }) => {
+    const [updateState, setUpdateState] = useState<UpdatePanelState | null>(
+      null,
+    );
+    const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
+    const [capsuleHovered, setCapsuleHovered] = useState(false);
+    const capsuleHoverTimers = useRef<{
+      open: ReturnType<typeof setTimeout> | null;
+      close: ReturnType<typeof setTimeout> | null;
+    }>({ open: null, close: null });
+
+    const capsuleMode = deriveUpdateCapsuleMode(updateState);
+
+    const handleCapsuleHoverEnter = () => {
+      const timers = capsuleHoverTimers.current;
+      if (timers.close) clearTimeout(timers.close);
+      if (timers.open) clearTimeout(timers.open);
+      timers.close = null;
+      timers.open = setTimeout(() => setCapsuleHovered(true), 150);
+    };
+
+    const handleCapsuleHoverLeave = () => {
+      const timers = capsuleHoverTimers.current;
+      if (timers.open) clearTimeout(timers.open);
+      timers.open = null;
+      timers.close = setTimeout(() => setCapsuleHovered(false), 100);
+    };
+
+    useEffect(
+      () => () => {
+        const timers = capsuleHoverTimers.current;
+        if (timers.open) clearTimeout(timers.open);
+        if (timers.close) clearTimeout(timers.close);
+      },
+      [],
+    );
+
+    useEffect(() => {
+      const timer = setTimeout(() => setShowUpdateCapsule(true), 520);
+      return () => clearTimeout(timer);
+    }, []);
+
+    const handleInstallUpdate = () => {
+      window.update
+        ?.installWhenReady?.()
+        .then((result) => {
+          if (result?.snapshot) setUpdateState(result.snapshot);
+        })
+        .catch(() => {
+          // ignore. The engine keeps broadcasting the authoritative state.
+        });
+    };
+
+    useEffect(() => {
+      let isMounted = true;
+      window.update
+        ?.getState?.()
+        .then((state) => {
+          if (isMounted) setUpdateState(state);
+        })
+        .catch(() => {
+          if (isMounted) setUpdateState(null);
+        });
+
+      const unsubscribe = window.update?.onStateChanged?.((state) => {
+        setUpdateState(state as UpdatePanelState);
+      });
+
+      return () => {
+        isMounted = false;
+        unsubscribe?.();
+      };
+    }, []);
+
+    if (!appVersion) return null;
+
+    return (
+      <div
+        className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
+        onMouseEnter={handleCapsuleHoverEnter}
+        onMouseLeave={handleCapsuleHoverLeave}
+      >
+        {/* Reserve the capsule slot immediately; only the version text shifts
+            when the update affordance is visually revealed. */}
+        <m.a
+          initial={false}
+          animate={{ x: capsuleMode && !showUpdateCapsule ? 40 : 0 }}
+          transition={{
+            x: showUpdateCapsule ? UPDATE_CAPSULE_POP : { duration: 0 },
+          }}
+          href="https://spoke.so/changelog"
+          onClick={(e) => {
+            e.preventDefault();
+            window.electron?.openExternal?.("https://spoke.so/changelog");
+          }}
+          className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          Spoke v{appVersion}
+        </m.a>
+        <AnimatePresence initial={false}>
+          {capsuleMode && (
+            <UpdateCapsule
+              key="update-capsule"
+              mode={capsuleMode}
+              downloadPercent={updateState?.downloadPercent ?? null}
+              revealed={showUpdateCapsule}
+              hovered={capsuleHovered}
+              onInstall={handleInstallUpdate}
+              onRestart={() => window.update?.restart?.()}
+              onRetry={handleInstallUpdate}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  },
+);
+
 // --- Main Component --- //
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
@@ -500,41 +620,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [showInDock, setShowInDock] = useState<boolean | null>(null);
   const [autoSpace, setAutoSpace] = useState<boolean | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
-  const [updateState, setUpdateState] = useState<UpdatePanelState | null>(null);
-  const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
-
-  const capsuleMode = deriveUpdateCapsuleMode(updateState);
-  // Hover spans the whole version+capsule row so the expanded label doesn't
-  // collapse as the cursor crosses from the capsule onto the version.
-  const [capsuleHovered, setCapsuleHovered] = useState(false);
-  // Hover *intent*: require a brief dwell before opening (so an incidental
-  // brush or edge-graze never triggers it) and a short grace before closing
-  // (so a momentary dip out doesn't make it flicker).
-  const capsuleHoverTimers = useRef<{
-    open: ReturnType<typeof setTimeout> | null;
-    close: ReturnType<typeof setTimeout> | null;
-  }>({ open: null, close: null });
-  const handleCapsuleHoverEnter = () => {
-    const t = capsuleHoverTimers.current;
-    if (t.close) clearTimeout(t.close);
-    if (t.open) clearTimeout(t.open);
-    t.close = null;
-    t.open = setTimeout(() => setCapsuleHovered(true), 150);
-  };
-  const handleCapsuleHoverLeave = () => {
-    const t = capsuleHoverTimers.current;
-    if (t.open) clearTimeout(t.open);
-    t.open = null;
-    t.close = setTimeout(() => setCapsuleHovered(false), 100);
-  };
-  useEffect(
-    () => () => {
-      const t = capsuleHoverTimers.current;
-      if (t.open) clearTimeout(t.open);
-      if (t.close) clearTimeout(t.close);
-    },
-    [],
-  );
 
   // Load app version from main via preload bridge
   useEffect(() => {
@@ -546,51 +631,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
         // ignore
       }
     })();
-  }, []);
-
-  useEffect(() => {
-    if (!embeddedMode) {
-      setShowUpdateCapsule(false);
-      return;
-    }
-    const timer = setTimeout(() => setShowUpdateCapsule(true), 520);
-    return () => clearTimeout(timer);
-  }, [embeddedMode]);
-
-  // Start or resume the update download. The engine broadcasts the real status
-  // + percent, so the renderer never fakes a downloading state; it just records
-  // the latest snapshot. Once the download is ready, the explicit Restart
-  // action is the only path that asks the main process to quit and install.
-  const handleInstallUpdate = () => {
-    window.update
-      ?.installWhenReady?.()
-      .then((result) => {
-        if (result?.snapshot) setUpdateState(result.snapshot);
-      })
-      .catch(() => {
-        // ignore. The engine keeps broadcasting the authoritative state.
-      });
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    window.update
-      ?.getState?.()
-      .then((state) => {
-        if (isMounted) setUpdateState(state);
-      })
-      .catch(() => {
-        setUpdateState(null);
-      });
-
-    const unsubscribe = window.update?.onStateChanged?.((state) => {
-      setUpdateState(state);
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe?.();
-    };
   }, []);
 
   // Initialize from main visibility state (source of truth)
@@ -792,51 +832,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       className={`${embeddedMode ? "min-h-0" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
       {/* Version + update capsule on bottom-right (embedded mode) */}
-      {embeddedMode && appVersion && (
-        <div
-          className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
-          onMouseEnter={handleCapsuleHoverEnter}
-          onMouseLeave={handleCapsuleHoverLeave}
-        >
-          {/* The capsule reserves its slot the moment an update exists, which
-              would normally push the version left immediately. We cancel that
-              with an equal-and-opposite x offset (applied instantly) so the
-              version stays flush-right — then, on reveal, animate x to 0 so it
-              springs left in sync with the icon blooming. */}
-          <m.a
-            initial={false}
-            animate={{ x: capsuleMode && !showUpdateCapsule ? 40 : 0 }}
-            transition={{
-              x: showUpdateCapsule ? UPDATE_CAPSULE_POP : { duration: 0 },
-            }}
-            href="https://spoke.so/changelog"
-            onClick={(e) => {
-              e.preventDefault();
-              window.electron?.openExternal?.("https://spoke.so/changelog");
-            }}
-            className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            Spoke v{appVersion}
-          </m.a>
-          {/* Mounted as soon as an update exists (reserving the slot); the
-              entrance delay only gates the visual reveal, not the layout. */}
-          <AnimatePresence initial={false}>
-            {capsuleMode && (
-              <UpdateCapsule
-                key="update-capsule"
-                mode={capsuleMode}
-                downloadPercent={updateState?.downloadPercent ?? null}
-                revealed={showUpdateCapsule}
-                hovered={capsuleHovered}
-                onInstall={handleInstallUpdate}
-                onRestart={() => window.update?.restart?.()}
-                onRetry={handleInstallUpdate}
-              />
-            )}
-          </AnimatePresence>
-        </div>
-      )}
+      {embeddedMode && <UpdateCapsuleRow appVersion={appVersion} />}
 
       {/* Draggable Header - only show in standalone mode */}
       {!embeddedMode && (
