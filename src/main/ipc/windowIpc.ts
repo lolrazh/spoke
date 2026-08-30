@@ -2,7 +2,7 @@
  * Window IPC
  *
  * Pill window controls: onboarding test reveal, the pill's right-click context menu,
- * slide/bounds updates, click-through & focusable toggles, floating-bar
+ * bounds updates, click-through & focusable toggles, floating-bar
  * visibility, and dock icon visibility.
  */
 
@@ -11,7 +11,7 @@ import { app, BrowserWindow, ipcMain, Menu, screen } from "electron";
 import { ISLAND_VISIBLE_Y } from "../../constants/window";
 import { logger } from "../../utils/logger";
 import { state } from "../windowState";
-import { createWindow, getActiveDisplay, coalescedSetBounds } from "../windows";
+import { createWindow } from "../windows";
 import { rebuildTrayMenu, buildPillContextMenu } from "../tray";
 import { smoothShow, smoothHide } from "../windowAnimation";
 import {
@@ -80,24 +80,6 @@ export function registerWindowIpc(): void {
     console.log("[IPC Main] Received expand-pill event");
     if (state.mainWindow) {
       state.mainWindow.webContents.send("expand-pill");
-    }
-  });
-
-  // Removed legacy explicit show/hide handlers in favor of island-slide and state-driven visibility
-
-  ipcMain.on("island-slide", (_e, y) => {
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      const display = getActiveDisplay();
-      const current = state.mainWindow.getBounds();
-      const newY = display.bounds.y + y; // slide offset relative to target display
-      // Only change Y during slide to avoid compositor thrash; X is handled on display change/envelope resize
-      const target = {
-        x: current.x,
-        y: newY,
-        width: current.width,
-        height: current.height,
-      };
-      coalescedSetBounds(target);
     }
   });
 

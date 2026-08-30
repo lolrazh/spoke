@@ -244,10 +244,6 @@ contextBridge.exposeInMainWorld("stt", {
     ipcRenderer.invoke("stt:extract-ocr", imageBase64),
 });
 
-contextBridge.exposeInMainWorld("island", {
-  slideTo: (y: number) => ipcRenderer.send("island-slide", y),
-});
-
 contextBridge.exposeInMainWorld("electron", {
   setClickThrough: (clickThrough: boolean) =>
     ipcRenderer.send("set-click-through", clickThrough),

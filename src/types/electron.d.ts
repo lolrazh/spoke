@@ -91,9 +91,6 @@ declare global {
       onReady: (cb: () => void) => () => void;
       onCancel: (cb: () => void) => () => void;
     };
-    island: {
-      slideTo: (y: number) => void;
-    };
     electron: {
       setClickThrough: (clickThrough: boolean) => void;
       setFocusable: (focusable: boolean) => void;
