@@ -587,8 +587,6 @@ body {
   border: 1px solid var(--stroke-fg);
   border-radius: var(--radius-window);
   box-sizing: border-box;
-  /* Resize performance optimization */
-  will-change: transform;
   contain: layout style paint;
   position: relative;
   /* Initial opacity to prevent flash of content */
