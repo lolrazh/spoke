@@ -62,7 +62,11 @@ export function trimCapturedAudioToSpeech(
     startSample: msToSample(startMs, audio.sampleRateHz, "floor"),
     endSample: msToSample(endMs, audio.sampleRateHz, "ceil"),
   };
-  const trimmedAudio = trimCapturedAudio(audio, trimRange);
+  const trimmedAudio =
+    trimRange.startSample === 0 &&
+    trimRange.endSample === audio.pcm16.length
+      ? audio
+      : trimCapturedAudio(audio, trimRange);
 
   return {
     audio: trimmedAudio,
