@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useModelStatus } from "./useModelStatus";
 
 describe("useModelStatus", () => {
@@ -40,8 +40,40 @@ describe("useModelStatus", () => {
   it("can skip byte-level progress updates for readiness-only consumers", async () => {
     const { result } = renderHook(() => useModelStatus({ trackProgress: false }));
 
-    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+      expect(result.current.status.modelId).toBe(
+        "spokedotso/whisper-large-v3-turbo-4bit",
+      );
+    });
     expect(window.stt.onModelProgress).not.toHaveBeenCalled();
+  });
+
+  it("does not re-render when a refresh returns the same status", async () => {
+    let renderCount = 0;
+    const { result } = renderHook(() => {
+      renderCount += 1;
+      return useModelStatus({ trackProgress: false });
+    });
+
+    await waitFor(() => {
+      expect(result.current.loaded).toBe(true);
+      expect(result.current.status.modelId).toBe(
+        "spokedotso/whisper-large-v3-turbo-4bit",
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    renderCount = 0;
+    const beforeRefresh = result.current.status;
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.status).toBe(beforeRefresh);
+    expect(renderCount).toBe(0);
   });
 
   it("calls installModel on the bridge when install is invoked", async () => {
