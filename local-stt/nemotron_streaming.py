@@ -82,7 +82,8 @@ def stream_results(
                     yield mel
                 return
 
-            samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+            samples = np.frombuffer(raw, dtype="<i2").astype(np.float32)
+            samples *= 1.0 / 32768.0
             mel = frontend.push(mx.array(samples))
             if mel.shape[1] > 0:
                 yield mel

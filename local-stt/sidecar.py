@@ -168,7 +168,9 @@ def read_exact(stream, length: int) -> bytes:
 
 
 def pcm16_to_float32(raw: bytes) -> np.ndarray:
-    return np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32)
+    samples *= 1.0 / 32768.0
+    return samples
 
 
 def validate_weights_dir(weights_dir: Path, required_files: tuple[str, ...]) -> None:
