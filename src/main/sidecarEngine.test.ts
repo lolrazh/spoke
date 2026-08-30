@@ -368,7 +368,9 @@ describe("sidecarEngine", () => {
         "data",
         Buffer.from('{"type":"partial","text":"hello"}\n'),
       );
-      await session.push(Buffer.from([1, 0, 2, 0]));
+      const pushing = session.push(Buffer.from([1, 0, 2, 0]));
+      expect(proc.stdin.write).toHaveBeenCalledTimes(4);
+      await pushing;
       const finishing = session.finish();
       await Promise.resolve();
       proc.stdout.emit(
@@ -420,6 +422,37 @@ describe("sidecarEngine", () => {
       );
 
       await expect(finishing).resolves.toMatchObject({ text: "hello" });
+    });
+
+    it("serializes overlapping pushes after the first backpressured frame", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const session = await engine.startLocalStream(vi.fn());
+      const firstPayload = Buffer.from([1, 0]);
+      const secondPayload = Buffer.from([2, 0]);
+      let blockFirstPayload = true;
+      proc.stdin.write.mockImplementation((chunk: Buffer) => {
+        if (blockFirstPayload && chunk.equals(firstPayload)) {
+          blockFirstPayload = false;
+          return false;
+        }
+        return true;
+      });
+
+      const first = session.push(firstPayload);
+      const second = session.push(secondPayload);
+      expect(proc.stdin.write).toHaveBeenCalledTimes(4);
+
+      proc.stdin.emit("drain");
+      await expect(first).resolves.toBeUndefined();
+      await expect(second).resolves.toBeUndefined();
+
+      const writes = proc.stdin.write.mock.calls.map(([chunk]) => chunk as Buffer);
+      expect(writes.slice(2)).toEqual([
+        Buffer.from([2, 0, 0, 0]),
+        firstPayload,
+        Buffer.from([2, 0, 0, 0]),
+        secondPayload,
+      ]);
     });
 
     it("preserves a multibyte transcript split across stdout chunks", async () => {

@@ -551,7 +551,16 @@ async function runLocalStream(
     resolveResult = resolve;
     rejectResult = reject;
   });
-  let writeQueue = Promise.resolve();
+  type PendingWrite = {
+    payload: Buffer;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  };
+  const pendingWrites: PendingWrite[] = [];
+  let pendingWriteStart = 0;
+  let writeInFlight: Promise<void> | null = null;
+  let writeIdlePromise = Promise.resolve();
+  let resolveWriteIdle: (() => void) | null = null;
 
   const cleanup = () => {
     if (finalTimeout) clearTimeout(finalTimeout);
@@ -593,7 +602,7 @@ async function runLocalStream(
   proc.stdout?.on("data", onData);
   proc.once("exit", onExit);
 
-  const writeFrame = (payload: Buffer): Promise<void> =>
+  const writeFrame = (payload: Buffer): void | Promise<void> =>
     (() => {
       const stdin = proc.stdin;
       if (!stdin || stdin.destroyed) {
@@ -610,9 +619,9 @@ async function runLocalStream(
         stdin.cork();
         headerReady = stdin.write(header);
         if (headerReady && (payload.length === 0 || stdin.write(payload))) {
-          // The normal pipe path completes synchronously. Avoid allocating a
-          // Promise and six callbacks for every live PCM batch.
-          return Promise.resolve();
+          // The normal pipe path completes synchronously. The caller can
+          // avoid the promise chain entirely for this common case.
+          return;
         }
       } catch (error) {
         return Promise.reject(
@@ -669,6 +678,84 @@ async function runLocalStream(
       });
     })();
 
+  const ensureWriteIdlePromise = (): void => {
+    if (resolveWriteIdle) return;
+    writeIdlePromise = new Promise<void>((resolve) => {
+      resolveWriteIdle = resolve;
+    });
+  };
+
+  const finishWriteQueueIfIdle = (): void => {
+    if (writeInFlight || pendingWriteStart < pendingWrites.length) return;
+    pendingWrites.length = 0;
+    pendingWriteStart = 0;
+    const resolve = resolveWriteIdle;
+    resolveWriteIdle = null;
+    resolve?.();
+  };
+
+  const pumpWrites = (): void => {
+    if (writeInFlight) return;
+
+    while (pendingWriteStart < pendingWrites.length) {
+      const pending = pendingWrites[pendingWriteStart++];
+      let writeResult: void | Promise<void>;
+      try {
+        writeResult = writeFrame(pending.payload);
+      } catch (error) {
+        pending.reject(error);
+        continue;
+      }
+
+      if (writeResult === undefined) {
+        pending.resolve();
+        continue;
+      }
+
+      writeInFlight = writeResult;
+      void writeResult.then(pending.resolve, pending.reject).finally(() => {
+        if (writeInFlight === writeResult) writeInFlight = null;
+        pumpWrites();
+      });
+      return;
+    }
+
+    finishWriteQueueIfIdle();
+  };
+
+  const writeQueuedFrame = (payload: Buffer): Promise<void> => {
+    if (!writeInFlight && pendingWriteStart >= pendingWrites.length) {
+      let writeResult: void | Promise<void>;
+      try {
+        writeResult = writeFrame(payload);
+      } catch (error) {
+        return Promise.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+
+      if (writeResult === undefined) return Promise.resolve();
+
+      ensureWriteIdlePromise();
+      writeInFlight = writeResult;
+      void writeResult.then(
+        () => undefined,
+        () => undefined,
+      ).finally(() => {
+        if (writeInFlight === writeResult) writeInFlight = null;
+        pumpWrites();
+      });
+      return writeResult;
+    }
+
+    ensureWriteIdlePromise();
+    const queued = new Promise<void>((resolve, reject) => {
+      pendingWrites.push({ payload, resolve, reject });
+    });
+    pumpWrites();
+    return queued;
+  };
+
   const session: LocalStreamingSession = {
     push(pcmBuffer) {
       if (finishing || settled) {
@@ -684,16 +771,16 @@ async function runLocalStream(
         return Promise.reject(new Error("Live dictation exceeds the five-minute limit"));
       }
       totalBytes += pcmBuffer.length;
-      writeQueue = writeQueue.then(() => writeFrame(pcmBuffer));
-      void writeQueue.catch((error) => {
+      const pushing = writeQueuedFrame(pcmBuffer);
+      void pushing.catch((error) => {
         fail(error instanceof Error ? error : new Error(String(error)));
       });
-      return writeQueue;
+      return pushing;
     },
     async finish() {
       if (!finishing && !settled) {
         finishing = true;
-        await writeQueue;
+        await writeIdlePromise;
         await writeFrame(Buffer.alloc(0));
         finalTimeout = setTimeout(() => {
           fail(new Error("Live transcription finalization timed out"));
