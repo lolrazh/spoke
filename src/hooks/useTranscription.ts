@@ -5,7 +5,7 @@
  * Captures PCM16 audio and delegates transcription to providers.
  */
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import type {
   PrepareTranscriptionResult,
   TranscriptionContext,
@@ -1063,18 +1063,21 @@ export function useTranscription(
     };
   }, [cancel]);
 
-  return {
-    recording,
-    processing,
-    ready,
-    text,
-    error,
-    errorId,
-    mode: DICTATION_MODE,
-    start,
-    stop,
-    cancel,
-  };
+  return useMemo(
+    () => ({
+      recording,
+      processing,
+      ready,
+      text,
+      error,
+      errorId,
+      mode: DICTATION_MODE,
+      start,
+      stop,
+      cancel,
+    }),
+    [recording, processing, ready, text, error, errorId, start, stop, cancel],
+  );
 }
 
 function toUserFacingTranscriptionError(err: unknown) {

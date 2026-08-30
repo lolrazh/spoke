@@ -211,6 +211,21 @@ describe("useTranscription", () => {
     expect(result.current.error).toBe(null);
   });
 
+  it("keeps the hook return stable across unrelated renders", async () => {
+    const { result, rerender } = renderHook(() =>
+      useTranscription({ autoInitStream: false }),
+    );
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    const firstResult = result.current;
+    rerender();
+
+    expect(result.current).toBe(firstResult);
+  });
+
   it("keeps batch results out of live text and ignores duplicate stops", async () => {
     (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockImplementation(
