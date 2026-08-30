@@ -3,7 +3,7 @@
  *
  * Onboarding orchestration (helper/pill prepare steps, completion,
  * step/flag persistence), the miscellaneous app-control handlers
- * (open-external, reload, app path/version), permission post-grant
+ * (open-external, reload, and app version), permission post-grant
  * follow-ups, and the updater handlers.
  *
  * The onboarding prefs (`onboarding.json`) are read/written with raw
@@ -218,10 +218,6 @@ export function registerSettingsIpc(): void {
   ipcMain.handle("reload-app", () => {
     app.relaunch();
     app.exit(0);
-  });
-
-  ipcMain.handle("get-app-path", () => {
-    return app.getAppPath();
   });
 
   // Provide application version to renderer via preload bridge

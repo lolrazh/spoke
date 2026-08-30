@@ -22,19 +22,6 @@ contextBridge.exposeInMainWorld("devFlags", {
     process.env.SF_DEVTOOLS === "1" ||
     process.env.SF_DEVTOOLS === "true" ||
     false,
-  // Renderer-friendly mirrors for intro testing (support both VITE_* and non-VITE names)
-  introOnly:
-    process.env.VITE_INTRO_ONLY === "1" ||
-    process.env.VITE_INTRO_ONLY === "true" ||
-    process.env.INTRO_ONLY === "1" ||
-    process.env.INTRO_ONLY === "true" ||
-    false,
-  replayIntro:
-    process.env.VITE_REPLAY_INTRO === "1" ||
-    process.env.VITE_REPLAY_INTRO === "true" ||
-    process.env.REPLAY_INTRO === "1" ||
-    process.env.REPLAY_INTRO === "true" ||
-    false,
 });
 
 contextBridge.exposeInMainWorld("contextMenu", {
@@ -302,7 +289,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("onboarding:get-step"),
   setOnboardingStep: (step: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke("onboarding:set-step", step),
-  getAppPath: () => ipcRenderer.invoke("get-app-path"),
   // Permission lifecycle helpers
   postPermissionGrant: (type: "accessibility" | "microphone") =>
     ipcRenderer.invoke("permissions:post-grant", type),
