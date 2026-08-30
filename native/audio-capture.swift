@@ -19,15 +19,30 @@ private final class EventEmitter {
     private let lock = NSLock()
     private let output = FileHandle.standardOutput
     private let errorOutput = FileHandle.standardError
+    private var packet = Data()
 
     func emit(_ type: AudioEventType, payload: Data = Data()) {
+        payload.withUnsafeBytes { rawBuffer in
+            emitRaw(type, payload: rawBuffer)
+        }
+    }
+
+    func emitRaw(_ type: AudioEventType, payload: UnsafeRawBufferPointer) {
         var length = UInt32(payload.count + 1).bigEndian
-        var packet = Data(bytes: &length, count: MemoryLayout<UInt32>.size)
-        packet.append(type.rawValue)
-        packet.append(payload)
 
         lock.lock()
         defer { lock.unlock() }
+
+        // FileHandle.write is synchronous, so the packet storage can be
+        // reused after each write. This avoids one heap allocation per 30 ms
+        // audio frame while keeping the wire format unchanged.
+        packet.removeAll(keepingCapacity: true)
+        packet.reserveCapacity(MemoryLayout<UInt32>.size + 1 + payload.count)
+        withUnsafeBytes(of: &length) { header in
+            packet.append(contentsOf: header)
+        }
+        packet.append(type.rawValue)
+        packet.append(contentsOf: payload)
         output.write(packet)
     }
 
@@ -411,13 +426,18 @@ private final class AudioCaptureController {
     }
 
     private func emitFrame(start: Int, count: Int) {
-        let payload = pendingPcm16.withUnsafeBytes { rawBuffer -> Data in
-            guard let baseAddress = rawBuffer.baseAddress else { return Data() }
+        pendingPcm16.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
             let byteOffset = start * MemoryLayout<Int16>.stride
             let byteCount = count * MemoryLayout<Int16>.stride
-            return Data(bytes: baseAddress.advanced(by: byteOffset), count: byteCount)
+            emitter.emitRaw(
+                .frame,
+                payload: UnsafeRawBufferPointer(
+                    start: baseAddress.advanced(by: byteOffset),
+                    count: byteCount
+                )
+            )
         }
-        emitter.emit(.frame, payload: payload)
     }
 
     private func compactPendingPcm16() {
