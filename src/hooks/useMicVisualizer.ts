@@ -9,10 +9,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AUDIO_PROCESSING_TRACK_CONSTRAINTS } from "../config/audioConstraints";
-import {
-  DEFAULT_MICROPHONE,
-  discoverMicrophoneDevices,
-} from "../utils/microphoneDevices";
+import { DEFAULT_MICROPHONE } from "../utils/microphoneDevices";
 
 export function useMicVisualizer(options: {
   /** Whether the visualizer is currently active (e.g., on the mic-check step) */
@@ -21,6 +18,7 @@ export function useMicVisualizer(options: {
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const captureGenerationRef = useRef(0);
 
   const [micDevices, setMicDevices] = useState<
     Array<{ id: string; label: string }>
@@ -28,6 +26,7 @@ export function useMicVisualizer(options: {
   const [selectedMicId, setSelectedMicId] = useState<string>("default");
 
   const stopMic = useCallback(() => {
+    captureGenerationRef.current += 1;
     try {
       analyserRef.current?.disconnect();
     } catch {}
@@ -43,14 +42,20 @@ export function useMicVisualizer(options: {
   }, []);
 
   const startMic = useCallback(async () => {
+    stopMic();
+    const generation = captureGenerationRef.current;
+
     try {
-      stopMic();
+      try {
+        if (selectedMicId) window.mic?.select?.(selectedMicId);
+      } catch {}
       let browserDeviceId: string | null = null;
       if (selectedMicId && selectedMicId !== DEFAULT_MICROPHONE.id) {
         const selectedDevice = micDevices.find(
           (device) => device.id === selectedMicId,
         );
         const browserDevices = await navigator.mediaDevices.enumerateDevices();
+        if (captureGenerationRef.current !== generation) return;
         browserDeviceId =
           browserDevices.find(
             (device) =>
@@ -69,8 +74,12 @@ export function useMicVisualizer(options: {
           : { ...AUDIO_PROCESSING_TRACK_CONSTRAINTS },
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (captureGenerationRef.current !== generation) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       micStreamRef.current = stream;
-      const Ctor = window.AudioContext ?? (window as any).webkitAudioContext;
+      const Ctor = window.AudioContext ?? window.webkitAudioContext;
       if (!Ctor) throw new Error("Web Audio API not supported");
       const ctx = new Ctor();
       audioCtxRef.current = ctx;
@@ -81,48 +90,21 @@ export function useMicVisualizer(options: {
       src.connect(analyser);
       analyserRef.current = analyser;
     } catch (e) {
-      const isDev =
-        typeof import.meta !== "undefined" &&
-        (import.meta as any).env?.MODE === "development";
+      if (captureGenerationRef.current !== generation) return;
+      stopMic();
+      const isDev = import.meta.env.MODE === "development";
       if (isDev) console.error("[MicVisualizer] startMic failed:", e);
     }
   }, [micDevices, selectedMicId, stopMic]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void discoverMicrophoneDevices().then((devices) => {
-      if (!cancelled) setMicDevices(devices);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // Start/stop based on active flag
   useEffect(() => {
     if (options.active) {
-      startMic();
+      void startMic();
       return () => stopMic();
     }
     stopMic();
   }, [options.active, startMic, stopMic]);
-
-  // Restart capture when the selected device changes while active. The active
-  // effect above already builds the graph on the first run (and rebuilds it
-  // whenever startMic's identity changes), so skip this effect's own startMic on
-  // the initial run to avoid constructing the audio graph twice on mount.
-  const deviceEffectPrimed = useRef(false);
-  useEffect(() => {
-    if (!options.active) return;
-    try {
-      if (selectedMicId) window.mic?.select?.(selectedMicId);
-    } catch {}
-    if (!deviceEffectPrimed.current) {
-      deviceEffectPrimed.current = true;
-      return;
-    }
-    startMic();
-  }, [selectedMicId, options.active, startMic]);
 
   return {
     analyserRef,

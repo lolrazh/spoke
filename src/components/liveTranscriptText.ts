@@ -18,15 +18,16 @@ export function splitLiveTranscriptText(
 ): LiveTranscriptText {
   if (!text || final) return { committed: text, tentative: "" };
 
-  const segments = Array.from(wordSegmenter.segment(text));
-  for (let index = segments.length - 1; index >= 0; index -= 1) {
-    const segment = segments[index];
-    if (segment?.isWordLike) {
-      return {
-        committed: text.slice(0, segment.index),
-        tentative: text.slice(segment.index),
-      };
-    }
+  let tentativeStart: number | null = null;
+  for (const segment of wordSegmenter.segment(text)) {
+    if (segment.isWordLike) tentativeStart = segment.index;
+  }
+
+  if (tentativeStart !== null) {
+    return {
+      committed: text.slice(0, tentativeStart),
+      tentative: text.slice(tentativeStart),
+    };
   }
 
   return { committed: "", tentative: text };

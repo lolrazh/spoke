@@ -1,146 +1,50 @@
-import React, { useMemo, useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { m } from "framer-motion";
-import { useAudioLevel } from "../state/audioLevel";
+import { getAudioLevel, subscribeAudioLevel } from "../state/audioLevel";
+
+const FREQUENCY_BAR_COUNT = 18;
+const PROCESSING_FRAME_INTERVAL_MS = 33;
+
+const BASE_FREQUENCY_HEIGHTS = Array.from(
+  { length: FREQUENCY_BAR_COUNT },
+  (_, index) => {
+    const mid = Math.floor(FREQUENCY_BAR_COUNT / 2);
+    const normalizedDist = Math.abs(index - mid) / mid;
+    return 2 + (5.4 - 2) * (1 - Math.pow(normalizedDist, 1.5));
+  },
+);
 
 interface FrequencyBarsProps {
-  audioLevel: number; // 0-1 range
+  audioLevel: number;
   isListening: boolean;
-  isIdle?: boolean;
   isHovered?: boolean;
-  isProcessing?: boolean;
 }
 
+/** Static/hover visualizer. Live and processing states use imperative leaves. */
 const FrequencyBars: React.FC<FrequencyBarsProps> = ({
   audioLevel,
   isListening,
-  isIdle = false,
   isHovered = false,
-  isProcessing = false,
 }) => {
-  // More bars for denser visualization (increased from 7 to 18)
-  const barCount = 18;
-
-  // Animation ticker for processing wave
-  const [ticker, setTicker] = useState(0);
-
-  // Transition blend: 0 = listening, 1 = processing
-  const [transitionBlend, setTransitionBlend] = useState(isProcessing ? 1 : 0);
-  // Mirrors transitionBlend so the rAF loop can read the latest value without
-  // re-subscribing the effect on every frame.
-  const transitionBlendRef = useRef(transitionBlend);
-
-  // Animate the wave continuously when processing
-  useEffect(() => {
-    if (!isProcessing) return;
-
-    const interval = setInterval(() => {
-      setTicker((t) => t + 1);
-    }, 33); // Update every 33ms for 10% slower animation
-
-    return () => clearInterval(interval);
-  }, [isProcessing]);
-
-  // Smooth transition between listening and processing states. The loop stops
-  // itself once the blend converges and only restarts when the target changes
-  // (isProcessing/isListening), rather than re-scheduling forever at 60Hz.
-  useEffect(() => {
-    const targetBlend = isProcessing
-      ? 1
-      : isListening
-        ? 0
-        : transitionBlendRef.current;
-
-    let rafId: number | null = null;
-    const animate = () => {
-      const prev = transitionBlendRef.current;
-      const diff = targetBlend - prev;
-      if (Math.abs(diff) < 0.01) {
-        // Converged: snap to the target and do NOT schedule another frame.
-        if (prev !== targetBlend) {
-          transitionBlendRef.current = targetBlend;
-          setTransitionBlend(targetBlend);
-        }
-        return;
-      }
-      // Smooth spring-like interpolation
-      const next = prev + diff * 0.18;
-      transitionBlendRef.current = next;
-      setTransitionBlend(next);
-      rafId = requestAnimationFrame(animate);
-    };
-
-    rafId = requestAnimationFrame(animate);
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-    };
-  }, [isProcessing, isListening]);
-
-  // Generate symmetric height pattern for base heights
-  const baseHeights = useMemo(() => {
-    const heights: number[] = [];
-    const mid = Math.floor(barCount / 2);
-
-    for (let i = 0; i < barCount; i++) {
-      const distFromCenter = Math.abs(i - mid);
-      // Create a smooth curve - taller in middle, shorter at edges
-      const normalizedDist = distFromCenter / mid;
-      // Reduced height range for 10% less vertical space
-      const baseHeight = 2 + (5.4 - 2) * (1 - Math.pow(normalizedDist, 1.5));
-      heights.push(baseHeight);
-    }
-
-    return heights;
-  }, [barCount]);
-
-  // Calculate reactive heights based on audio level
-  // Single-pass computation to avoid multiple array allocations per frame
   const reactiveHeights = useMemo(() => {
-    // Dots when neither listening nor processing
-    if (!isListening && !isProcessing) {
-      return baseHeights.map(() => 3); // Small dots when not active
+    if (!isListening) {
+      return BASE_FREQUENCY_HEIGHTS.map(() => 3);
     }
 
-    const time = ticker / 2;
     const now = Date.now();
-
-    // Single pass: compute both listening and processing heights, then blend
-    return baseHeights.map((baseHeight, index) => {
-      // Listening height calculation (voice-reactive)
-      const listeningVariation = Math.sin(now / 100 + index) * 0.15 + 1;
-      const listeningScaled =
-        baseHeight * (0.35 + audioLevel * 2.6) * listeningVariation;
-      const listeningHeight = Math.max(2, Math.min(12, listeningScaled));
-
-      // Processing height calculation (sine wave with layered variation)
-      const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5;
-      const slowVariation = Math.sin(ticker / 6 + index * 0.4) * 0.12;
-      const fastVariation = Math.sin(ticker / 3 + index * 0.8) * 0.08;
-      const microVariation = Math.sin(ticker / 2.5 + index * 1.2) * 0.05;
-      const totalVariation = 1 + slowVariation + fastVariation + microVariation;
-      const processingScaled =
-        baseHeight * (0.35 + wave * 1.8) * totalVariation;
-      const processingHeight = Math.max(2, Math.min(9, processingScaled));
-
-      // Blend based on transition state
-      return (
-        listeningHeight * (1 - transitionBlend) +
-        processingHeight * transitionBlend
+    return BASE_FREQUENCY_HEIGHTS.map((baseHeight, index) => {
+      const variation = Math.sin(now / 100 + index) * 0.15 + 1;
+      return Math.max(
+        2,
+        Math.min(12, baseHeight * (0.35 + audioLevel * 2.6) * variation),
       );
     });
-  }, [
-    audioLevel,
-    isListening,
-    isProcessing,
-    ticker,
-    baseHeights,
-    transitionBlend,
-  ]);
+  }, [audioLevel, isListening]);
 
   return (
     <div className="frequency-bars-container">
       {reactiveHeights.map((height, index) => {
-        const isBar = isListening || isProcessing;
-        const isDot = !isListening && !isProcessing;
+        const isDot = !isListening;
 
         return (
           <m.div
@@ -148,15 +52,15 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
             className={`frequency-element ${isDot ? "as-dot" : "as-bar"}`}
             animate={{
               height: isDot ? 2 : height,
-              width: isDot ? 2 : 2,
+              width: 2,
               borderRadius: isDot ? "50%" : "1px",
-              opacity: isDot ? (isHovered ? 0.8 : 0.6) : 1.0,
+              opacity: isDot ? (isHovered ? 0.8 : 0.6) : 1,
             }}
             transition={{
               height: {
                 type: "spring",
-                stiffness: isListening || isProcessing ? 750 : 350,
-                damping: isListening || isProcessing ? 19 : 28,
+                stiffness: isListening ? 750 : 350,
+                damping: isListening ? 19 : 28,
                 mass: 0.25,
               },
               width: { duration: 0.15 },
@@ -173,13 +77,129 @@ const FrequencyBars: React.FC<FrequencyBarsProps> = ({
 export default FrequencyBars;
 
 /**
- * Listening visualizer that subscribes to the live audio level store directly.
- * Isolating the subscription here means an audio frame (~33x/sec) re-renders
- * only this leaf, not the pill or the app tree.
+ * Recording visualizer. Audio frames update existing bar styles and schedule
+ * at most one paint, so they do not re-render the pill or the app tree.
  */
-export const ListeningFrequencyBars: React.FC<
-  Omit<FrequencyBarsProps, "audioLevel">
-> = (props) => {
-  const audioLevel = useAudioLevel();
-  return <FrequencyBars audioLevel={audioLevel} {...props} />;
+export const ListeningFrequencyBars: React.FC = () => {
+  const barsRef = useRef<HTMLDivElement | null>(null);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const scheduleUpdate = () => {
+      if (frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        updateListeningBars(barsRef.current);
+      });
+    };
+
+    const unsubscribe = subscribeAudioLevel(scheduleUpdate);
+    updateListeningBars(barsRef.current);
+
+    return () => {
+      unsubscribe();
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, []);
+
+  return <StaticFrequencyBars barsRef={barsRef} />;
 };
+
+/** Processing visualizer. Its animation never enters React state. */
+export const ProcessingFrequencyBars: React.FC = () => {
+  const barsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let frameId: number | null = null;
+    let lastUpdate = -Infinity;
+
+    const animate = (timestamp: number) => {
+      if (timestamp - lastUpdate >= PROCESSING_FRAME_INTERVAL_MS) {
+        updateProcessingBars(barsRef.current, timestamp);
+        lastUpdate = timestamp;
+      }
+      frameId = requestAnimationFrame(animate);
+    };
+
+    frameId = requestAnimationFrame(animate);
+    return () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+    };
+  }, []);
+
+  return <StaticFrequencyBars barsRef={barsRef} />;
+};
+
+function StaticFrequencyBars({
+  barsRef,
+}: {
+  barsRef: React.MutableRefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <div
+      ref={(node) => {
+        barsRef.current = node;
+      }}
+      className="frequency-bars-container"
+    >
+      {Array.from({ length: FREQUENCY_BAR_COUNT }, (_, index) => (
+        <div
+          key={`freq-${index}`}
+          className="frequency-element as-bar"
+          style={{ height: "2px", width: "2px", borderRadius: "1px" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function updateListeningBars(container: HTMLDivElement | null): void {
+  if (!container) return;
+
+  const audioLevel = getAudioLevel();
+  const now = Date.now();
+  const elements = container.children;
+
+  for (let index = 0; index < elements.length; index += 1) {
+    const variation = Math.sin(now / 100 + index) * 0.15 + 1;
+    const height = Math.max(
+      2,
+      Math.min(
+        12,
+        BASE_FREQUENCY_HEIGHTS[index] *
+          (0.35 + audioLevel * 2.6) *
+          variation,
+      ),
+    );
+    (elements[index] as HTMLElement).style.height = `${height}px`;
+  }
+}
+
+function updateProcessingBars(
+  container: HTMLDivElement | null,
+  timestamp: number,
+): void {
+  if (!container) return;
+
+  const time = timestamp / 66;
+  const elements = container.children;
+  for (let index = 0; index < elements.length; index += 1) {
+    const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5;
+    const slowVariation = Math.sin(timestamp / 198 + index * 0.4) * 0.12;
+    const fastVariation = Math.sin(timestamp / 99 + index * 0.8) * 0.08;
+    const microVariation = Math.sin(timestamp / 82.5 + index * 1.2) * 0.05;
+    const totalVariation =
+      1 + slowVariation + fastVariation + microVariation;
+    const height = Math.max(
+      2,
+      Math.min(
+        9,
+        BASE_FREQUENCY_HEIGHTS[index] * (0.35 + wave * 1.8) * totalVariation,
+      ),
+    );
+    (elements[index] as HTMLElement).style.height = `${height}px`;
+  }
+}

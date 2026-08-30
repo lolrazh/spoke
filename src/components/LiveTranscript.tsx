@@ -1,8 +1,12 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { m } from "framer-motion";
 
-import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
+import {
+  ListeningFrequencyBars,
+  ProcessingFrequencyBars,
+} from "./FrequencyBars";
 import { splitLiveTranscriptText } from "./liveTranscriptText";
+import { useLiveTranscript } from "../state/liveTranscript";
 
 export const LIVE_TRANSCRIPT_CARET_IDLE_MS = 480;
 
@@ -10,7 +14,7 @@ export type LiveTranscriptMetrics = {
   wrappedTextHeight: number;
 };
 
-type LiveTranscriptProps = {
+export type LiveTranscriptProps = {
   text: string;
   isProcessing: boolean;
   textWidth: number;
@@ -20,6 +24,14 @@ type LiveTranscriptProps = {
   reducedMotion: boolean;
   onTextMetricsChange: (metrics: LiveTranscriptMetrics) => void;
 };
+
+/** Store-connected leaf so live partials do not re-render the pill shell. */
+export function LiveTranscriptFromStore(
+  props: Omit<LiveTranscriptProps, "text">,
+) {
+  const text = useLiveTranscript();
+  return <LiveTranscript {...props} text={text} />;
+}
 
 /** Visual-only partial transcript. Final publication remains in useTranscription. */
 export function LiveTranscript({
@@ -33,10 +45,11 @@ export function LiveTranscript({
   onTextMetricsChange,
 }: LiveTranscriptProps) {
   const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
+  const lastMeasuredHeightRef = useRef<number | null>(null);
   const [caretIdle, setCaretIdle] = useState(false);
   const displayText = splitLiveTranscriptText(text, isProcessing);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     setCaretIdle(false);
     if (isProcessing || reducedMotion) return;
 
@@ -47,17 +60,43 @@ export function LiveTranscript({
     return () => window.clearTimeout(timeoutId);
   }, [isProcessing, reducedMotion, text]);
 
-  useLayoutEffect(() => {
-    const wrappedMeasure = wrappedMeasureRef.current;
-    if (!wrappedMeasure) return;
+  const publishMeasuredHeight = useCallback(
+    (height: number) => {
+      const roundedHeight = Math.ceil(Math.max(height, 0));
+      if (lastMeasuredHeightRef.current === roundedHeight) return;
+      lastMeasuredHeightRef.current = roundedHeight;
+      onTextMetricsChange({ wrappedTextHeight: roundedHeight });
+    },
+    [onTextMetricsChange],
+  );
 
-    wrappedMeasure.style.width = `${textWidth}px`;
-    onTextMetricsChange({
-      wrappedTextHeight: Math.ceil(
-        wrappedMeasure.getBoundingClientRect().height,
-      ),
+  // The hidden span changes size as partial text arrives. ResizeObserver lets
+  // the browser report that change after layout instead of forcing a sync
+  // getBoundingClientRect() read for every partial transcript.
+  useEffect(() => {
+    const wrappedMeasure = wrappedMeasureRef.current;
+    const ResizeObserverCtor = window.ResizeObserver;
+    if (!wrappedMeasure || !ResizeObserverCtor) return;
+
+    const observer = new ResizeObserverCtor(([entry]) => {
+      publishMeasuredHeight(entry?.contentRect.height ?? 0);
     });
-  }, [onTextMetricsChange, text, textWidth]);
+    observer.observe(wrappedMeasure);
+
+    return () => observer.disconnect();
+  }, [publishMeasuredHeight, textWidth]);
+
+  // Older Electron/test environments may not expose ResizeObserver. Keep a
+  // one-frame fallback for those environments without blocking the commit.
+  useEffect(() => {
+    if (window.ResizeObserver) return;
+    const frameId = window.requestAnimationFrame(() => {
+      const wrappedMeasure = wrappedMeasureRef.current;
+      if (!wrappedMeasure) return;
+      publishMeasuredHeight(wrappedMeasure.getBoundingClientRect().height);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [publishMeasuredHeight, text, textWidth]);
 
   return (
     <m.div
@@ -73,20 +112,9 @@ export function LiveTranscript({
     >
       <div className="live-transcript-activity">
         {isProcessing ? (
-          <FrequencyBars
-            audioLevel={0}
-            isListening={false}
-            isIdle={false}
-            isHovered={false}
-            isProcessing={true}
-          />
+          <ProcessingFrequencyBars />
         ) : (
-          <ListeningFrequencyBars
-            isListening={true}
-            isIdle={false}
-            isHovered={false}
-            isProcessing={false}
-          />
+          <ListeningFrequencyBars />
         )}
       </div>
 
@@ -129,6 +157,7 @@ export function LiveTranscript({
       <span
         ref={wrappedMeasureRef}
         className="live-transcript-measure live-transcript-measure-wrapped"
+        style={{ width: textWidth }}
       >
         {text}
       </span>

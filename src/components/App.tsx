@@ -63,7 +63,10 @@ const AppInner: React.FC = () => {
     window.electron?.bootMark?.("app-render");
   }
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
-  const [showDebug, setShowDebug] = useState(false);
+  const [showDebug] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).has("debugPill");
+  });
   const [uiScale, setUiScale] = useState(1);
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
   const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
@@ -189,9 +192,7 @@ const AppInner: React.FC = () => {
 
   // Only open mic during dictation
   const trans = useTranscription({
-    autoEnumerateDevices: true,
     autoInitStream: false,
-    requestLabelPermissionForEnumeration: false,
   });
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
@@ -206,20 +207,16 @@ const AppInner: React.FC = () => {
   }>({ active: false, message: "" });
 
   const pushTrace = useCallback((msg: string) => {
+    if (!showDebug) return;
     setTrace((t) => [
       `${performance.now().toFixed(0)}: ${msg}`,
       ...t.slice(0, 15),
     ]);
-  }, []);
+  }, [showDebug]);
 
   useEffect(() => {
     pushTrace(`Mode: ${trans.mode}`);
   }, [trans.mode, pushTrace]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setShowDebug(params.has("debugPill"));
-  }, []);
 
   // Listen for active display updates from main (provides computed scale and stored notch width)
   useEffect(() => {
@@ -233,8 +230,6 @@ const AppInner: React.FC = () => {
       const nextNotchWidth =
         storedWidth && storedWidth > 0 ? storedWidth : null;
       setNotchWidth(nextNotchWidth);
-
-      // Display info updated (removed noisy logging)
     });
     return unsubscribe;
   }, []);
@@ -648,15 +643,15 @@ const AppInner: React.FC = () => {
     [BASE_W, BASE_H, RESTING_H, EXPANDED_W, EXPANDED_H, MAX_W],
   );
 
-  useEffect(() => {
-    // Pill width computed from notch (removed noisy logging)
-  }, [BASE_W, S, notchTarget]);
-
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
-    if (!ghostRef.current) return;
-    const el = ghostRef.current;
     const msg = pillContext.notifMsg ?? "";
+    if (!ghostRef.current || !msg) {
+      setNotifWidth(null);
+      setIsTextTruncated(false);
+      return;
+    }
+    const el = ghostRef.current;
     el.textContent = msg;
     // Force layout
     const rect = el.getBoundingClientRect();
@@ -685,12 +680,11 @@ const AppInner: React.FC = () => {
       <Pill
         pillState={pillState}
         pillContext={pillContext}
-        liveTranscript={trans.liveText}
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
         dims={dims}
         onHoverChange={handleHoverChange}
-        onMetrics={handlePillMetrics}
+        onMetrics={showDebug ? handlePillMetrics : undefined}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onExpand={handleExpand}

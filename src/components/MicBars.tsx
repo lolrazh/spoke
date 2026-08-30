@@ -2,15 +2,16 @@
  * MicBars
  *
  * Leaf visualizer for the onboarding mic-check. It owns the per-frame bar state
- * and runs its own requestAnimationFrame loop off the live AnalyserNode, so the
- * ~60 Hz updates re-render only these bars rather than the whole onboarding tree.
+ * and runs its own requestAnimationFrame loop off the live AnalyserNode. The
+ * ~60 Hz updates mutate the existing bars, so they do not re-render the
+ * onboarding tree.
  */
 
-import { useState, useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 const NUM_BARS = 24;
-
-const zeroBars = () => Array.from({ length: NUM_BARS }, () => 0);
+const RESTING_BAR_HEIGHT = 6;
+const RESTING_BAR_OPACITY = 0.45;
 
 export function MicBars({
   analyserRef,
@@ -21,25 +22,35 @@ export function MicBars({
   /** Whether the mic-check step is active; drives the rAF loop. */
   active: boolean;
 }) {
-  const [barValues, setBarValues] = useState<number[]>(zeroBars);
+  const barsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const resetBars = () => {
+      const bars = barsRef.current?.children;
+      if (!bars) return;
+      for (let index = 0; index < bars.length; index += 1) {
+        const bar = bars[index] as HTMLElement;
+        bar.style.height = `${RESTING_BAR_HEIGHT}px`;
+        bar.style.opacity = `${RESTING_BAR_OPACITY}`;
+      }
+    };
+
     if (!active) {
-      setBarValues(zeroBars());
+      resetBars();
       return;
     }
 
-    let rafId = 0;
+    let rafId: number | null = null;
     let freqData: Uint8Array<ArrayBuffer> | null = null;
 
     const tick = () => {
       const analyser = analyserRef.current;
-      if (analyser) {
+      const bars = barsRef.current?.children;
+      if (analyser && bars) {
         if (!freqData || freqData.length !== analyser.frequencyBinCount) {
           freqData = new Uint8Array(analyser.frequencyBinCount);
         }
         analyser.getByteFrequencyData(freqData);
-        const buckets: number[] = new Array(NUM_BARS).fill(0);
         const binsPerBar = Math.max(1, Math.floor(freqData.length / NUM_BARS));
         for (let i = 0; i < NUM_BARS; i++) {
           let sum = 0;
@@ -47,31 +58,37 @@ export function MicBars({
           const end = Math.min(freqData.length, start + binsPerBar);
           for (let j = start; j < end; j++) sum += freqData[j];
           const avg = sum / (end - start || 1);
-          buckets[i] = avg / 255;
+          const value = avg / 255;
+          const bar = bars[i] as HTMLElement;
+          bar.style.height = `${Math.max(6, Math.round(6 + value * 80))}px`;
+          bar.style.opacity = `${0.45 + value * 0.55}`;
         }
-        setBarValues(buckets);
       }
-      rafId = requestAnimationFrame(tick);
+      rafId = window.requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+    rafId = window.requestAnimationFrame(tick);
 
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+    };
   }, [active, analyserRef]);
 
   return (
-    <div className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]">
-      {barValues.map((v, i) => {
-        const h = Math.max(6, Math.round(6 + v * 80));
-        const opacity = 0.45 + v * 0.55;
-        return (
-          <div
-            key={i}
-            className="flex-1 rounded-[3px] bg-white/70"
-            style={{ height: `${h}px`, opacity }}
-            aria-hidden
-          />
-        );
-      })}
+    <div
+      ref={barsRef}
+      className="w-full max-w-xl h-24 rounded-lg card-floating p-3 flex items-end gap-[6px]"
+    >
+      {Array.from({ length: NUM_BARS }, (_, index) => (
+        <div
+          key={index}
+          className="flex-1 rounded-[3px] bg-white/70"
+          style={{
+            height: `${RESTING_BAR_HEIGHT}px`,
+            opacity: RESTING_BAR_OPACITY,
+          }}
+          aria-hidden
+        />
+      ))}
     </div>
   );
 }

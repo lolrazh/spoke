@@ -1,4 +1,3 @@
-import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useTranscription } from "./useTranscription";
@@ -24,11 +23,9 @@ vi.mock("../utils/vadTrimmer", () => ({
   trimCapturedAudioWithVad: vi.fn(),
 }));
 
-// By default the streaming VAD session reports itself as unusable so every
-// existing test exercises the exact same fixed-post-roll +
-// trimCapturedAudioWithVad fallback path that ran before streaming VAD was
-// introduced. Tests that specifically exercise the adaptive path override
-// this per-test via `mockCreateStreamingVadSession`.
+// By default the streaming VAD session reports itself as unusable, so batch
+// tests exercise the fixed-post-roll + trimCapturedAudioWithVad fallback path.
+// Live streaming models intentionally skip this duplicate VAD worker.
 const mockCreateStreamingVadSession = vi.fn(() => createUnusableStreamingVadSessionFake());
 vi.mock("../utils/streamingVad", () => ({
   createStreamingVadSession: (...args: unknown[]) =>
@@ -811,6 +808,7 @@ describe("useTranscription", () => {
     const { result } = renderHook(() => useTranscription());
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
+    expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
     emitPcmFrame(new Array(10_240).fill(1));
     await waitFor(() =>
       expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2),
@@ -841,23 +839,16 @@ describe("useTranscription", () => {
     expect(window.clipboard.insertText).toHaveBeenCalledWith("hello world");
   });
 
-  it("finishes a live stream when VAD post-roll fails", async () => {
+  it("finishes a live stream without starting duplicate VAD", async () => {
     configureStreamingModel("Recovered live stream");
-    mockCreateStreamingVadSession.mockReturnValueOnce(
-      createUsableStreamingVadSessionFake({
-        waitForQuiet: async () => {
-          throw new Error("VAD worker failed");
-        },
-      }),
-    );
 
     const { result } = renderHook(() => useTranscription());
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
+    expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
 
     await act(async () => {
       result.current.stop();
-      await new Promise((resolve) => setTimeout(resolve, 400));
     });
 
     await waitFor(() => expect(result.current.processing).toBe(false));

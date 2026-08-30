@@ -10,12 +10,17 @@ import React, {
 import { m, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
-import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
+import FrequencyBars, {
+  ListeningFrequencyBars,
+  ProcessingFrequencyBars,
+} from "./FrequencyBars";
 import {
   LiveTranscript,
+  LiveTranscriptFromStore,
   type LiveTranscriptMetrics,
 } from "./LiveTranscript";
 import { calculateLiveTranscriptLayout } from "./liveTranscriptLayout";
+import { useLiveTranscriptActive } from "../state/liveTranscript";
 
 type PillMetrics = {
   pillRect: DOMRect | null;
@@ -54,7 +59,8 @@ interface PillProps {
     notifMsg?: string;
     notifAction?: string | null;
   };
-  liveTranscript: string;
+  /** Optional test/embedding override; production reads the external store. */
+  liveTranscript?: string;
   notifWidth: number | null;
   isTextTruncated: boolean;
   dims: {
@@ -66,7 +72,7 @@ interface PillProps {
     maxW: number;
   };
   onHoverChange: (hovering: boolean) => void;
-  onMetrics: (metrics: PillMetrics) => void;
+  onMetrics?: (metrics: PillMetrics) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   onExpand: () => void;
@@ -82,7 +88,7 @@ interface PillProps {
 const Pill: React.FC<PillProps> = ({
   pillState,
   pillContext,
-  liveTranscript,
+  liveTranscript: liveTranscriptOverride,
   onHoverChange,
   onMetrics,
   notifWidth,
@@ -100,6 +106,7 @@ const Pill: React.FC<PillProps> = ({
   onPermissionsPanelHeightChange,
 }) => {
   // --- Refs ---
+  const liveTranscriptActive = useLiveTranscriptActive();
   const pillCoreRef = useRef<HTMLDivElement>(null);
   const previousStateRef = useRef<PillStateType>(pillState);
   const reduceMotion = useReducedMotion() ?? false;
@@ -124,9 +131,13 @@ const Pill: React.FC<PillProps> = ({
 
   const isShowingNotification = pillState === "NOTIFICATION";
   const isExpanded = pillState === "EXPANDED";
+  const liveTranscriptIsActive =
+    liveTranscriptOverride === undefined
+      ? liveTranscriptActive
+      : liveTranscriptOverride.length > 0;
   const hasLiveTranscript =
     (pillState === "LISTENING" || pillState === "PROCESSING") &&
-    liveTranscript.length > 0;
+    liveTranscriptIsActive;
   const notificationAction = pillContext.notifAction ?? null;
 
   const handleLiveTextMetricsChange = useCallback(
@@ -183,15 +194,6 @@ const Pill: React.FC<PillProps> = ({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [isExpanded, onCollapse]);
 
-  // Cleanup click timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (clickTimeoutRef.current) {
-        clearTimeout(clickTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // Handle context menu for pill
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -203,17 +205,8 @@ const Pill: React.FC<PillProps> = ({
     }
   };
 
-  // Handle click timing for single vs double click
-  const clickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   const handleClick = () => {
     if (isExpanded) return;
-
-    // Clear any existing timeout
-    if (clickTimeoutRef.current) {
-      clearTimeout(clickTimeoutRef.current);
-      clickTimeoutRef.current = null;
-    }
 
     if (
       pillState === "NOTIFICATION" &&
@@ -229,12 +222,6 @@ const Pill: React.FC<PillProps> = ({
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    // Clear single click timeout
-    if (clickTimeoutRef.current) {
-      clearTimeout(clickTimeoutRef.current);
-      clickTimeoutRef.current = null;
-    }
 
     // Disable double-click collapse. Only allow double-click to expand.
     if (!isExpanded) {
@@ -447,38 +434,37 @@ const Pill: React.FC<PillProps> = ({
               >
                 {/* Visuals for non-notification states */}
                 {hasLiveTranscript ? (
-                  <LiveTranscript
-                    text={liveTranscript}
-                    isProcessing={pillState === "PROCESSING"}
-                    textWidth={liveTranscriptLayout.textWidth}
-                    visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
-                    railOffsetY={liveTranscriptLayout.railOffsetY}
-                    overflowing={liveTranscriptLayout.overflowing}
-                    reducedMotion={reduceMotion}
-                    onTextMetricsChange={handleLiveTextMetricsChange}
-                  />
+                  liveTranscriptOverride === undefined ? (
+                    <LiveTranscriptFromStore
+                      isProcessing={pillState === "PROCESSING"}
+                      textWidth={liveTranscriptLayout.textWidth}
+                      visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
+                      railOffsetY={liveTranscriptLayout.railOffsetY}
+                      overflowing={liveTranscriptLayout.overflowing}
+                      reducedMotion={reduceMotion}
+                      onTextMetricsChange={handleLiveTextMetricsChange}
+                    />
+                  ) : (
+                    <LiveTranscript
+                      text={liveTranscriptOverride}
+                      isProcessing={pillState === "PROCESSING"}
+                      textWidth={liveTranscriptLayout.textWidth}
+                      visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
+                      railOffsetY={liveTranscriptLayout.railOffsetY}
+                      overflowing={liveTranscriptLayout.overflowing}
+                      reducedMotion={reduceMotion}
+                      onTextMetricsChange={handleLiveTextMetricsChange}
+                    />
+                  )
                 ) : pillState === "LISTENING" ? (
-                  <ListeningFrequencyBars
-                    isListening={true}
-                    isIdle={false}
-                    isHovered={false}
-                    isProcessing={false}
-                  />
+                  <ListeningFrequencyBars />
                 ) : pillState === "PROCESSING" ? (
-                  <FrequencyBars
-                    audioLevel={0}
-                    isListening={false}
-                    isIdle={false}
-                    isHovered={false}
-                    isProcessing={true}
-                  />
+                  <ProcessingFrequencyBars />
                 ) : pillState === "HOVER_PREVIEW" ? (
                   <FrequencyBars
                     audioLevel={0}
                     isListening={false}
-                    isIdle={false}
                     isHovered={true}
-                    isProcessing={false}
                   />
                 ) : pillState === "IDLE" ? (
                   <div className="resting-indicator" />

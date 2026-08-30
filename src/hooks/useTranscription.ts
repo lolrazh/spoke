@@ -38,6 +38,10 @@ import { invokedBloodyMary } from "../utils/easterEggs";
 import { addTranscription } from "../state/transcriptionHistory";
 import { setAudioLevel } from "../state/audioLevel";
 import {
+  getLiveTranscript,
+  setLiveTranscript,
+} from "../state/liveTranscript";
+import {
   POST_ROLL_MS,
   LOCAL_DICTATION_MAX_DURATION_MS,
   LOCAL_STT_CHUNK_NATURAL_START_MS,
@@ -74,7 +78,7 @@ export interface UseTranscriptionReturn {
   recording: boolean;
   processing: boolean;
   ready: boolean;
-  /** Cumulative model output for transient in-pill feedback only. */
+  /** Current live model output for transient in-pill feedback only. */
   liveText: string;
   /** Final text that is eligible for history and native insertion. */
   text: string;
@@ -87,9 +91,7 @@ export interface UseTranscriptionReturn {
 }
 
 export interface UseTranscriptionOptions {
-  autoEnumerateDevices?: boolean;
   autoInitStream?: boolean;
-  requestLabelPermissionForEnumeration?: boolean;
   suppressNativePaste?: boolean;
 }
 
@@ -99,7 +101,6 @@ export function useTranscription(
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [ready, setReady] = useState(false);
-  const [liveText, setLiveText] = useState("");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
@@ -173,6 +174,7 @@ export function useTranscription(
 
   // Initialize on mount
   useEffect(() => {
+    setLiveTranscript("");
     window.electron?.bootMark?.("transcription-hook:init");
     if (options.autoInitStream !== false) {
       initStream().catch(console.error);
@@ -193,11 +195,29 @@ export function useTranscription(
     return () => {
       startGenerationRef.current += 1;
       pendingStartGenerationRef.current = null;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
+      const stream = streamRef.current;
+      streamRef.current = null;
+      stream?.getTracks().forEach((track) => track.stop());
+
+      const pendingRecorder = recorderStartPromiseRef.current;
+      recorderStartPromiseRef.current = null;
+      void pendingRecorder
+        ?.then((pending) => pending.cancel())
+        .catch(() => undefined);
       recorderRef.current?.cancel();
-      void localStreamingDictationRef.current?.cancel().catch(() => undefined);
+      recorderRef.current = null;
+
+      localChunkedDictationRef.current?.discardPendingAudio();
+      localChunkedDictationRef.current = null;
+      const localStreamingDictation = localStreamingDictationRef.current;
+      localStreamingDictationRef.current = null;
+      void localStreamingDictation?.cancel().catch(() => undefined);
+      streamingVadRef.current?.dispose();
+      streamingVadRef.current = null;
+      activeProviderIdRef.current = null;
+      ocrWordsRef.current = [];
+      ocrPromiseRef.current = null;
+      setLiveTranscript("");
       prepareResultRef.current = null;
     };
   }, [initStream, options.autoInitStream]);
@@ -270,7 +290,7 @@ export function useTranscription(
     // A live hypothesis belongs to exactly one capture. Clear the previous
     // session before any async preparation so a failed start cannot leave old
     // words visible in the pill.
-    setLiveText("");
+    setLiveTranscript("");
     setText("");
     setError(null);
 
@@ -296,7 +316,7 @@ export function useTranscription(
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
           batchMs: prepareResult.localModel.streamingChunkMs ?? 320,
           maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
-          onPartial: setLiveText,
+          onPartial: setLiveTranscript,
           onLimitReached: () => {
             window.notifications?.send(
               "Sorry — Spoke has a five-minute recording limit. Finishing your transcription now…",
@@ -343,10 +363,16 @@ export function useTranscription(
         localChunkedDictationRef.current = localChunkedDictation;
       }
 
-      const streamingVadSession = createStreamingVadSession({
-        onSpeechStart: () => localChunkedDictation?.cancelNaturalBoundary(),
-        onSpeechEnd: () => localChunkedDictation?.requestNaturalBoundary(),
-      });
+      // A live streaming model owns endpoint padding during finalization, so
+      // a second VAD worker would only duplicate PCM conversion and inference.
+      // Keep VAD for batch/chunked paths, where it still trims audio and
+      // drives natural chunk boundaries.
+      const streamingVadSession = localStreamingDictation
+        ? null
+        : createStreamingVadSession({
+            onSpeechStart: () => localChunkedDictation?.cancelNaturalBoundary(),
+            onSpeechEnd: () => localChunkedDictation?.requestNaturalBoundary(),
+          });
       streamingVadRef.current = streamingVadSession;
 
       const recorderPromise = (async () => {
@@ -365,7 +391,7 @@ export function useTranscription(
                 requestCancelRef.current();
               },
               onPcmFrame: (frame) => {
-                streamingVadSession.pushFrame(frame);
+                streamingVadSession?.pushFrame(frame);
                 localChunkedDictation?.pushFrame(frame);
                 localStreamingDictation?.pushFrame(frame);
               },
@@ -379,7 +405,7 @@ export function useTranscription(
                 requestCancelRef.current();
               },
               onPcmFrame: (frame) => {
-                streamingVadSession.pushFrame(frame);
+                streamingVadSession?.pushFrame(frame);
                 localChunkedDictation?.pushFrame(frame);
                 localStreamingDictation?.pushFrame(frame);
               },
@@ -515,9 +541,9 @@ export function useTranscription(
       // the authoritative result. Batch models publish the final result to
       // history/paste without imitating a late token stream in the pill.
       if (reconcileLiveTranscript) {
-        setLiveText(finalText);
+        setLiveTranscript(finalText);
       } else {
-        setLiveText("");
+        setLiveTranscript("");
       }
       setText(finalText);
 
@@ -609,30 +635,28 @@ export function useTranscription(
       setAudioLevel(0);
       playToggleOff();
 
-      // Post-roll: capture any tail audio the user spoke right up to
-      // key-release. If the streaming VAD already confirmed speech ended a
-      // redemption window ago, that tail is already in the buffer and we
-      // don't wait at all; if speech is still active (or the model hasn't
-      // caught up yet) we keep capturing until it settles, capped at
-      // POST_ROLL_MS. If streaming VAD never became usable, fall back to
-      // today's fixed wait exactly.
+      // Batch paths need a short tail for VAD trimming. Live Nemotron adds
+      // its own bounded final silence inside the sidecar, so do not start a
+      // duplicate VAD worker or add another post-roll delay.
       timing.postRollStartedAt = performance.now();
-      if (streamingVadSession && streamingVadSession.isUsable()) {
-        try {
-          await streamingVadSession.waitForQuiet(POST_ROLL_MS);
-        } catch (vadError) {
-          // VAD is an optional latency optimization. Preserve the full tail
-          // and continue if its worker fails while the key-up settles.
-          vadLog.warn(
-            "Streaming VAD post-roll failed; using fixed post-roll:",
-            vadError,
-          );
-          const elapsedMs = performance.now() - timing.postRollStartedAt;
-          const remainingMs = Math.max(0, POST_ROLL_MS - elapsedMs);
-          await new Promise((resolve) => setTimeout(resolve, remainingMs));
+      if (!localStreamingDictation) {
+        if (streamingVadSession && streamingVadSession.isUsable()) {
+          try {
+            await streamingVadSession.waitForQuiet(POST_ROLL_MS);
+          } catch (vadError) {
+            // VAD is an optional latency optimization. Preserve the full tail
+            // and continue if its worker fails while the key-up settles.
+            vadLog.warn(
+              "Streaming VAD post-roll failed; using fixed post-roll:",
+              vadError,
+            );
+            const elapsedMs = performance.now() - timing.postRollStartedAt;
+            const remainingMs = Math.max(0, POST_ROLL_MS - elapsedMs);
+            await new Promise((resolve) => setTimeout(resolve, remainingMs));
+          }
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
         }
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
       }
       timing.postRollDoneAt = performance.now();
       if (isCancelled()) return;
@@ -695,7 +719,7 @@ export function useTranscription(
             vadResult,
             metrics: result.metrics,
           });
-          setLiveText("");
+          setLiveTranscript("");
           setText("");
           return;
         }
@@ -760,7 +784,7 @@ export function useTranscription(
             capturedAudioMs,
             vadResult,
           });
-          setLiveText("");
+          setLiveTranscript("");
           setText("");
           return;
         }
@@ -850,7 +874,7 @@ export function useTranscription(
           capturedAudioMs,
           vadResult,
         });
-        setLiveText("");
+        setLiveTranscript("");
         setText("");
         return;
       }
@@ -901,7 +925,7 @@ export function useTranscription(
     } catch (err) {
       if (isCancelled()) return;
       log.error("Stop failed:", err);
-      setLiveText("");
+      setLiveTranscript("");
       reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
       // stop() owns streamingVadSession once it's captured it above (the
@@ -1007,7 +1031,7 @@ export function useTranscription(
     }
     setRecording(false);
     setProcessing(false);
-    setLiveText("");
+    setLiveTranscript("");
     setText("");
     setAudioLevel(0);
     activeProviderIdRef.current = null;
@@ -1029,7 +1053,9 @@ export function useTranscription(
     recording,
     processing,
     ready,
-    liveText,
+    get liveText() {
+      return getLiveTranscript();
+    },
     text,
     error,
     errorId,

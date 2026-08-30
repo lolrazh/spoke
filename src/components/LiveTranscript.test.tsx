@@ -6,10 +6,16 @@ import {
   LIVE_TRANSCRIPT_CARET_IDLE_MS,
   LiveTranscript,
 } from "./LiveTranscript";
+import {
+  getLiveTranscript,
+  setLiveTranscript,
+  useLiveTranscript,
+} from "../state/liveTranscript";
 
 vi.mock("./FrequencyBars", () => ({
   default: () => <div />,
   ListeningFrequencyBars: () => <div />,
+  ProcessingFrequencyBars: () => <div />,
 }));
 
 const commonProps = {
@@ -72,5 +78,56 @@ describe("LiveTranscript caret", () => {
       <LiveTranscript {...commonProps} text="Hello" isProcessing />,
     );
     expect(container.querySelector(".live-transcript-caret")).toBeNull();
+  });
+});
+
+describe("live transcript store", () => {
+  let pendingFrame: FrameRequestCallback | null = null;
+  let nextFrameId = 0;
+
+  beforeEach(() => {
+    pendingFrame = null;
+    nextFrameId = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrame = callback;
+      return ++nextFrameId;
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      setLiveTranscript("");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+    vi.restoreAllMocks();
+  });
+
+  it("publishes the latest hypothesis once per animation frame", () => {
+    let renderCount = 0;
+    function Probe() {
+      renderCount += 1;
+      return <span>{useLiveTranscript()}</span>;
+    }
+
+    const { container } = render(<Probe />);
+    expect(renderCount).toBe(1);
+
+    act(() => {
+      setLiveTranscript("Hello");
+      setLiveTranscript("Hello world");
+    });
+
+    expect(renderCount).toBe(1);
+    expect(getLiveTranscript()).toBe("Hello world");
+    expect(container.textContent).toBe("");
+
+    act(() => {
+      pendingFrame?.(16);
+      pendingFrame = null;
+    });
+
+    expect(renderCount).toBe(2);
+    expect(container.textContent).toBe("Hello world");
   });
 });

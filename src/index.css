@@ -528,9 +528,6 @@
   .frequency-element {
     background: #c0c0c0;
     box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
-    will-change: height, opacity, border-radius;
-    backface-visibility: hidden;
-    transform: translateZ(0);
   }
 
   .frequency-element.as-dot {
