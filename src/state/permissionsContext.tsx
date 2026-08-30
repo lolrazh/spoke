@@ -3,8 +3,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
-  useState,
 } from "react";
 import {
   usePermissions,
@@ -24,7 +22,6 @@ type PermissionsControllerContext = {
   requestAccessibility: () => Promise<void>;
   requestInputMonitoring: () => Promise<void>;
   missingPermissions: MissingPermission[];
-  lastSnapshotAt: number | null;
   permissionsLoaded: boolean;
 };
 
@@ -48,9 +45,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
     pollIntervalMs: 1000,
     includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
-
-  const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null);
-  const lastPermissionsRef = useRef<PermissionsState | null>(null);
 
   useEffect(() => {
     const runInit = async () => {
@@ -82,24 +76,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
     // eslint-disable-next-line
   }, []);
 
-  useEffect(() => {
-    const previous = lastPermissionsRef.current;
-    if (!previous) {
-      setLastSnapshotAt(Date.now());
-      lastPermissionsRef.current = permissions;
-      return;
-    }
-    if (
-      previous.microphone !== permissions.microphone ||
-      previous.screenRecording !== permissions.screenRecording ||
-      previous.inputMonitoring !== permissions.inputMonitoring ||
-      previous.accessibility !== permissions.accessibility
-    ) {
-      setLastSnapshotAt(Date.now());
-    }
-    lastPermissionsRef.current = permissions;
-  }, [permissions]);
-
   const missingPermissions = useMemo<MissingPermission[]>(() => {
     const missing: MissingPermission[] = [];
     if (!permissions.microphone) missing.push("microphone");
@@ -121,7 +97,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       requestAccessibility,
       requestInputMonitoring,
       missingPermissions,
-      lastSnapshotAt,
       permissionsLoaded,
     }),
     [
@@ -133,7 +108,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       requestAccessibility,
       requestInputMonitoring,
       missingPermissions,
-      lastSnapshotAt,
       permissionsLoaded,
     ],
   );
