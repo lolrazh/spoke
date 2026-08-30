@@ -594,67 +594,80 @@ async function runLocalStream(
   proc.once("exit", onExit);
 
   const writeFrame = (payload: Buffer): Promise<void> =>
-    new Promise((resolve, reject) => {
+    (() => {
       const stdin = proc.stdin;
       if (!stdin || stdin.destroyed) {
-        reject(new Error("Sidecar input is unavailable"));
-        return;
+        return Promise.reject(new Error("Sidecar input is unavailable"));
       }
       const header = Buffer.alloc(4);
       header.writeUInt32LE(payload.length);
 
-      let settled = false;
-      const onHeaderDrain = () => {
-        stdin.removeListener("drain", onHeaderDrain);
-        writePayload();
-      };
-      const onPayloadDrain = () => {
-        stdin.removeListener("drain", onPayloadDrain);
-        settle();
-      };
-      const onError = (error: Error) => {
-        stdin.removeListener("drain", onHeaderDrain);
-        stdin.removeListener("drain", onPayloadDrain);
-        if (settled) return;
-        settled = true;
-        reject(error);
-      };
-      const settle = () => {
-        if (settled) return;
-        settled = true;
-        stdin.removeListener("error", onError);
-        resolve();
-      };
-      const writePayload = () => {
-        if (settled) return;
-        try {
-          if (payload.length === 0 || stdin.write(payload)) {
-            settle();
-          } else {
-            stdin.once("drain", onPayloadDrain);
-          }
-        } catch (error) {
-          onError(error instanceof Error ? error : new Error(String(error)));
-        }
-      };
-
-      stdin.once("error", onError);
+      let headerReady = false;
       try {
         // Keep the header and PCM as separate buffers. With cork/uncork the
         // pipe can submit them together, while avoiding a new header+payload
         // allocation for every live audio batch.
         stdin.cork();
-        if (stdin.write(header)) {
-          writePayload();
-        } else {
-          stdin.once("drain", onHeaderDrain);
+        headerReady = stdin.write(header);
+        if (headerReady && (payload.length === 0 || stdin.write(payload))) {
+          // The normal pipe path completes synchronously. Avoid allocating a
+          // Promise and six callbacks for every live PCM batch.
+          return Promise.resolve();
         }
       } catch (error) {
-        onError(error instanceof Error ? error : new Error(String(error)));
+        return Promise.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
       } finally {
         stdin.uncork();
       }
-    });
+
+      return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const onHeaderDrain = () => {
+          stdin.removeListener("drain", onHeaderDrain);
+          writePayload();
+        };
+        const onPayloadDrain = () => {
+          stdin.removeListener("drain", onPayloadDrain);
+          settle();
+        };
+        const onError = (error: Error) => {
+          stdin.removeListener("drain", onHeaderDrain);
+          stdin.removeListener("drain", onPayloadDrain);
+          if (settled) return;
+          settled = true;
+          reject(error);
+        };
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          stdin.removeListener("error", onError);
+          resolve();
+        };
+        const writePayload = () => {
+          if (settled) return;
+          try {
+            if (payload.length === 0 || stdin.write(payload)) {
+              settle();
+            } else {
+              stdin.once("drain", onPayloadDrain);
+            }
+          } catch (error) {
+            onError(error instanceof Error ? error : new Error(String(error)));
+          }
+        };
+
+        stdin.once("error", onError);
+        if (headerReady) {
+          // The header was accepted, but the payload filled the pipe.
+          stdin.once("drain", onPayloadDrain);
+        } else {
+          // The header filled the pipe, so the payload has not been written.
+          stdin.once("drain", onHeaderDrain);
+        }
+      });
+    })();
 
   const session: LocalStreamingSession = {
     push(pcmBuffer) {

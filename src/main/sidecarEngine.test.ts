@@ -390,6 +390,38 @@ describe("sidecarEngine", () => {
       expect(proc.stdin.uncork).toHaveBeenCalled();
     });
 
+    it("waits for stdin backpressure before finalization", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const session = await engine.startLocalStream(vi.fn());
+      const audioPayload = Buffer.from([1, 0, 2, 0]);
+      let blockAudioPayload = true;
+      proc.stdin.write.mockImplementation((chunk: Buffer) => {
+        if (blockAudioPayload && chunk.equals(audioPayload)) return false;
+        return true;
+      });
+
+      const pushing = session.push(audioPayload);
+      await Promise.resolve();
+      expect(proc.stdin.write).toHaveBeenCalledTimes(4);
+
+      const finishing = session.finish();
+      await Promise.resolve();
+      expect(proc.stdin.write).toHaveBeenCalledTimes(4);
+
+      blockAudioPayload = false;
+      proc.stdin.emit("drain");
+      await expect(pushing).resolves.toBeUndefined();
+      await vi.waitFor(() => expect(proc.stdin.write).toHaveBeenCalledTimes(5));
+      proc.stdout.emit(
+        "data",
+        Buffer.from(
+          '{"type":"done","transcript":"hello","metrics":{"inference_ms":2}}\n',
+        ),
+      );
+
+      await expect(finishing).resolves.toMatchObject({ text: "hello" });
+    });
+
     it("preserves a multibyte transcript split across stdout chunks", async () => {
       const { proc, engine } = await startReadySidecar();
       const session = await engine.startLocalStream(vi.fn());
