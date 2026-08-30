@@ -109,11 +109,6 @@ contextBridge.exposeInMainWorld("ptt", {
     ipcRenderer.on("ptt-ready", listener);
     return () => ipcRenderer.removeListener("ptt-ready", listener);
   },
-  onCancelDown: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("ptt-cancel-down", listener);
-    return () => ipcRenderer.removeListener("ptt-cancel-down", listener);
-  },
   onCancel: (cb: () => void) => {
     const listener = () => cb();
     ipcRenderer.on("ptt-cancel", listener);
@@ -187,7 +182,7 @@ contextBridge.exposeInMainWorld("stt", {
     ipcRenderer.invoke(
       "stt:transcribe-local",
       modelId,
-      new Uint8Array(pcmBuffer),
+      pcmBuffer,
       prompt,
     ),
   cancelLocalTranscription: () =>
@@ -198,7 +193,7 @@ contextBridge.exposeInMainWorld("stt", {
     ipcRenderer.invoke(
       "stt:push-local-stream",
       sessionId,
-      new Uint8Array(pcmBuffer),
+      pcmBuffer,
     ),
   finishLocalStream: (sessionId: string) =>
     ipcRenderer.invoke("stt:finish-local-stream", sessionId),
@@ -291,8 +286,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.on("paste-shortcut-pressed", callback);
     return () => ipcRenderer.removeListener("paste-shortcut-pressed", callback);
   },
-  requestExpandPill: () => ipcRenderer.invoke("pill:expand"),
-  revealPill: () => ipcRenderer.invoke("pill:reveal"),
   revealPillForTest: () => ipcRenderer.invoke("pill:reveal-for-test"),
   // Onboarding APIs
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
@@ -317,7 +310,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("ptt:set-target", target),
   reloadApp: () => ipcRenderer.invoke("reload-app"),
   onboardingComplete: () => ipcRenderer.invoke("onboarding-complete"),
-  resetOnboardingFlag: () => ipcRenderer.invoke("onboarding:reset-local-flag"),
   getOnboardingStep: (): Promise<string | null> =>
     ipcRenderer.invoke("onboarding:get-step"),
   setOnboardingStep: (step: string): Promise<{ ok: boolean }> =>

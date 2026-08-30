@@ -161,4 +161,24 @@ describe("LocalStreamIpcController", () => {
       sessionId: "stream",
     });
   });
+
+  it("wraps an ArrayBuffer payload without copying its PCM bytes", async () => {
+    const session = createSession();
+    const controller = new LocalStreamIpcController(
+      vi.fn().mockResolvedValue(session),
+      vi.fn(),
+      () => "stream",
+    );
+    const owner = createOwner();
+    const payload = new Uint8Array([1, 0, 2, 0]);
+
+    await controller.start(owner, "nemotron");
+    await controller.push(owner, "stream", payload.buffer);
+
+    const pushCalls = (session.push as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    const forwarded = pushCalls[0][0] as Buffer;
+    expect(forwarded).toEqual(Buffer.from(payload));
+    expect(forwarded.buffer).toBe(payload.buffer);
+  });
 });

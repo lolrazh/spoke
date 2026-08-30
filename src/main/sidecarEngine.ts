@@ -586,27 +586,57 @@ async function runLocalStream(
       }
       const header = Buffer.alloc(4);
       header.writeUInt32LE(payload.length);
-      const framed =
-        payload.length > 0 ? Buffer.concat([header, payload]) : header;
+
+      let settled = false;
+      const onHeaderDrain = () => {
+        stdin.removeListener("drain", onHeaderDrain);
+        writePayload();
+      };
+      const onPayloadDrain = () => {
+        stdin.removeListener("drain", onPayloadDrain);
+        settle();
+      };
       const onError = (error: Error) => {
-        stdin.removeListener("drain", onDrain);
+        stdin.removeListener("drain", onHeaderDrain);
+        stdin.removeListener("drain", onPayloadDrain);
+        if (settled) return;
+        settled = true;
         reject(error);
       };
-      const onDrain = () => {
+      const settle = () => {
+        if (settled) return;
+        settled = true;
         stdin.removeListener("error", onError);
         resolve();
       };
+      const writePayload = () => {
+        if (settled) return;
+        try {
+          if (payload.length === 0 || stdin.write(payload)) {
+            settle();
+          } else {
+            stdin.once("drain", onPayloadDrain);
+          }
+        } catch (error) {
+          onError(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+
       stdin.once("error", onError);
       try {
-        if (stdin.write(framed)) {
-          stdin.removeListener("error", onError);
-          resolve();
+        // Keep the header and PCM as separate buffers. With cork/uncork the
+        // pipe can submit them together, while avoiding a new header+payload
+        // allocation for every live audio batch.
+        stdin.cork();
+        if (stdin.write(header)) {
+          writePayload();
         } else {
-          stdin.once("drain", onDrain);
+          stdin.once("drain", onHeaderDrain);
         }
       } catch (error) {
-        stdin.removeListener("error", onError);
-        reject(error);
+        onError(error instanceof Error ? error : new Error(String(error)));
+      } finally {
+        stdin.uncork();
       }
     });
 

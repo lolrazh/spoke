@@ -134,7 +134,11 @@ export function registerSttIpc(): void {
 
   ipcMain.handle(
     "stt:push-local-stream",
-    async (event, sessionId: string, pcmBytes: Uint8Array) => {
+    async (
+      event,
+      sessionId: string,
+      pcmBytes: Uint8Array | ArrayBuffer,
+    ) => {
       await localStreams.push(event.sender, sessionId, pcmBytes);
     },
   );
@@ -156,19 +160,23 @@ export function registerSttIpc(): void {
     async (
       _event,
       modelId: string,
-      pcmBuffer: Uint8Array,
+      pcmBuffer: Uint8Array | ArrayBuffer,
       prompt?: string,
     ) => {
       try {
-        // Wrap the transferred bytes in place instead of copying them: the
-        // sidecar only reads this buffer, and the Uint8Array isn't reused after
-        // this handler returns.
+        // Wrap the IPC payload in place instead of copying it: the sidecar
+        // only reads this buffer, and the renderer does not reuse it after the
+        // request returns.
+        const bytes =
+          pcmBuffer instanceof Uint8Array
+            ? pcmBuffer
+            : new Uint8Array(pcmBuffer);
         return await transcribeWithLocalSidecar(
           modelId,
           Buffer.from(
-            pcmBuffer.buffer,
-            pcmBuffer.byteOffset,
-            pcmBuffer.byteLength,
+            bytes.buffer,
+            bytes.byteOffset,
+            bytes.byteLength,
           ),
           prompt,
         );

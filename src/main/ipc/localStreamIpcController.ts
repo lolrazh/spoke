@@ -13,6 +13,8 @@ type BeginLocalStream = (
   signal: AbortSignal,
 ) => Promise<ManagedLocalStreamingSession>;
 
+type PcmPayload = Uint8Array | ArrayBuffer;
+
 type StreamRecord = {
   id: string;
   owner: WebContents;
@@ -93,12 +95,14 @@ export class LocalStreamIpcController {
   async push(
     owner: WebContents,
     sessionId: string,
-    pcmBytes: Uint8Array,
+    pcmBytes: PcmPayload,
   ): Promise<void> {
     const { record, session } = this.requireSession(owner, sessionId);
+    const bytes =
+      pcmBytes instanceof Uint8Array ? pcmBytes : new Uint8Array(pcmBytes);
     try {
       await session.push(
-        Buffer.from(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.byteLength),
+        Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
       );
     } catch (error) {
       this.cancelRecord(record);

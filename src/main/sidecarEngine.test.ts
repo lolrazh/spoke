@@ -25,9 +25,13 @@ vi.mock("./sidecarPaths", () => ({
 function createSidecarProcess(pid = 12345) {
   const stdin = new EventEmitter() as EventEmitter & {
     write: ReturnType<typeof vi.fn>;
+    cork: ReturnType<typeof vi.fn>;
+    uncork: ReturnType<typeof vi.fn>;
     destroyed: boolean;
   };
   stdin.write = vi.fn(() => true);
+  stdin.cork = vi.fn();
+  stdin.uncork = vi.fn();
   stdin.destroyed = false;
   const proc = new EventEmitter() as EventEmitter & {
     stdout: EventEmitter;
@@ -353,10 +357,11 @@ describe("sidecarEngine", () => {
       const onPartial = vi.fn();
       const session = await engine.startLocalStream(onPartial);
 
-      const metadataFrame = proc.stdin.write.mock.calls[0][0] as Buffer;
-      const metadataLength = metadataFrame.readUInt32LE(0);
+      const metadataLengthBuf = proc.stdin.write.mock.calls[0][0] as Buffer;
+      const metadataLength = metadataLengthBuf.readUInt32LE(0);
+      const metadataPayload = proc.stdin.write.mock.calls[1][0] as Buffer;
       expect(
-        JSON.parse(metadataFrame.subarray(4, 4 + metadataLength).toString("utf8")),
+        JSON.parse(metadataPayload.subarray(0, metadataLength).toString("utf8")),
       ).toEqual({ op: "stream" });
 
       proc.stdout.emit(
@@ -375,11 +380,14 @@ describe("sidecarEngine", () => {
 
       await expect(finishing).resolves.toMatchObject({ text: "hello world" });
       expect(onPartial).toHaveBeenCalledWith("hello");
-      const audioFrame = proc.stdin.write.mock.calls[1][0] as Buffer;
-      expect(audioFrame.readUInt32LE(0)).toBe(4);
-      expect(audioFrame.subarray(4)).toEqual(Buffer.from([1, 0, 2, 0]));
-      const finalFrame = proc.stdin.write.mock.calls[2][0] as Buffer;
+      const audioLengthBuf = proc.stdin.write.mock.calls[2][0] as Buffer;
+      const audioPayload = proc.stdin.write.mock.calls[3][0] as Buffer;
+      expect(audioLengthBuf.readUInt32LE(0)).toBe(4);
+      expect(audioPayload).toEqual(Buffer.from([1, 0, 2, 0]));
+      const finalFrame = proc.stdin.write.mock.calls[4][0] as Buffer;
       expect(finalFrame.readUInt32LE(0)).toBe(0);
+      expect(proc.stdin.cork).toHaveBeenCalled();
+      expect(proc.stdin.uncork).toHaveBeenCalled();
     });
 
     it("preserves a multibyte transcript split across stdout chunks", async () => {
@@ -413,7 +421,9 @@ describe("sidecarEngine", () => {
       await expect(
         session.push(Buffer.alloc(engine.LOCAL_STT_MAX_STREAM_FRAME_BYTES + 2)),
       ).rejects.toThrow("one-second limit");
-      expect(proc.stdin.write).toHaveBeenCalledTimes(1);
+      // Startup writes the metadata header and payload separately. Invalid
+      // audio must not add any further writes.
+      expect(proc.stdin.write).toHaveBeenCalledTimes(2);
 
       const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
       session.cancel();
