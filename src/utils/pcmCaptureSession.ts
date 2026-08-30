@@ -1,6 +1,5 @@
 import {
   createCapturedAudio,
-  concatPcm16,
   type CapturedAudio,
 } from "../core/transcription/capturedAudio";
 import {
@@ -8,6 +7,7 @@ import {
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
 import type { AudioCaptureSession } from "./audioCaptureSession";
+import { Pcm16Accumulator } from "./pcm16Accumulator";
 
 export interface PcmCaptureSessionOptions {
   targetSampleRateHz?: number;
@@ -50,7 +50,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
   private readonly onPcmFrame?: (frame: Int16Array) => void;
   private readonly retainPcm: boolean;
   private readonly recyclePcmFrames: boolean;
-  private readonly chunks: Int16Array[] = [];
+  private readonly retainedPcm = new Pcm16Accumulator();
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private workletNode: AudioWorkletNode | null = null;
@@ -111,10 +111,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
     this.stopped = true;
     await this.flush();
 
-    const pcm16 = concatPcm16(this.chunks);
-    // Drop the per-frame chunks now that they're concatenated so we don't keep
-    // a second full copy of the recording alive through cleanup() and beyond.
-    this.chunks.length = 0;
+    const pcm16 = this.retainedPcm.take();
     await this.cleanup();
 
     return createCapturedAudio(pcm16, {
@@ -131,13 +128,13 @@ export class PcmCaptureSession implements AudioCaptureSession {
 
   /** Drop retained audio after an incremental consumer has safely sealed it. */
   discardBufferedPcm(): void {
-    this.chunks.length = 0;
+    this.retainedPcm.clear();
   }
 
   private handleWorkletMessage(message: WorkletMessage): void {
     if (message.type === "audio") {
       const frame = message.samples;
-      if (this.retainPcm) this.chunks.push(frame);
+      if (this.retainPcm) this.retainedPcm.append(frame);
       try {
         this.onAudioLevel?.(calculatePcm16Level(frame));
         this.onPcmFrame?.(frame);
@@ -178,10 +175,9 @@ export class PcmCaptureSession implements AudioCaptureSession {
   }
 
   private async cleanup(): Promise<void> {
-    // Release any retained capture chunks (the cancel() path never concatenates
-    // them, and stop() already did) so the recording buffer isn't held past
-    // teardown waiting on GC.
-    this.chunks.length = 0;
+    // Release the retained recording buffer so cancellation does not keep PCM
+    // alive past teardown waiting on GC.
+    this.retainedPcm.clear();
 
     if (this.flushResolver) {
       this.flushResolver();
