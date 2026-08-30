@@ -185,6 +185,15 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   }
 
   private appendSamples(pcm16: Int16Array): void {
+    if (this.carryLen === 0 && pcm16.length === MODEL_FRAME_SAMPLES) {
+      const window =
+        this.recycledWindow ?? new Float32Array(MODEL_FRAME_SAMPLES);
+      this.recycledWindow = null;
+      copyPcm16ToFloat32(pcm16, 0, window, 0, MODEL_FRAME_SAMPLES);
+      this.enqueueWindow(window);
+      return;
+    }
+
     // Emit as many full MODEL_FRAME_SAMPLES windows as carry + this frame can
     // fill, without materializing a Float32Array for every capture frame.
     // Each window is still its own Float32Array because it is transferred to
