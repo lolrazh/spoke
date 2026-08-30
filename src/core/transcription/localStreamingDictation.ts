@@ -29,12 +29,14 @@ export class LocalStreamingDictation {
   private removePartialListener: (() => void) | null = null;
   private startPromise: Promise<void> | null = null;
   private cancelPromise: Promise<void> | null = null;
-  private sendQueue = Promise.resolve();
   private failure: Error | null = null;
   private closed = false;
   private startPending = false;
   private cancelRequested = false;
   private limitReported = false;
+  private sendPumpPromise: Promise<void> | null = null;
+  private sendIdlePromise: Promise<void> = Promise.resolve();
+  private resolveSendIdle: (() => void) | null = null;
 
   constructor(private readonly options: LocalStreamingDictationOptions) {
     const batchMs = options.batchMs ?? 320;
@@ -122,7 +124,7 @@ export class LocalStreamingDictation {
     if (this.pendingSamples > 0) this.sealPending(this.pendingSamples);
     await this.startPromise;
     this.drainQueuedBatches();
-    await this.sendQueue;
+    await this.sendIdlePromise;
     try {
       if (this.failure) throw this.failure;
       if (!this.sessionId) throw new Error("Local streaming session did not start.");
@@ -194,18 +196,36 @@ export class LocalStreamingDictation {
   private drainQueuedBatches(): void {
     const sessionId = this.sessionId;
     if (!sessionId) return;
-    while (this.queuedBatchStart < this.queuedBatches.length) {
+    if (this.sendPumpPromise) return;
+    if (this.queuedBatchStart >= this.queuedBatches.length) return;
+
+    this.sendIdlePromise = new Promise<void>((resolve) => {
+      this.resolveSendIdle = resolve;
+    });
+    this.sendPumpPromise = this.pumpQueuedBatches(sessionId).finally(() => {
+      this.sendPumpPromise = null;
+      const resolveSendIdle = this.resolveSendIdle;
+      this.resolveSendIdle = null;
+      resolveSendIdle?.();
+    });
+  }
+
+  private async pumpQueuedBatches(sessionId: string): Promise<void> {
+    while (
+      this.queuedBatchStart < this.queuedBatches.length &&
+      !this.failure &&
+      !this.cancelRequested
+    ) {
       const pcm = this.queuedBatches[this.queuedBatchStart];
       this.queuedBatchStart += 1;
-      this.sendQueue = this.sendQueue.then(async () => {
-        if (this.failure || this.cancelRequested) return;
-        try {
-          await window.stt.pushLocalStream(sessionId, pcm.buffer as ArrayBuffer);
-        } catch (error) {
-          this.failure = asError(error);
-        }
-      });
+      try {
+        await window.stt.pushLocalStream(sessionId, pcm.buffer as ArrayBuffer);
+      } catch (error) {
+        this.failure = asError(error);
+      }
     }
+
+    // Release sent or abandoned buffers as soon as the pump becomes idle.
     this.queuedBatches.length = 0;
     this.queuedBatchStart = 0;
   }

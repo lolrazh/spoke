@@ -47,6 +47,33 @@ describe("LocalStreamingDictation", () => {
     expect(Array.from(first.slice(18, 22))).toEqual([1, 1, 2, 2]);
   });
 
+  it("waits for an in-flight batch before finalization", async () => {
+    let resolvePush!: () => void;
+    const pushFinished = new Promise<void>((resolve) => {
+      resolvePush = resolve;
+    });
+    window.stt.pushLocalStream = vi.fn(() => pushFinished);
+
+    const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
+      sampleRateHz: 100,
+      batchMs: 320,
+      maxDurationMs: 5_000,
+      onPartial: vi.fn(),
+      onLimitReached: vi.fn(),
+    });
+    await stream.start();
+    stream.pushFrame(new Int16Array(32));
+
+    const finishing = stream.finish();
+    await Promise.resolve();
+    expect(window.stt.finishLocalStream).not.toHaveBeenCalled();
+
+    resolvePush();
+    await finishing;
+    expect(window.stt.finishLocalStream).toHaveBeenCalledWith("stream-1");
+  });
+
   it("forwards only partials for its session", async () => {
     const onPartial = vi.fn();
     const stream = new LocalStreamingDictation({
