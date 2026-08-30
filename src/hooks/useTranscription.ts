@@ -45,9 +45,9 @@ import {
   LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
-import {
+import type {
   LocalChunkedDictation,
-  mergeLocalChunkTexts,
+  LocalChunkedDictationOptions,
 } from "../core/transcription/localChunkedDictation";
 import {
   LocalStreamingDictation,
@@ -73,6 +73,15 @@ async function loadStreamingVadSession(
 ): Promise<StreamingVadSessionHandle> {
   const { createStreamingVadSession } = await import("../utils/streamingVad");
   return createStreamingVadSession(options);
+}
+
+async function createLocalChunkedDictation(
+  options: LocalChunkedDictationOptions,
+): Promise<LocalChunkedDictation> {
+  const { LocalChunkedDictation } = await import(
+    "../core/transcription/localChunkedDictation"
+  );
+  return new LocalChunkedDictation(options);
 }
 
 export interface UseTranscriptionReturn {
@@ -329,7 +338,7 @@ export function useTranscription(
         localStreamingDictation.start();
       }
       if (provider.descriptor.kind === "local" && !localStreamingDictation) {
-        localChunkedDictation = new LocalChunkedDictation({
+        localChunkedDictation = await createLocalChunkedDictation({
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
           naturalChunkingStartMs: LOCAL_STT_CHUNK_NATURAL_START_MS,
           minNaturalChunkMs: LOCAL_STT_CHUNK_MIN_NATURAL_MS,
@@ -752,6 +761,9 @@ export function useTranscription(
         timing.sttDoneAt = performance.now();
         if (isCancelled()) return;
 
+        const { mergeLocalChunkTexts } = await import(
+          "../core/transcription/localChunkedDictation"
+        );
         const finalText = mergeLocalChunkTexts(chunkResults);
         const capturedAudioMs = Math.round(localChunkedDictation.durationMs);
         const vadResult: VadAudioResult = {

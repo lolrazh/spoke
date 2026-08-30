@@ -235,8 +235,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -272,8 +271,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -303,8 +301,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([5, 6, 7, 8]);
+      await emitPcmFrame([5, 6, 7, 8]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -447,8 +444,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([9, 10, 11, 12]);
+      await emitPcmFrame([9, 10, 11, 12]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -480,8 +476,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -524,8 +519,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([0, 0, 0, 0]);
+      await emitPcmFrame([0, 0, 0, 0]);
     });
 
     await act(async () => {
@@ -551,8 +545,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     const stopStartedAt = performance.now();
@@ -588,8 +581,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     expect(usableSession.pushFrame).toHaveBeenCalled();
@@ -637,8 +629,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -672,8 +663,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -706,8 +696,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -742,8 +731,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -774,8 +762,7 @@ describe("useTranscription", () => {
 
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -807,7 +794,7 @@ describe("useTranscription", () => {
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
     expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
-    emitPcmFrame(new Array(10_240).fill(1));
+    await emitPcmFrame(new Array(10_240).fill(1));
     await waitFor(() =>
       expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2),
     );
@@ -1031,10 +1018,14 @@ function testModelInfo() {
   };
 }
 
-function emitPcmFrame(samples: number[]) {
+async function emitPcmFrame(samples: number[]) {
+  await waitFor(() => {
+    const worklet = (globalThis as any)
+      .__lastWorklet as FakeAudioWorkletNode | null;
+    expect(worklet).toBeTruthy();
+  });
   const worklet = (globalThis as any)
     .__lastWorklet as FakeAudioWorkletNode | null;
-  expect(worklet).toBeTruthy();
   worklet?.emitAudio(new Int16Array(samples));
 }
 
