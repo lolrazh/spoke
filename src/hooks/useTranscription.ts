@@ -223,14 +223,6 @@ export function useTranscription(
       initStream().catch(console.error);
     }
 
-    // Load provider preference
-    window.electron?.bootMark?.("transcription-hook:get-provider:start");
-    window.stt?.getPreferredProvider?.().then((providerId) => {
-      preferredProviderIdRef.current =
-        providerId ?? LOCAL_STT_PROVIDER_ID;
-      window.electron?.bootMark?.("transcription-hook:get-provider:done");
-    });
-
     // No boot-time VAD prewarm: each dictation owns a short-lived worker, so
     // the ONNX/WASM heap never becomes permanent renderer state.
     return () => {

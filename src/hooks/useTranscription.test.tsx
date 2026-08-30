@@ -234,10 +234,6 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(window.stt.getPreferredProvider).toHaveBeenCalled();
-    });
-
     await act(async () => {
       result.current.start();
       await emitPcmFrame([1, 2, 3, 4]);
