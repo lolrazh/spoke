@@ -10,7 +10,6 @@
 import { ipcMain, powerMonitor, type IpcMainEvent } from "electron";
 
 import type { MicDevice, SelectionInspectSnapshot } from "../../types/shared";
-import { captureScreenshot, testScreenshotCapture } from "../../utils/screenshot";
 import {
   inspectFocusedSelection,
   type SelectionInspectOptions,
@@ -55,6 +54,7 @@ export function registerMiscIpc(): void {
   // Screenshot capture for OCR context (Phase 1)
   ipcMain.handle("screenshot:capture", async (_event, options) => {
     try {
+      const { captureScreenshot } = await import("../../utils/screenshot");
       const result = await captureScreenshot(options);
       console.log(
         `[Screenshot] Captured in ${result.captureTimeMs}ms, size: ${result.sizeKb}KB`,
@@ -70,6 +70,7 @@ export function registerMiscIpc(): void {
   // Screenshot test handler (for PoC performance testing)
   ipcMain.handle("screenshot:test", async () => {
     try {
+      const { testScreenshotCapture } = await import("../../utils/screenshot");
       return await testScreenshotCapture();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
