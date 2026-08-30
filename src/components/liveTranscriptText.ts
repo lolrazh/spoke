@@ -1,6 +1,7 @@
 const wordSegmenter = new Intl.Segmenter(undefined, {
   granularity: "word",
 });
+const SIMPLE_ASCII_LIVE_TEXT_RE = /^[\t\n\r\x20-\x26\x28-\x2c\x2e-\x2f\x3a-\x7f]*$/;
 
 export type LiveTranscriptText = {
   committed: string;
@@ -43,23 +44,7 @@ export function splitLiveTranscriptText(
  * word-boundary rules.
  */
 function splitSimpleAsciiText(text: string): LiveTranscriptText | null {
-  let hasLetter = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (isAsciiLetter(code)) {
-      hasLetter = true;
-      continue;
-    }
-    if (
-      code > 0x7f ||
-      code === 0x27 ||
-      code === 0x2d ||
-      (code >= 0x30 && code <= 0x39)
-    ) {
-      return null;
-    }
-  }
-  if (!hasLetter) return null;
+  if (!SIMPLE_ASCII_LIVE_TEXT_RE.test(text)) return null;
 
   let tentativeEnd = text.length - 1;
   while (tentativeEnd >= 0 && !isAsciiLetter(text.charCodeAt(tentativeEnd))) {
