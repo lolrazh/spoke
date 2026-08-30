@@ -3,7 +3,6 @@ import {
   useEffect,
   useLayoutEffect,
   useRef,
-  useState,
   type RefObject,
 } from "react";
 import { m } from "framer-motion";
@@ -24,7 +23,7 @@ export type LiveTranscriptMetrics = {
   wrappedTextHeight: number;
 };
 
-export type LiveTranscriptProps = {
+type LiveTranscriptProps = {
   text: string;
   isProcessing: boolean;
   textWidth: number;
@@ -162,96 +161,6 @@ export function LiveTranscriptFromStore(
       displayText={{ committed: "", tentative: "" }}
       caretIdle={false}
       imperativeText
-      refs={{
-        committed: committedRef,
-        tentative: tentativeRef,
-        caret: caretRef,
-        measure: wrappedMeasureRef,
-      }}
-    />
-  );
-}
-
-/** Visual-only partial transcript. Final publication remains in useTranscription. */
-export function LiveTranscript({
-  text,
-  isProcessing,
-  textWidth,
-  visibleTextHeight,
-  railOffsetY,
-  overflowing,
-  reducedMotion,
-  onTextMetricsChange,
-}: LiveTranscriptProps) {
-  const committedRef = useRef<HTMLSpanElement>(null);
-  const tentativeRef = useRef<HTMLSpanElement>(null);
-  const caretRef = useRef<HTMLSpanElement>(null);
-  const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
-  const lastMeasuredHeightRef = useRef<number | null>(null);
-  const [caretIdle, setCaretIdle] = useState(false);
-  const displayText = splitLiveTranscriptText(text, isProcessing);
-
-  useEffect(() => {
-    setCaretIdle(false);
-    if (isProcessing || reducedMotion) return;
-
-    const timeoutId = window.setTimeout(
-      () => setCaretIdle(true),
-      LIVE_TRANSCRIPT_CARET_IDLE_MS,
-    );
-    return () => window.clearTimeout(timeoutId);
-  }, [isProcessing, reducedMotion, text]);
-
-  const publishMeasuredHeight = useCallback(
-    (height: number) => {
-      const roundedHeight = Math.ceil(Math.max(height, 0));
-      if (lastMeasuredHeightRef.current === roundedHeight) return;
-      lastMeasuredHeightRef.current = roundedHeight;
-      onTextMetricsChange({ wrappedTextHeight: roundedHeight });
-    },
-    [onTextMetricsChange],
-  );
-
-  // The hidden span changes size as partial text arrives. ResizeObserver lets
-  // the browser report that change after layout instead of forcing a sync
-  // getBoundingClientRect() read for every partial transcript.
-  useEffect(() => {
-    const wrappedMeasure = wrappedMeasureRef.current;
-    const ResizeObserverCtor = window.ResizeObserver;
-    if (!wrappedMeasure || !ResizeObserverCtor) return;
-
-    const observer = new ResizeObserverCtor(([entry]) => {
-      publishMeasuredHeight(entry?.contentRect.height ?? 0);
-    });
-    observer.observe(wrappedMeasure);
-
-    return () => observer.disconnect();
-  }, [publishMeasuredHeight, textWidth]);
-
-  // Older Electron/test environments may not expose ResizeObserver. Keep a
-  // one-frame fallback for those environments without blocking the commit.
-  useEffect(() => {
-    if (window.ResizeObserver) return;
-    const frameId = window.requestAnimationFrame(() => {
-      const wrappedMeasure = wrappedMeasureRef.current;
-      if (!wrappedMeasure) return;
-      publishMeasuredHeight(wrappedMeasure.getBoundingClientRect().height);
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, [publishMeasuredHeight, text, textWidth]);
-
-  return (
-    <LiveTranscriptMarkup
-      text={text}
-      isProcessing={isProcessing}
-      textWidth={textWidth}
-      visibleTextHeight={visibleTextHeight}
-      railOffsetY={railOffsetY}
-      overflowing={overflowing}
-      reducedMotion={reducedMotion}
-      onTextMetricsChange={onTextMetricsChange}
-      displayText={displayText}
-      caretIdle={caretIdle}
       refs={{
         committed: committedRef,
         tentative: tentativeRef,

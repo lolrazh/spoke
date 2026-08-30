@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LIVE_TRANSCRIPT_CARET_IDLE_MS,
   LiveTranscriptFromStore,
-  LiveTranscript,
 } from "./LiveTranscript";
 import {
   getLiveTranscript,
@@ -29,17 +28,32 @@ const commonProps = {
 };
 
 describe("LiveTranscript caret", () => {
+  let pendingFrame: FrameRequestCallback | null = null;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    pendingFrame = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrame = callback;
+      return 1;
+    });
+    act(() => setLiveTranscript(""));
   });
 
   afterEach(() => {
+    act(() => {
+      setLiveTranscript("");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
   it("blinks only after an idle gap and becomes solid on new text", () => {
+    act(() => setLiveTranscript("Hello"));
     const { container, rerender } = render(
-      <LiveTranscript {...commonProps} text="Hello" />,
+      <LiveTranscriptFromStore {...commonProps} />,
     );
     const caret = container.querySelector(".live-transcript-caret");
 
@@ -56,13 +70,20 @@ describe("LiveTranscript caret", () => {
     });
     expect(caret?.classList.contains("is-blinking")).toBe(true);
 
-    rerender(<LiveTranscript {...commonProps} text="Hello world" />);
+    act(() => {
+      setLiveTranscript("Hello world");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
     expect(caret?.classList.contains("is-blinking")).toBe(false);
+
+    rerender(<LiveTranscriptFromStore {...commonProps} />);
   });
 
   it("does not blink with reduced motion and hides while processing", () => {
+    act(() => setLiveTranscript("Hello"));
     const { container, rerender } = render(
-      <LiveTranscript {...commonProps} text="Hello" reducedMotion />,
+      <LiveTranscriptFromStore {...commonProps} reducedMotion />,
     );
 
     act(() => {
@@ -75,7 +96,7 @@ describe("LiveTranscript caret", () => {
     ).toBe(false);
 
     rerender(
-      <LiveTranscript {...commonProps} text="Hello" isProcessing />,
+      <LiveTranscriptFromStore {...commonProps} isProcessing />,
     );
     expect(container.querySelector(".live-transcript-caret")).toBeNull();
   });

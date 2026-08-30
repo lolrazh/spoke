@@ -1,8 +1,9 @@
 import React from "react";
-import { render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Pill from "./Pill";
+import { setLiveTranscript } from "../state/liveTranscript";
 
 vi.mock("framer-motion", async () => {
   const actual = await vi.importActual<typeof import("framer-motion")>(
@@ -33,6 +34,25 @@ const commonProps = {
 };
 
 describe("Pill live transcript", () => {
+  let pendingFrame: FrameRequestCallback | null = null;
+
+  beforeEach(() => {
+    pendingFrame = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrame = callback;
+      return 1;
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      setLiveTranscript("");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+    vi.restoreAllMocks();
+  });
+
   it("renders fixed dots for the hover preview", () => {
     const { container } = render(
       <Pill {...commonProps} pillState="HOVER_PREVIEW" />,
@@ -44,11 +64,11 @@ describe("Pill live transcript", () => {
   });
 
   it("shows partial text only while dictation is active", () => {
+    act(() => setLiveTranscript("Hello from Nemotron"));
     const { container, getByRole, rerender } = render(
       <Pill
         {...commonProps}
         pillState="LISTENING"
-        liveTranscript="Hello from Nemotron"
       />,
     );
 
@@ -68,7 +88,6 @@ describe("Pill live transcript", () => {
       <Pill
         {...commonProps}
         pillState="IDLE"
-        liveTranscript="Hello from Nemotron"
       />,
     );
 
@@ -77,11 +96,11 @@ describe("Pill live transcript", () => {
   });
 
   it("keeps the transcript visible while finalization is processing", () => {
+    act(() => setLiveTranscript("Final words"));
     const { container } = render(
       <Pill
         {...commonProps}
         pillState="PROCESSING"
-        liveTranscript="Final words"
       />,
     );
 
@@ -92,21 +111,21 @@ describe("Pill live transcript", () => {
   });
 
   it("keeps completed words separate from the tentative live tail", () => {
+    act(() => setLiveTranscript("The quick brown"));
     const { container, rerender } = render(
       <Pill
         {...commonProps}
         pillState="LISTENING"
-        liveTranscript="The quick brown"
       />,
     );
 
-    rerender(
-      <Pill
-        {...commonProps}
-        pillState="LISTENING"
-        liveTranscript="The quick crown fox"
-      />,
-    );
+    act(() => {
+      setLiveTranscript("The quick crown fox");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+
+    rerender(<Pill {...commonProps} pillState="LISTENING" />);
 
     const rail = container.querySelector(".live-transcript-rail");
     expect(rail?.textContent).toBe("The quick crown fox");

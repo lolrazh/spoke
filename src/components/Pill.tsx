@@ -16,7 +16,6 @@ import {
   ProcessingFrequencyBars,
 } from "./FrequencyBars";
 import {
-  LiveTranscript,
   LiveTranscriptFromStore,
   type LiveTranscriptMetrics,
 } from "./LiveTranscript";
@@ -60,8 +59,6 @@ interface PillProps {
     notifMsg?: string;
     notifAction?: string | null;
   };
-  /** Optional test/embedding override; production reads the external store. */
-  liveTranscript?: string;
   notifWidth: number | null;
   isTextTruncated: boolean;
   dims: {
@@ -89,7 +86,6 @@ interface PillProps {
 const Pill: React.FC<PillProps> = ({
   pillState,
   pillContext,
-  liveTranscript: liveTranscriptOverride,
   onHoverChange,
   onMetrics,
   notifWidth,
@@ -132,13 +128,9 @@ const Pill: React.FC<PillProps> = ({
 
   const isShowingNotification = pillState === "NOTIFICATION";
   const isExpanded = pillState === "EXPANDED";
-  const liveTranscriptIsActive =
-    liveTranscriptOverride === undefined
-      ? liveTranscriptActive
-      : liveTranscriptOverride.length > 0;
   const hasLiveTranscript =
     (pillState === "LISTENING" || pillState === "PROCESSING") &&
-    liveTranscriptIsActive;
+    liveTranscriptActive;
   const notificationAction = pillContext.notifAction ?? null;
 
   const handleLiveTextMetricsChange = useCallback(
@@ -435,28 +427,15 @@ const Pill: React.FC<PillProps> = ({
               >
                 {/* Visuals for non-notification states */}
                 {hasLiveTranscript ? (
-                  liveTranscriptOverride === undefined ? (
-                    <LiveTranscriptFromStore
-                      isProcessing={pillState === "PROCESSING"}
-                      textWidth={liveTranscriptLayout.textWidth}
-                      visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
-                      railOffsetY={liveTranscriptLayout.railOffsetY}
-                      overflowing={liveTranscriptLayout.overflowing}
-                      reducedMotion={reduceMotion}
-                      onTextMetricsChange={handleLiveTextMetricsChange}
-                    />
-                  ) : (
-                    <LiveTranscript
-                      text={liveTranscriptOverride}
-                      isProcessing={pillState === "PROCESSING"}
-                      textWidth={liveTranscriptLayout.textWidth}
-                      visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
-                      railOffsetY={liveTranscriptLayout.railOffsetY}
-                      overflowing={liveTranscriptLayout.overflowing}
-                      reducedMotion={reduceMotion}
-                      onTextMetricsChange={handleLiveTextMetricsChange}
-                    />
-                  )
+                  <LiveTranscriptFromStore
+                    isProcessing={pillState === "PROCESSING"}
+                    textWidth={liveTranscriptLayout.textWidth}
+                    visibleTextHeight={liveTranscriptLayout.visibleTextHeight}
+                    railOffsetY={liveTranscriptLayout.railOffsetY}
+                    overflowing={liveTranscriptLayout.overflowing}
+                    reducedMotion={reduceMotion}
+                    onTextMetricsChange={handleLiveTextMetricsChange}
+                  />
                 ) : pillState === "LISTENING" ? (
                   <ListeningFrequencyBars />
                 ) : pillState === "PROCESSING" ? (
