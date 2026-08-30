@@ -31,14 +31,10 @@ export interface PcmCaptureSessionOptions {
 type WorkletAudioMessage = {
   type: "audio";
   samples: Int16Array;
-  rate: number;
-  seq: number;
 };
 
 type WorkletFlushedMessage = {
   type: "flushed";
-  rate: number;
-  seq: number;
 };
 
 type WorkletMessage = WorkletAudioMessage | WorkletFlushedMessage;

@@ -66,7 +66,6 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this._frame = new Int16Array(this.frameSamples);
     this._recycledFrame = null;
     this._frameIndex = 0;
-    this._seq = 0;
 
     // Track pause state
     this._paused = false;
@@ -76,14 +75,11 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       const msg = ev.data || {};
       if (msg.type === "reset") {
         this._resetState();
-        this._seq = 0;
         this._paused = false;
       } else if (msg.type === "flush") {
         this._emitPartialFrame();
         this.port.postMessage({
           type: "flushed",
-          seq: this._seq,
-          rate: this.targetRate,
         });
       } else if (msg.type === "pause") {
         this._paused = true;
@@ -132,8 +128,6 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this.port.postMessage(
       {
         type: "audio",
-        seq: this._seq++,
-        rate: this.targetRate,
         samples: out,
       },
       [out.buffer],
