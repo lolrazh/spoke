@@ -10,6 +10,7 @@ import {
   getLiveTranscript,
   setLiveTranscript,
 } from "../state/liveTranscript";
+import { MAX_LIVE_TRANSCRIPT_DOM_CHARS } from "./liveTranscriptText";
 
 vi.mock("./FrequencyBars", () => ({
   default: () => <div />,
@@ -166,5 +167,26 @@ describe("live transcript store", () => {
     expect(
       container.querySelector(".live-transcript-tentative")?.textContent,
     ).toBe("world");
+  });
+
+  it("bounds the live transcript DOM to the recent tail", () => {
+    const text = Array.from({ length: 500 }, () => "word").join(" ");
+    const { container } = render(
+      <LiveTranscriptFromStore {...commonProps} />,
+    );
+
+    act(() => {
+      setLiveTranscript(text);
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+
+    expect(
+      container.querySelector(".live-transcript-measure")?.textContent
+        ?.length,
+    ).toBeLessThanOrEqual(MAX_LIVE_TRANSCRIPT_DOM_CHARS);
+    expect(
+      container.querySelector(".live-transcript-rail")?.textContent?.length,
+    ).toBeLessThanOrEqual(MAX_LIVE_TRANSCRIPT_DOM_CHARS);
   });
 });

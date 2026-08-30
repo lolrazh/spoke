@@ -15,7 +15,11 @@ import {
   getLiveTranscript,
   subscribeLiveTranscript,
 } from "../state/liveTranscript";
-import { splitLiveTranscriptText, type LiveTranscriptText } from "./liveTranscriptText";
+import {
+  boundLiveTranscriptText,
+  splitLiveTranscriptText,
+  type LiveTranscriptText,
+} from "./liveTranscriptText";
 
 export const LIVE_TRANSCRIPT_CARET_IDLE_MS = 480;
 
@@ -103,7 +107,8 @@ export function LiveTranscriptFromStore(
 
   const updateText = useCallback((text: string) => {
     const { isProcessing, reducedMotion } = latestPropsRef.current;
-    const displayText = splitLiveTranscriptText(text, isProcessing);
+    const boundedText = boundLiveTranscriptText(text);
+    const displayText = splitLiveTranscriptText(boundedText, isProcessing);
 
     if (
       committedRef.current &&
@@ -119,9 +124,12 @@ export function LiveTranscriptFromStore(
       tentativeRef.current.textContent = displayText.tentative;
       tentativeTextRef.current = displayText.tentative;
     }
-    if (wrappedMeasureRef.current && measuredTextRef.current !== text) {
-      wrappedMeasureRef.current.textContent = text;
-      measuredTextRef.current = text;
+    if (
+      wrappedMeasureRef.current &&
+      measuredTextRef.current !== boundedText
+    ) {
+      wrappedMeasureRef.current.textContent = boundedText;
+      measuredTextRef.current = boundedText;
     }
 
     const shouldBlink = !isProcessing && !reducedMotion;
