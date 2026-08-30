@@ -219,12 +219,14 @@ type PhraseMatch = {
   path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase";
 };
 
+type ScoredPhrase = { candidate: PhraseKey; sim: number };
+
 function scorePhraseCandidates(
   candidates: PhraseKey[],
   key: string,
   threshold: number,
-): Array<{ candidate: PhraseKey; sim: number }> {
-  const bestByEntry = new Map<string, { candidate: PhraseKey; sim: number }>();
+): ScoredPhrase[] {
+  const bestByEntry = new Map<string, ScoredPhrase>();
   for (const candidate of candidates) {
     const sim = similarity(key, candidate.key);
     if (sim < threshold) continue;
@@ -234,11 +236,25 @@ function scorePhraseCandidates(
       bestByEntry.set(entryKey, { candidate, sim });
     }
   }
-  return [...bestByEntry.values()].sort((a, b) => b.sim - a.sim);
+
+  // Callers only need the winner and runner-up to reject near ties. Avoid
+  // materializing and sorting every unique entry in the candidate bucket.
+  let best: ScoredPhrase | null = null;
+  let secondBest: ScoredPhrase | null = null;
+  for (const scored of bestByEntry.values()) {
+    if (!best || scored.sim > best.sim) {
+      secondBest = best;
+      best = scored;
+    } else if (!secondBest || scored.sim > secondBest.sim) {
+      secondBest = scored;
+    }
+  }
+
+  return best ? (secondBest ? [best, secondBest] : [best]) : [];
 }
 
 function unambiguousPhrase(
-  scored: Array<{ candidate: PhraseKey; sim: number }>,
+  scored: ScoredPhrase[],
   path: PhraseMatch["path"],
 ): PhraseMatch | null {
   if (scored.length === 0) return null;
