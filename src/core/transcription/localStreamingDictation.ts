@@ -145,6 +145,9 @@ export class LocalStreamingDictation {
       this.queuedBatches.push(tail);
       this.drainQueuedBatches();
     }
+    // No more frames can arrive after finish() closes the session. Release the
+    // reusable staging buffer while the sidecar drains and finalizes.
+    this.pendingBatch = EMPTY_PCM16;
     await this.startPromise;
     this.drainQueuedBatches();
     await this.sendPumpPromise;
