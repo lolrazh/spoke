@@ -25,13 +25,10 @@ import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
 import { NativePcmCaptureSession } from "../utils/nativePcmCaptureSession";
-import {
-  trimCapturedAudioWithVad,
-  type VadAudioResult,
-} from "../utils/vadTrimmer";
-import {
-  createStreamingVadSession,
-  type StreamingVadSessionHandle,
+import type { VadAudioResult } from "../utils/vadTrimmer";
+import type {
+  StreamingVadSessionHandle,
+  StreamingVadSessionOptions,
 } from "../utils/streamingVad";
 import { playToggleOff } from "../utils/audioFeedback";
 import { invokedBloodyMary } from "../utils/easterEggs";
@@ -70,6 +67,13 @@ const log = createLogger("Transcription");
 const vadLog = createLogger("VAD");
 const ocrLog = createLogger("OCR");
 const latencyLog = createLogger("Latency");
+
+async function loadStreamingVadSession(
+  options: StreamingVadSessionOptions,
+): Promise<StreamingVadSessionHandle> {
+  const { createStreamingVadSession } = await import("../utils/streamingVad");
+  return createStreamingVadSession(options);
+}
 
 export interface UseTranscriptionReturn {
   recording: boolean;
@@ -364,7 +368,7 @@ export function useTranscription(
       // drives natural chunk boundaries.
       const streamingVadSession = localStreamingDictation
         ? null
-        : createStreamingVadSession({
+        : await loadStreamingVadSession({
             onSpeechStart: () => localChunkedDictation?.cancelNaturalBoundary(),
             onSpeechEnd: () => localChunkedDictation?.requestNaturalBoundary(),
           });
@@ -835,6 +839,9 @@ export function useTranscription(
         vadLog.warn("Streaming VAD unavailable; falling back to post-hoc VAD");
         const fallbackStartedAt = performance.now();
         try {
+          const { trimCapturedAudioWithVad } = await import(
+            "../utils/vadTrimmer"
+          );
           vadResult = await trimCapturedAudioWithVad(capturedAudio);
         } catch (vadError) {
           // Never discard a valid recording because the optional speech
