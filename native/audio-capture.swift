@@ -71,7 +71,10 @@ private final class FloatRingBuffer {
 
         for sample in samples {
             storage[writeIndex] = sample
-            writeIndex = (writeIndex + 1) % capacity
+            writeIndex += 1
+            if writeIndex == capacity {
+                writeIndex = 0
+            }
         }
         count += samples.count
         return true
@@ -88,7 +91,10 @@ private final class FloatRingBuffer {
         result.append(contentsOf: repeatElement(Float.zero, count: count))
         for index in 0..<count {
             result[index] = storage[readIndex]
-            readIndex = (readIndex + 1) % capacity
+            readIndex += 1
+            if readIndex == capacity {
+                readIndex = 0
+            }
         }
         count = 0
         return true
