@@ -5,16 +5,8 @@ import {
   OPENAI_CLOUD_PROVIDER_ID,
   GROQ_CLOUD_PROVIDER_ID,
   DEEPGRAM_CLOUD_PROVIDER_ID,
-  type PreferredTranscriptionProviderId,
 } from "./providerPreferences";
 import { localSttProvider } from "./providers/localSttProvider";
-
-export {
-  LOCAL_STT_PROVIDER_ID,
-  OPENAI_CLOUD_PROVIDER_ID,
-  GROQ_CLOUD_PROVIDER_ID,
-  DEEPGRAM_CLOUD_PROVIDER_ID,
-};
 
 function createLazyCloudProvider(
   descriptor: TranscriptionProvider["descriptor"],
@@ -83,9 +75,3 @@ export const defaultTranscriptionSessionOrchestrator =
     ],
     defaultProviderId: LOCAL_STT_PROVIDER_ID,
   });
-
-export function resolvePreferredTranscriptionProviderId(
-  providerId?: PreferredTranscriptionProviderId | null,
-) {
-  return providerId ?? LOCAL_STT_PROVIDER_ID;
-}
