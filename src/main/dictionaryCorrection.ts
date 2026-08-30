@@ -20,10 +20,13 @@ const COMMON_WORDS = new Set(
     .slice(0, COMMON_WORD_LIMIT)
     .map((entry) => entry.word.toLowerCase()),
 );
-// The correction path only needs the common-word skip list. Drop the unused
-// tail of the imported frequency table so tens of thousands of entry objects
-// can be reclaimed after module initialization.
-subtlexWords.length = COMMON_WORD_LIMIT;
+// The correction path only needs the common-word skip list. Drop the imported
+// frequency table so all entry objects can be reclaimed after initialization.
+subtlexWords.length = 0;
+
+export function isCommonWord(word: string): boolean {
+  return COMMON_WORDS.has(word.toLowerCase());
+}
 
 const WORD_SPAN = /[\p{L}\p{N}']+/gu;
 const PHRASE_GAP = /^[\p{Zs}\t&+/-]*$/u;
