@@ -44,6 +44,7 @@ type WorkletFlushedMessage = {
 type WorkletMessage = WorkletAudioMessage | WorkletFlushedMessage;
 
 const FLUSH_TIMEOUT_MS = 500;
+const PCM16_LEVEL_GAIN = 4 / 32768;
 
 export class PcmCaptureSession implements AudioCaptureSession {
   private readonly targetSampleRateHz: number;
@@ -263,11 +264,11 @@ export function calculatePcm16Level(frame: Int16Array): number {
 
   let sumSquares = 0;
   for (let i = 0; i < frame.length; i++) {
-    const normalized = frame[i] / 32768;
-    sumSquares += normalized * normalized;
+    const sample = frame[i];
+    sumSquares += sample * sample;
   }
 
-  return Math.min(1, Math.sqrt(sumSquares / frame.length) * 4);
+  return Math.min(1, Math.sqrt(sumSquares / frame.length) * PCM16_LEVEL_GAIN);
 }
 
 function resolvePcmWorkletUrl(): string {

@@ -12,6 +12,7 @@ import type { AudioCaptureSession } from "./audioCaptureSession";
 // Keep the PCM sent to STT untouched, but calibrate the pill-only meter so a
 // normal unprocessed speaking level has comparable visual intensity.
 const NATIVE_VISUAL_LEVEL_GAIN = 3;
+const PCM16_LEVEL_GAIN = 4 / 32768;
 const HOST_IS_LITTLE_ENDIAN = new Uint8Array(
   new Uint16Array([1]).buffer,
 )[0] === 1;
@@ -179,8 +180,8 @@ function calculatePcm16Level(frame: Int16Array): number {
 
   let sumSquares = 0;
   for (let index = 0; index < frame.length; index++) {
-    const normalized = frame[index] / 32768;
-    sumSquares += normalized * normalized;
+    const sample = frame[index];
+    sumSquares += sample * sample;
   }
-  return Math.min(1, Math.sqrt(sumSquares / frame.length) * 4);
+  return Math.min(1, Math.sqrt(sumSquares / frame.length) * PCM16_LEVEL_GAIN);
 }
