@@ -12,6 +12,7 @@ const FUZZY_THRESHOLD = 0.85;
 const PHRASE_FUZZY_THRESHOLD = 0.95;
 const TIE_MARGIN = 0.05;
 const MAX_PHRASE_TOKENS = 4;
+const EMPTY_KEYS: readonly string[] = [];
 
 // subtlex is pre-sorted by descending spoken-English frequency, so the head of
 // the list is the highest-value skip-list of everyday words.
@@ -176,23 +177,30 @@ function bestFrom(
   candidates: Iterable<string>,
   lower: string,
   threshold: number,
+  additionalCandidates?: Iterable<string>,
 ): Scored[] {
   const minLength = Math.ceil(lower.length * threshold);
   const maxLength = Math.floor(lower.length / threshold);
   let best: Scored | null = null;
   let secondBest: Scored | null = null;
-  for (const key of candidates) {
-    if (key.length < minLength || key.length > maxLength) continue;
-    const sim = similarity(lower, key);
-    if (sim < threshold) continue;
-    const scored = { key, sim };
-    if (!best || sim > best.sim) {
-      secondBest = best;
-      best = scored;
-    } else if (!secondBest || sim > secondBest.sim) {
-      secondBest = scored;
+
+  const scan = (keys: Iterable<string>) => {
+    for (const key of keys) {
+      if (key.length < minLength || key.length > maxLength) continue;
+      const sim = similarity(lower, key);
+      if (sim < threshold) continue;
+      const scored = { key, sim };
+      if (!best || sim > best.sim) {
+        secondBest = best;
+        best = scored;
+      } else if (!secondBest || sim > secondBest.sim) {
+        secondBest = scored;
+      }
     }
-  }
+  };
+
+  scan(candidates);
+  if (additionalCandidates) scan(additionalCandidates);
   return best ? (secondBest ? [best, secondBest] : [best]) : [];
 }
 
@@ -281,17 +289,20 @@ function findPhraseMatch(key: string, index: Index): PhraseMatch | null {
 
 function findMatch(stem: string, lower: string, index: Index): Match | null {
   const [primary, secondary] = doubleMetaphone(stem);
-  const candidates: string[] = [];
-  if (primary) {
-    const bucket = index.phonetic.get(primary);
-    if (bucket) candidates.push(...bucket);
-  }
-  if (secondary && secondary !== primary) {
-    const bucket = index.phonetic.get(secondary);
-    if (bucket) candidates.push(...bucket);
-  }
+  const primaryCandidates = primary
+    ? index.phonetic.get(primary)
+    : undefined;
+  const secondaryCandidates =
+    secondary && secondary !== primary
+      ? index.phonetic.get(secondary)
+      : undefined;
 
-  let scored = bestFrom(candidates, lower, PHONETIC_THRESHOLD);
+  let scored = bestFrom(
+    primaryCandidates ?? EMPTY_KEYS,
+    lower,
+    PHONETIC_THRESHOLD,
+    secondaryCandidates,
+  );
   let path: Match["path"] = "phonetic";
   if (scored.length === 0) {
     // Canonical keys are unique and already lowercase, so the fuzzy fallback
