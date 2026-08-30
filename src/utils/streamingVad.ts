@@ -269,7 +269,10 @@ class StreamingVadSession implements StreamingVadSessionHandle {
           pending.frame,
           pending.frameIndex,
         );
-        this.recycledWindows.push(new Float32Array(result.frame));
+        // Keep one spare only. A backlog can finish several windows before
+        // capture produces another one; retaining all of them would leave
+        // the queue bound resident after the worker catches up.
+        this.recycledWindows[0] = new Float32Array(result.frame);
         if (this.cancelled || this.status !== "ready") return;
         for (const event of result.events) this.handleEvent(event);
       } catch (error) {

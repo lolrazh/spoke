@@ -172,6 +172,23 @@ describe("streamingVad", () => {
     session.dispose();
   });
 
+  it("keeps only one completed window in the recycle pool", async () => {
+    const fp = createManualFrameProcessor();
+    useFrameProcessor(fp);
+
+    const session = createStreamingVadSession();
+    await flush();
+    session.pushFrame(new Int16Array(1536));
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    const internals = session as unknown as {
+      recycledWindows: Float32Array[];
+    };
+    expect(internals.recycledWindows).toHaveLength(1);
+    session.dispose();
+  });
+
   it("notifies boundary consumers when speech starts and ends", async () => {
     let windowIndex = 0;
     const fp = createManualFrameProcessor((frame, handleEvent) => {
