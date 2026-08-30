@@ -398,7 +398,12 @@ describe("updateController", () => {
 
     controller.quitAndInstallUpdate();
 
-    expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    await vi.waitFor(() =>
+      expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledWith(
+        false,
+        true,
+      ),
+    );
     // Native quitAndInstall closes windows and quits the app itself. Forcing
     // either path here can abort the updater handoff.
     electron.nativeSquirrelUpdater.emit("before-quit-for-update");
@@ -430,7 +435,9 @@ describe("updateController", () => {
     controller.quitAndInstallUpdate();
     controller.quitAndInstallUpdate();
 
-    expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() =>
+      expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1),
+    );
   });
 
   it("resets the quitAndInstall latch if the native handoff never begins", async () => {
