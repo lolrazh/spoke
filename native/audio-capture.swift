@@ -193,6 +193,7 @@ private final class AudioCaptureController {
     private var converterOutputBuffer: AVAudioPCMBuffer?
     private var converterOutputCapacity: AVAudioFrameCount = 0
     private var ringBuffer: FloatRingBuffer?
+    private var monoMixBuffer: [Float] = []
     // EventEmitter.emitRaw writes synchronously, so one fixed output frame is
     // enough. Reusing it avoids growing and compacting an intermediate array
     // while the converter produces samples.
@@ -552,7 +553,9 @@ private final class AudioCaptureController {
         }
 
         // Preserve the existing downmix behavior for multi-channel devices.
-        var mono = Array(repeating: Float.zero, count: frameCount)
+        if monoMixBuffer.count < frameCount {
+            monoMixBuffer = Array(repeating: Float.zero, count: frameCount)
+        }
         if buffer.format.isInterleaved {
             guard let audioBuffer = buffer.audioBufferList.pointee.mBuffers.mData else {
                 return false
@@ -563,7 +566,7 @@ private final class AudioCaptureController {
                 for channel in 0..<channelCount {
                     sum += interleaved[frame * channelCount + channel]
                 }
-                mono[frame] = sum / Float(channelCount)
+                monoMixBuffer[frame] = sum / Float(channelCount)
             }
         } else {
             guard let channels = buffer.floatChannelData else { return false }
@@ -572,12 +575,17 @@ private final class AudioCaptureController {
                 for channel in 0..<channelCount {
                     sum += channels[channel][frame]
                 }
-                mono[frame] = sum / Float(channelCount)
+                monoMixBuffer[frame] = sum / Float(channelCount)
             }
         }
 
-        return mono.withUnsafeBufferPointer { samples in
-            ringBuffer.append(samples)
+        return monoMixBuffer.withUnsafeBufferPointer { samples in
+            ringBuffer.append(
+                UnsafeBufferPointer(
+                    start: samples.baseAddress,
+                    count: frameCount
+                )
+            )
         }
     }
 
