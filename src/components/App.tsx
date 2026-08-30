@@ -206,10 +206,6 @@ const AppInner: React.FC = () => {
     ]);
   }, [showDebug]);
 
-  useEffect(() => {
-    pushTrace(`Mode: ${trans.mode}`);
-  }, [trans.mode, pushTrace]);
-
   // Listen for active display updates from main (provides computed scale and stored notch width)
   useEffect(() => {
     if (typeof window.onActiveDisplay !== "function") return;

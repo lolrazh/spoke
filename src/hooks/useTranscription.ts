@@ -133,7 +133,6 @@ export interface UseTranscriptionReturn {
   text: string;
   error: string | null;
   errorId: number;
-  mode: TranscriptionMode;
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -1085,7 +1084,6 @@ export function useTranscription(
       text,
       error,
       errorId,
-      mode: DICTATION_MODE,
       start,
       stop,
       cancel,
