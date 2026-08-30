@@ -12,6 +12,9 @@ import type { AudioCaptureSession } from "./audioCaptureSession";
 // Keep the PCM sent to STT untouched, but calibrate the pill-only meter so a
 // normal unprocessed speaking level has comparable visual intensity.
 const NATIVE_VISUAL_LEVEL_GAIN = 3;
+const HOST_IS_LITTLE_ENDIAN = new Uint8Array(
+  new Uint16Array([1]).buffer,
+)[0] === 1;
 
 export interface NativePcmCaptureSessionOptions {
   targetSampleRateHz?: number;
@@ -135,11 +138,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
       return;
     }
 
-    const pcm16 = new Int16Array(bytes.byteLength / 2);
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let index = 0; index < pcm16.length; index++) {
-      pcm16[index] = view.getInt16(index * 2, true);
-    }
+    const pcm16 = decodePcm16(bytes);
 
     if (this.retainPcm) this.chunks.push(pcm16);
     this.onAudioLevel?.(
@@ -153,6 +152,26 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
     this.removeStoppedListener();
     this.removeErrorListener();
   }
+}
+
+/**
+ * Native capture is little-endian PCM16. On the macOS targets we can expose
+ * the IPC byte payload as a typed view without copying or decoding each
+ * sample. Keep a DataView fallback for unusual unaligned or big-endian
+ * payloads so the bridge remains correct outside the normal path.
+ */
+function decodePcm16(bytes: Uint8Array): Int16Array {
+  const sampleCount = bytes.byteLength / 2;
+  if (HOST_IS_LITTLE_ENDIAN && bytes.byteOffset % 2 === 0) {
+    return new Int16Array(bytes.buffer, bytes.byteOffset, sampleCount);
+  }
+
+  const pcm16 = new Int16Array(sampleCount);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let index = 0; index < sampleCount; index++) {
+    pcm16[index] = view.getInt16(index * 2, true);
+  }
+  return pcm16;
 }
 
 function calculatePcm16Level(frame: Int16Array): number {

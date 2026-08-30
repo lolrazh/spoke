@@ -85,7 +85,7 @@ class NativeAudioCaptureManager {
   private pendingStart: PendingResult<void> | null = null;
   private pendingStop: PendingResult<void> | null = null;
   private stopPromise: Promise<void> | null = null;
-  private stdoutBuffer = Buffer.alloc(0);
+  private stdoutBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
 
   async start(target: WebContents, deviceId: string): Promise<void> {
     if (!isNativeAudioCaptureAvailable()) {
@@ -253,7 +253,12 @@ class NativeAudioCaptureManager {
   private readyReject: ((error: Error) => void) | null = null;
 
   private handleStdout(chunk: Buffer): void {
-    this.stdoutBuffer = Buffer.concat([this.stdoutBuffer, chunk]);
+    // Native capture normally emits complete packets. Reuse that chunk
+    // directly; only join buffers when a packet crosses a stdout boundary.
+    this.stdoutBuffer =
+      this.stdoutBuffer.length === 0
+        ? chunk
+        : Buffer.concat([this.stdoutBuffer, chunk]);
 
     while (this.stdoutBuffer.length >= HEADER_BYTES) {
       const payloadLength = this.stdoutBuffer.readUInt32BE(0);
@@ -280,7 +285,9 @@ class NativeAudioCaptureManager {
         return;
       case AudioEventType.frame:
         if (this.target && !this.target.isDestroyed()) {
-          this.target.send("audio-capture:frame", Buffer.from(payload));
+          // Electron serializes the payload for renderer IPC. Avoid making a
+          // second PCM copy in the main process before that serialization.
+          this.target.send("audio-capture:frame", payload);
         }
         return;
       case AudioEventType.stopped:

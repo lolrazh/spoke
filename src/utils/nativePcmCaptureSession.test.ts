@@ -69,8 +69,35 @@ describe("NativePcmCaptureSession", () => {
     expect(onError).toBeNull();
   });
 
-  it("settles a pending stop when cancellation races with it", async () => {
+  it("keeps decoding correct for an unaligned byte view", () => {
     let onFrame = (_payload: Uint8Array): void => {};
+
+    window.audioCapture = {
+      isAvailable: async () => true,
+      listDevices: async () => [],
+      start: async () => ({ ok: true }),
+      stop: async () => ({ ok: true }),
+      cancel: async () => ({ ok: true }),
+      onFrame: (callback) => {
+        onFrame = callback;
+        return () => {
+          onFrame = () => {};
+        };
+      },
+      onStopped: () => () => {},
+      onError: () => () => {},
+    };
+
+    const received: Int16Array[] = [];
+    new NativePcmCaptureSession({ onPcmFrame: (frame) => received.push(frame) });
+
+    const backing = new Uint8Array([0xaa, 0, 0, 0xff, 0x7f, 0xbb]);
+    onFrame(backing.subarray(1, 5));
+
+    expect(Array.from(received[0])).toEqual([0, 32767]);
+  });
+
+  it("settles a pending stop when cancellation races with it", async () => {
     let onStopped: (() => void) | null = null;
     let onError: ((message: string) => void) | null = null;
     let resolveStop: (() => void) | null = null;
@@ -91,12 +118,7 @@ describe("NativePcmCaptureSession", () => {
       start: async () => ({ ok: true }),
       stop,
       cancel,
-      onFrame: (callback) => {
-        onFrame = callback;
-        return () => {
-          onFrame = () => {};
-        };
-      },
+      onFrame: (_callback) => () => {},
       onStopped: (callback) => {
         onStopped = callback;
         return () => {
@@ -157,7 +179,7 @@ describe("NativePcmCaptureSession", () => {
       },
     };
 
-    const session = new NativePcmCaptureSession({ onError: reportError });
+    new NativePcmCaptureSession({ onError: reportError });
     onFrame(new Uint8Array([0]));
 
     expect(reportError).toHaveBeenCalledWith(

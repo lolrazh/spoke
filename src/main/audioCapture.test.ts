@@ -130,4 +130,39 @@ describe("getAudioCapturePath", () => {
       state.stopPromise = null;
     }
   });
+
+  it("forwards complete native PCM packets without an extra payload copy", () => {
+    const state = nativeAudioCapture as unknown as {
+      stdoutBuffer: Buffer;
+      target: {
+        isDestroyed: () => boolean;
+        send: ReturnType<typeof vi.fn>;
+      } | null;
+      handleStdout: (chunk: Buffer) => void;
+    };
+    const send = vi.fn();
+    state.stdoutBuffer = Buffer.alloc(0);
+    state.target = { isDestroyed: () => false, send };
+
+    const packet = Buffer.alloc(4 + 1 + 4);
+    packet.writeUInt32BE(5, 0);
+    packet[4] = 3;
+    packet.writeInt16LE(0x1234, 5);
+    packet.writeInt16LE(-7, 7);
+
+    try {
+      state.handleStdout(packet);
+
+      expect(send).toHaveBeenCalledWith(
+        "audio-capture:frame",
+        expect.any(Buffer),
+      );
+      const forwarded = send.mock.calls[0][1] as Buffer;
+      expect(forwarded).toEqual(Buffer.from([0x34, 0x12, 0xf9, 0xff]));
+      expect(forwarded.buffer).toBe(packet.buffer);
+    } finally {
+      state.stdoutBuffer = Buffer.alloc(0);
+      state.target = null;
+    }
+  });
 });

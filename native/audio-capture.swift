@@ -126,6 +126,7 @@ private final class AudioCaptureController {
     private var targetFormat: AVAudioFormat?
     private var ringBuffer: FloatRingBuffer?
     private var pendingPcm16: [Int16] = []
+    private var pendingPcm16Start = 0
     private var isCapturing = false
     private var inputOverflowReported = false
 
@@ -182,6 +183,7 @@ private final class AudioCaptureController {
             self.targetFormat = targetFormat
             self.ringBuffer = ringBuffer
             self.pendingPcm16.removeAll(keepingCapacity: true)
+            self.pendingPcm16Start = 0
             self.inputOverflowReported = false
             self.isCapturing = true
 
@@ -243,6 +245,7 @@ private final class AudioCaptureController {
         engine?.stop()
         converterQueue.sync {
             pendingPcm16.removeAll(keepingCapacity: true)
+            pendingPcm16Start = 0
             _ = ringBuffer?.drain()
         }
         resetState()
@@ -263,33 +266,11 @@ private final class AudioCaptureController {
         let channelCount = Int(buffer.format.channelCount)
         guard channelCount > 0 else { return }
 
-        var mono = Array(repeating: Float.zero, count: frameCount)
-        if buffer.format.isInterleaved {
-            guard let audioBuffer = buffer.audioBufferList.pointee.mBuffers.mData else {
-                return
-            }
-            let interleaved = audioBuffer.assumingMemoryBound(to: Float.self)
-            for frame in 0..<frameCount {
-                var sum = Float.zero
-                for channel in 0..<channelCount {
-                    sum += interleaved[frame * channelCount + channel]
-                }
-                mono[frame] = sum / Float(channelCount)
-            }
-        } else {
-            guard let channels = buffer.floatChannelData else { return }
-            for frame in 0..<frameCount {
-                var sum = Float.zero
-                for channel in 0..<channelCount {
-                    sum += channels[channel][frame]
-                }
-                mono[frame] = sum / Float(channelCount)
-            }
-        }
-
-        let appended = mono.withUnsafeBufferPointer { samples in
-            ringBuffer?.append(samples) ?? false
-        }
+        let appended = appendInputToRingBuffer(
+            buffer,
+            frameCount: frameCount,
+            channelCount: channelCount
+        )
         guard appended else {
             if !inputOverflowReported {
                 inputOverflowReported = true
@@ -402,22 +383,105 @@ private final class AudioCaptureController {
             pendingPcm16.append(floatToPcm16(samples[index]))
         }
 
-        while pendingPcm16.count >= outputFrameSamples {
-            let frame = Array(pendingPcm16.prefix(outputFrameSamples))
-            pendingPcm16.removeFirst(outputFrameSamples)
-            emitFrame(frame)
+        while pendingPcm16.count - pendingPcm16Start >= outputFrameSamples {
+            emitFrame(start: pendingPcm16Start, count: outputFrameSamples)
+            pendingPcm16Start += outputFrameSamples
         }
+        compactPendingPcm16()
     }
 
     private func emitPendingFrame(final: Bool) {
-        guard final, !pendingPcm16.isEmpty else { return }
-        emitFrame(pendingPcm16)
+        let pendingCount = pendingPcm16.count - pendingPcm16Start
+        guard final, pendingCount > 0 else { return }
+        emitFrame(start: pendingPcm16Start, count: pendingCount)
         pendingPcm16.removeAll(keepingCapacity: true)
+        pendingPcm16Start = 0
     }
 
-    private func emitFrame(_ samples: [Int16]) {
-        let payload = samples.withUnsafeBytes { Data($0) }
+    private func emitFrame(start: Int, count: Int) {
+        let payload = pendingPcm16.withUnsafeBytes { rawBuffer -> Data in
+            guard let baseAddress = rawBuffer.baseAddress else { return Data() }
+            let byteOffset = start * MemoryLayout<Int16>.stride
+            let byteCount = count * MemoryLayout<Int16>.stride
+            return Data(bytes: baseAddress.advanced(by: byteOffset), count: byteCount)
+        }
         emitter.emit(.frame, payload: payload)
+    }
+
+    private func compactPendingPcm16() {
+        guard pendingPcm16Start > 0 else { return }
+
+        if pendingPcm16Start >= pendingPcm16.count {
+            pendingPcm16.removeAll(keepingCapacity: true)
+            pendingPcm16Start = 0
+            return
+        }
+
+        // Keep consumed samples out of the live array without paying the
+        // removeFirst() shift cost for every 30 ms frame. Compact only after
+        // the consumed prefix is both meaningful and larger than the tail.
+        if pendingPcm16Start >= 4_096 &&
+            pendingPcm16Start * 2 >= pendingPcm16.count {
+            pendingPcm16.removeSubrange(0..<pendingPcm16Start)
+            pendingPcm16Start = 0
+        }
+    }
+
+    private func appendInputToRingBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        frameCount: Int,
+        channelCount: Int
+    ) -> Bool {
+        guard let ringBuffer else { return false }
+
+        // The normal macOS input path is mono, non-interleaved Float32. Copy
+        // directly from the tap buffer while it is valid instead of creating
+        // a temporary mono Array for every audio callback.
+        if channelCount == 1 {
+            if buffer.format.isInterleaved {
+                guard let audioBuffer = buffer.audioBufferList.pointee.mBuffers.mData else {
+                    return false
+                }
+                let samples = audioBuffer.assumingMemoryBound(to: Float.self)
+                return ringBuffer.append(
+                    UnsafeBufferPointer(start: samples, count: frameCount)
+                )
+            }
+
+            guard let channels = buffer.floatChannelData else { return false }
+            return ringBuffer.append(
+                UnsafeBufferPointer(start: channels[0], count: frameCount)
+            )
+        }
+
+        // Preserve the existing downmix behavior for multi-channel devices.
+        var mono = Array(repeating: Float.zero, count: frameCount)
+        if buffer.format.isInterleaved {
+            guard let audioBuffer = buffer.audioBufferList.pointee.mBuffers.mData else {
+                return false
+            }
+            let interleaved = audioBuffer.assumingMemoryBound(to: Float.self)
+            for frame in 0..<frameCount {
+                var sum = Float.zero
+                for channel in 0..<channelCount {
+                    sum += interleaved[frame * channelCount + channel]
+                }
+                mono[frame] = sum / Float(channelCount)
+            }
+        } else {
+            guard let channels = buffer.floatChannelData else { return false }
+            for frame in 0..<frameCount {
+                var sum = Float.zero
+                for channel in 0..<channelCount {
+                    sum += channels[channel][frame]
+                }
+                mono[frame] = sum / Float(channelCount)
+            }
+        }
+
+        return mono.withUnsafeBufferPointer { samples in
+            ringBuffer.append(samples)
+        }
     }
 
     private func selectInputDevice(_ deviceId: String, on inputNode: AVAudioInputNode) throws {
@@ -451,6 +515,7 @@ private final class AudioCaptureController {
         targetFormat = nil
         ringBuffer = nil
         pendingPcm16.removeAll(keepingCapacity: true)
+        pendingPcm16Start = 0
         inputOverflowReported = false
     }
 }
