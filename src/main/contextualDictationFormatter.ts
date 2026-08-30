@@ -1,5 +1,5 @@
 import type { SelectionInspectSnapshot } from "../types/shared";
-import { isDictionaryWord } from "./dictionaryCorrection";
+import { isDictionaryWord } from "./dictionaryMembership";
 
 export type DictationFormatOptions = {
   autoSpace: boolean;

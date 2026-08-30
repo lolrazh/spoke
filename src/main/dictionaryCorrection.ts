@@ -3,6 +3,8 @@ import { distance } from "fastest-levenshtein";
 import subtlexWords from "subtlex-word-frequencies";
 import { createLogger } from "../utils/logger";
 
+export { isDictionaryWord } from "./dictionaryMembership";
+
 const log = createLogger("DictCorrect");
 
 const MIN_TOKEN_LENGTH = 4;
@@ -393,14 +395,4 @@ export function correctTranscript(
   }
 
   return output + text.slice(cursor);
-}
-
-export function isDictionaryWord(
-  word: string,
-  dictionary: readonly string[],
-): boolean {
-  // Short-circuit before touching the cache so a transient empty array (the
-  // formatter's `?? []` default) can't evict a warm index.
-  if (!Array.isArray(dictionary) || dictionary.length === 0) return false;
-  return getIndex(dictionary).canonical.has(word.toLowerCase());
 }
