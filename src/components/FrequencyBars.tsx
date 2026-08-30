@@ -15,7 +15,7 @@ const BASE_FREQUENCY_HEIGHTS = Array.from(
 );
 
 /** Fixed hover-preview dots. Recording and processing use imperative leaves. */
-export const HoverFrequencyBars: React.FC = () => (
+export const HoverFrequencyBars: React.FC = React.memo(() => (
   <div className="frequency-bars-container">
     {Array.from({ length: FREQUENCY_BAR_COUNT }, (_, index) => (
       <div
@@ -30,13 +30,13 @@ export const HoverFrequencyBars: React.FC = () => (
       />
     ))}
   </div>
-);
+));
 
 /**
  * Recording visualizer. Audio frames update existing bar styles and schedule
  * at most one paint, so they do not re-render the pill or the app tree.
  */
-export const ListeningFrequencyBars: React.FC = () => {
+export const ListeningFrequencyBars: React.FC = React.memo(() => {
   const barsRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
 
@@ -62,10 +62,10 @@ export const ListeningFrequencyBars: React.FC = () => {
   }, []);
 
   return <StaticFrequencyBars barsRef={barsRef} />;
-};
+});
 
 /** Processing visualizer. Its animation never enters React state. */
-export const ProcessingFrequencyBars: React.FC = () => {
+export const ProcessingFrequencyBars: React.FC = React.memo(() => {
   const barsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -87,7 +87,7 @@ export const ProcessingFrequencyBars: React.FC = () => {
   }, []);
 
   return <StaticFrequencyBars barsRef={barsRef} />;
-};
+});
 
 function StaticFrequencyBars({
   barsRef,
