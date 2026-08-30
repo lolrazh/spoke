@@ -156,6 +156,10 @@ private final class AudioCaptureController {
     private var converter: AVAudioConverter?
     private var sourceFormat: AVAudioFormat?
     private var targetFormat: AVAudioFormat?
+    private var converterInputBuffer: AVAudioPCMBuffer?
+    private var converterInputCapacity: AVAudioFrameCount = 0
+    private var converterOutputBuffer: AVAudioPCMBuffer?
+    private var converterOutputCapacity: AVAudioFrameCount = 0
     private var ringBuffer: FloatRingBuffer?
     private var conversionSamples: [Float] = []
     private var pendingPcm16: [Int16] = []
@@ -355,9 +359,9 @@ private final class AudioCaptureController {
         let samples = conversionSamples
         guard let sourceFormat, let targetFormat, let converter else { return }
 
-        guard let inputBuffer = AVAudioPCMBuffer(
-            pcmFormat: sourceFormat,
-            frameCapacity: AVAudioFrameCount(samples.count)
+        guard let inputBuffer = ensureConverterInputBuffer(
+            frameCapacity: AVAudioFrameCount(samples.count),
+            format: sourceFormat
         ) else {
             emitter.emitError("Could not allocate the native audio converter input buffer.")
             return
@@ -374,13 +378,14 @@ private final class AudioCaptureController {
         let outputCapacity = AVAudioFrameCount(
             max(1, Int(ceil(Double(samples.count) * targetSampleRate / sourceFormat.sampleRate)) + 64)
         )
-        guard let outputBuffer = AVAudioPCMBuffer(
-            pcmFormat: targetFormat,
-            frameCapacity: outputCapacity
+        guard let outputBuffer = ensureConverterOutputBuffer(
+            frameCapacity: outputCapacity,
+            format: targetFormat
         ) else {
             emitter.emitError("Could not allocate the native audio converter output buffer.")
             return
         }
+        outputBuffer.frameLength = 0
 
         var suppliedInput = false
         var conversionError: NSError?
@@ -412,13 +417,14 @@ private final class AudioCaptureController {
         var endOfStreamSignalled = false
         var shouldContinue = true
         while shouldContinue {
-            guard let outputBuffer = AVAudioPCMBuffer(
-                pcmFormat: targetFormat,
-                frameCapacity: AVAudioFrameCount(outputFrameSamples * 2)
+            guard let outputBuffer = ensureConverterOutputBuffer(
+                frameCapacity: AVAudioFrameCount(outputFrameSamples * 2),
+                format: targetFormat
             ) else {
                 emitter.emitError("Could not allocate the native converter flush buffer.")
                 return
             }
+            outputBuffer.frameLength = 0
 
             var conversionError: NSError?
             let status = converter.convert(to: outputBuffer, error: &conversionError) { _, inputStatus in
@@ -583,6 +589,10 @@ private final class AudioCaptureController {
         converter = nil
         sourceFormat = nil
         targetFormat = nil
+        converterInputBuffer = nil
+        converterInputCapacity = 0
+        converterOutputBuffer = nil
+        converterOutputCapacity = 0
         ringBuffer = nil
         conversionSamples.removeAll(keepingCapacity: false)
         pendingPcm16.removeAll(keepingCapacity: true)
@@ -591,6 +601,44 @@ private final class AudioCaptureController {
         conversionScheduleLock.lock()
         conversionScheduled = false
         conversionScheduleLock.unlock()
+    }
+
+    private func ensureConverterInputBuffer(
+        frameCapacity: AVAudioFrameCount,
+        format: AVAudioFormat
+    ) -> AVAudioPCMBuffer? {
+        if let converterInputBuffer, converterInputCapacity >= frameCapacity {
+            return converterInputBuffer
+        }
+
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: frameCapacity
+        ) else {
+            return nil
+        }
+        converterInputBuffer = buffer
+        converterInputCapacity = frameCapacity
+        return buffer
+    }
+
+    private func ensureConverterOutputBuffer(
+        frameCapacity: AVAudioFrameCount,
+        format: AVAudioFormat
+    ) -> AVAudioPCMBuffer? {
+        if let converterOutputBuffer, converterOutputCapacity >= frameCapacity {
+            return converterOutputBuffer
+        }
+
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: frameCapacity
+        ) else {
+            return nil
+        }
+        converterOutputBuffer = buffer
+        converterOutputCapacity = frameCapacity
+        return buffer
     }
 }
 
