@@ -892,9 +892,7 @@ describe("useTranscription", () => {
 
   it("clears a live hypothesis on cancel and ignores stale partials", async () => {
     const stream = configureStreamingModel("should not publish");
-    const { result } = renderHook(() =>
-      useTranscription({ suppressNativePaste: true }),
-    );
+    const { result } = renderHook(() => useTranscription());
     await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
 

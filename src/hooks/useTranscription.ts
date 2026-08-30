@@ -141,7 +141,6 @@ export interface UseTranscriptionReturn {
 
 export interface UseTranscriptionOptions {
   autoInitStream?: boolean;
-  suppressNativePaste?: boolean;
 }
 
 export function useTranscription(
@@ -598,22 +597,19 @@ export function useTranscription(
         log.warn("Failed to record transcription history:", err),
       );
 
-      // Trigger native paste if not suppressed
-      if (!options.suppressNativePaste) {
-        const insertText = window.clipboard?.insertText;
-        timing.pasteStartedAt = performance.now();
-        try {
-          log.info("Starting native text insertion");
-          await withTimeout(
-            Promise.resolve(insertText?.(finalText)),
-            PASTE_TIMEOUT_MS,
-            "Native text insertion",
-          );
-        } catch (err) {
-          log.warn(err);
-        } finally {
-          timing.pasteDoneAt = performance.now();
-        }
+      const insertText = window.clipboard?.insertText;
+      timing.pasteStartedAt = performance.now();
+      try {
+        log.info("Starting native text insertion");
+        await withTimeout(
+          Promise.resolve(insertText?.(finalText)),
+          PASTE_TIMEOUT_MS,
+          "Native text insertion",
+        );
+      } catch (err) {
+        log.warn(err);
+      } finally {
+        timing.pasteDoneAt = performance.now();
       }
       logTranscriptionLatency({
         providerKind,
@@ -624,7 +620,7 @@ export function useTranscription(
         metrics: result.metrics,
       });
     },
-    [awaitPendingOcr, options.suppressNativePaste],
+    [awaitPendingOcr],
   );
 
   // Stop recording and transcribe
