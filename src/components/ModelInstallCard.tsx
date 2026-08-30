@@ -6,7 +6,7 @@ import SettingsCard, { CardTrailing } from "./SettingsCard";
 import IconButton from "./ui/IconButton";
 import ProgressRing from "./ui/ProgressRing";
 import { glyphForFamily } from "./ModelGlyph";
-import { DownloadGlyph } from "./SettingsPanel";
+import DownloadGlyph from "./DownloadGlyph";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) {

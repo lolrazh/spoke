@@ -16,6 +16,7 @@ import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import TranscriptionHistoryView from "./TranscriptionHistoryView";
 import DictionaryView from "./DictionaryView";
 import { SectionSeparator } from "./SectionSeparator";
+import DownloadGlyph from "./DownloadGlyph";
 import {
   panelCascadeContainer,
   panelCascadeItem,
@@ -254,28 +255,6 @@ const UPDATE_INTERACTIVE_MODES = new Set<UpdateCapsuleMode>([
   "ready",
   "error",
 ]);
-
-// Download glyph for the resting affordance — hand-rolled to match the stroke
-// language of the install checkmark (no SF symbol exists for this). Exported so
-// the Models install card reuses the exact same download affordance.
-export const DownloadGlyph: React.FC<{ size?: number }> = ({ size = 12 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="shrink-0"
-    aria-hidden
-  >
-    <path d="M12 4v10" />
-    <path d="M7.5 10.5 12 15l4.5-4.5" />
-    <path d="M5 19.5h14" />
-  </svg>
-);
 
 // Draw-on checkmark — the exact path/animation the Models card uses for its
 // "ready" state, so the update's completion reads as the same moment.
