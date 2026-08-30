@@ -69,20 +69,16 @@ export const ProcessingFrequencyBars: React.FC = React.memo(() => {
   const barsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    let frameId: number | null = null;
-    let lastUpdate = -Infinity;
+    let timeoutId: number | null = null;
 
-    const animate = (timestamp: number) => {
-      if (timestamp - lastUpdate >= PROCESSING_FRAME_INTERVAL_MS) {
-        updateProcessingBars(barsRef.current, timestamp);
-        lastUpdate = timestamp;
-      }
-      frameId = requestAnimationFrame(animate);
+    const animate = () => {
+      updateProcessingBars(barsRef.current, performance.now());
+      timeoutId = window.setTimeout(animate, PROCESSING_FRAME_INTERVAL_MS);
     };
 
-    frameId = requestAnimationFrame(animate);
+    timeoutId = window.setTimeout(animate, PROCESSING_FRAME_INTERVAL_MS);
     return () => {
-      if (frameId !== null) cancelAnimationFrame(frameId);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
     };
   }, []);
 
