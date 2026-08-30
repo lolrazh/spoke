@@ -63,6 +63,7 @@ function releaseBufferedAudioFrames(): void {
 }
 
 const EMPTY_AUDIO_FRAME = new Float32Array(0);
+const EMPTY_VAD_EVENTS: VadWorkerEvent[] = [];
 
 async function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url);
@@ -125,18 +126,18 @@ async function handle(request: VadWorkerRequest): Promise<void> {
       return;
     case "process": {
       if (!vad) throw new Error("VAD worker is not initialized");
-      const events: VadWorkerEvent[] = [];
+      let events: VadWorkerEvent[] | undefined;
       const frame = request.frame;
       await vad.frameProcessor.process(new Float32Array(frame), (event) => {
         const boundary = boundaryEvent(event.msg, request.frameIndex);
-        if (boundary) events.push(boundary);
+        if (boundary) (events ??= []).push(boundary);
       });
       releaseBufferedAudioFrames();
       self.postMessage(
         {
           id: request.id,
           type: "result",
-          result: { events, frame },
+          result: { events: events ?? EMPTY_VAD_EVENTS, frame },
         },
         [frame],
       );
@@ -144,12 +145,16 @@ async function handle(request: VadWorkerRequest): Promise<void> {
     }
     case "finish": {
       if (!vad) throw new Error("VAD worker is not initialized");
-      const events: VadWorkerEvent[] = [];
+      let events: VadWorkerEvent[] | undefined;
       vad.frameProcessor.endSegment((event) => {
         const boundary = boundaryEvent(event.msg, request.frameIndex);
-        if (boundary) events.push(boundary);
+        if (boundary) (events ??= []).push(boundary);
       });
-      post({ id: request.id, type: "result", result: events });
+      post({
+        id: request.id,
+        type: "result",
+        result: events ?? EMPTY_VAD_EVENTS,
+      });
       return;
     }
     case "run": {
