@@ -50,6 +50,9 @@ const UPDATE_DOWNLOAD_STALL_TIMEOUT_MS = 90_000;
 // After quitAndInstall() the native updater should begin the update quit
 // sequence promptly. If it does not, keep the app alive and let the user retry.
 const UPDATE_INSTALL_HANDOFF_TIMEOUT_MS = 120_000;
+// Progress events can arrive faster than the tray and renderer need to update.
+// Keep the authoritative percentage current, but publish at most 20 times/sec.
+const UPDATE_PROGRESS_PUBLISH_INTERVAL_MS = 50;
 // Long-lived menu-bar app: re-check on a slow cadence so a build released while
 // the app stays open eventually gets picked up without a restart.
 const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -109,6 +112,7 @@ let updateDownloadWatchdog: NodeJS.Timeout | null = null;
 let quitAndInstallInvoked = false;
 let updateInstallHandoffWatchdog: NodeJS.Timeout | null = null;
 let updateInstallHandoffListener: (() => void) | null = null;
+let pendingUpdateStatePublishTimer: NodeJS.Timeout | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -145,20 +149,47 @@ export function getUpdateSnapshot(): UpdateSnapshot {
 
 // ── State management ───────────────────────────────────────────────────
 
-function setUpdateState(
-  next: UpdateStatus,
-  opts?: { version?: string; error?: string },
-) {
-  updateStatus = next;
-  updateAvailableVersion = opts?.version ?? updateAvailableVersion;
-  updateError =
-    opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
+function publishUpdateState() {
   try {
     callbacks.rebuildTrayMenu();
   } catch {}
   try {
     callbacks.onStateChange?.(getUpdateSnapshot());
   } catch {}
+}
+
+function clearPendingUpdateStatePublish() {
+  if (!pendingUpdateStatePublishTimer) return;
+  try {
+    clearTimeout(pendingUpdateStatePublishTimer);
+  } catch {}
+  pendingUpdateStatePublishTimer = null;
+}
+
+function scheduleUpdateStatePublish() {
+  if (pendingUpdateStatePublishTimer) return;
+  pendingUpdateStatePublishTimer = setTimeout(() => {
+    pendingUpdateStatePublishTimer = null;
+    publishUpdateState();
+  }, UPDATE_PROGRESS_PUBLISH_INTERVAL_MS);
+  pendingUpdateStatePublishTimer.unref?.();
+}
+
+function setUpdateState(
+  next: UpdateStatus,
+  opts?: { version?: string; error?: string },
+  publication: "immediate" | "coalesced" = "immediate",
+) {
+  updateStatus = next;
+  updateAvailableVersion = opts?.version ?? updateAvailableVersion;
+  updateError =
+    opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
+  if (publication === "coalesced") {
+    scheduleUpdateStatePublish();
+    return;
+  }
+  clearPendingUpdateStatePublish();
+  publishUpdateState();
 }
 
 // ── Watchdogs ──────────────────────────────────────────────────────────
@@ -357,7 +388,7 @@ async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
     updateDownloadPercent = Math.max(0, Math.min(100, Math.round(raw)));
     // Re-arm the stall watchdog on every chunk so it only fires on real stalls.
     startUpdateDownloadWatchdog();
-    setUpdateState("downloading");
+    setUpdateState("downloading", undefined, "coalesced");
   });
 
   updater.on("update-not-available", () => {

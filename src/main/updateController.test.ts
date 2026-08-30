@@ -160,6 +160,34 @@ describe("updateController", () => {
     expect(controller.getUpdateSnapshot().downloadPercent).toBe(99);
   });
 
+  it("coalesces burst download progress publications", async () => {
+    const { controller, electron, onStateChange, rebuildTrayMenu } =
+      await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    onStateChange.mockClear();
+    rebuildTrayMenu.mockClear();
+
+    electron.autoUpdater.emit("download-progress", { percent: 10 });
+    electron.autoUpdater.emit("download-progress", { percent: 20 });
+    electron.autoUpdater.emit("download-progress", { percent: 30 });
+
+    // The authoritative snapshot is current before the deferred publication.
+    expect(controller.getUpdateSnapshot().downloadPercent).toBe(30);
+    expect(onStateChange).not.toHaveBeenCalled();
+    expect(rebuildTrayMenu).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(onStateChange).toHaveBeenCalledTimes(1);
+    expect(onStateChange.mock.calls[0]?.[0]).toMatchObject({
+      status: "downloading",
+      downloadPercent: 30,
+    });
+    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+  });
+
   it("marks the update ready once it finishes downloading", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
