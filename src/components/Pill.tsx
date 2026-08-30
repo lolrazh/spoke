@@ -9,7 +9,6 @@ import React, {
 } from "react";
 import { m, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
-import SfIcon from "./icons/SfIcon";
 import {
   HoverFrequencyBars,
   ListeningFrequencyBars,
@@ -45,6 +44,8 @@ const PermissionsPanel = lazy(() => {
     return module;
   });
 });
+
+const SfIcon = lazy(() => import("./icons/SfIcon"));
 
 const PanelLoadingFallback: React.FC = () => (
   <div className="flex h-full w-full items-center justify-center text-[13px] text-primary/50">
