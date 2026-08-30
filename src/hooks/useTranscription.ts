@@ -148,7 +148,9 @@ export function useTranscription(
 ): UseTranscriptionReturn {
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(
+    () => options.autoInitStream === false,
+  );
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
@@ -226,8 +228,6 @@ export function useTranscription(
     window.electron?.bootMark?.("transcription-hook:init");
     if (options.autoInitStream !== false) {
       initStream().catch(console.error);
-    } else {
-      setReady(true);
     }
 
     // Load provider preference
