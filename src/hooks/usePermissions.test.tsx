@@ -35,6 +35,14 @@ function createProvider(): PermissionProvider {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("usePermissions", () => {
   it("keeps the state identity stable for an unchanged refresh", async () => {
     const provider = createProvider();
@@ -60,5 +68,57 @@ describe("usePermissions", () => {
     expect(provider.checkPermissions).toHaveBeenCalledTimes(2);
     expect(provider.checkMicrophonePermission).toHaveBeenCalledTimes(2);
     expect(provider.checkScreenRecordingPermission).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not overlap microphone permission polls", async () => {
+    vi.useFakeTimers();
+    try {
+      const provider = createProvider();
+      provider.requestMicrophonePermission = vi.fn(async () => ({
+        success: false,
+        granted: false,
+      }));
+      const firstCheck = deferred<{
+        granted: boolean;
+        status: string;
+      }>();
+      const secondCheck = deferred<{
+        granted: boolean;
+        status: string;
+      }>();
+      provider.checkMicrophonePermission = vi
+        .fn()
+        .mockImplementationOnce(() => firstCheck.promise)
+        .mockImplementationOnce(() => secondCheck.promise);
+
+      const { result, unmount } = renderHook(() =>
+        usePermissions(provider, { pollIntervalMs: 1000 }),
+      );
+
+      await act(async () => {
+        await result.current.requestMicrophone();
+      });
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(provider.checkMicrophonePermission).toHaveBeenCalledOnce();
+
+      await act(async () => {
+        firstCheck.resolve({ granted: false, status: "denied" });
+        await firstCheck.promise;
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(provider.checkMicrophonePermission).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        secondCheck.resolve({ granted: false, status: "denied" });
+        await secondCheck.promise;
+      });
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
