@@ -50,11 +50,6 @@ declare global {
         ok: boolean;
         snapshot: UpdateSnapshot;
       }>;
-      devSetState?: (state: UpdateStatus | "ready") => Promise<{
-        ok: boolean;
-        snapshot: UpdateSnapshot;
-        error?: string;
-      }>;
       onStateChanged: (cb: (snapshot: UpdateSnapshot) => void) => () => void;
     };
     devFlags: {

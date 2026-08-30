@@ -55,15 +55,6 @@ describe("components/SettingsPanel", () => {
           error: null,
         },
       })),
-      devSetState: vi.fn(async () => ({
-        ok: true,
-        snapshot: {
-          status: "available",
-          version: "v0.1.7-dev",
-          readyToInstall: true,
-          error: null,
-        },
-      })),
       onStateChanged: vi.fn(() => () => {}),
     };
     // Ensure electron + mic bridges exist

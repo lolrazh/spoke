@@ -343,8 +343,6 @@ contextBridge.exposeInMainWorld("update", {
   check: () => ipcRenderer.invoke("update:check"),
   restart: () => ipcRenderer.invoke("update:restart"),
   installWhenReady: () => ipcRenderer.invoke("update:install-when-ready"),
-  devSetState: (state: string) =>
-    ipcRenderer.invoke("update:dev-set-state", state),
   onStateChanged: (cb: (snapshot: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown) =>
       cb(snapshot);

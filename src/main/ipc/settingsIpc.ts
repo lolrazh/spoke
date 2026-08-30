@@ -43,7 +43,6 @@ import {
   getUpdateStatus,
   isUpdateReadyToInstall,
   getUpdateSnapshot,
-  setDevUpdateStateForTesting,
   quitAndInstallUpdate,
   downloadUpdate,
   jitterMs,
@@ -265,23 +264,5 @@ export function registerSettingsIpc(): void {
     }
 
     return { ok: true, snapshot: getUpdateSnapshot() };
-  });
-
-  ipcMain.handle("update:dev-set-state", (_event, devState: unknown) => {
-    if (
-      devState !== "idle" &&
-      devState !== "checking" &&
-      devState !== "available" &&
-      devState !== "not-available" &&
-      devState !== "error" &&
-      devState !== "ready"
-    ) {
-      return {
-        ok: false,
-        snapshot: getUpdateSnapshot(),
-        error: "Invalid dev update state",
-      };
-    }
-    return setDevUpdateStateForTesting(devState);
   });
 }

@@ -64,15 +64,6 @@ if (!globalThis.window.update) {
         error: null,
       },
     })),
-    devSetState: vi.fn(async () => ({
-      ok: true,
-      snapshot: {
-        status: "available",
-        version: "v0.1.7-dev",
-        readyToInstall: true,
-        error: null,
-      },
-    })),
     onStateChanged: vi.fn(() => () => {}),
   } as any;
 }
