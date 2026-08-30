@@ -84,12 +84,27 @@ private final class FloatRingBuffer {
             return false
         }
 
-        for sample in samples {
-            storage[writeIndex] = sample
-            writeIndex += 1
-            if writeIndex == capacity {
-                writeIndex = 0
+        let firstCount = min(samples.count, capacity - writeIndex)
+        let secondCount = samples.count - firstCount
+        storage.withUnsafeMutableBufferPointer { destination in
+            guard let sourceBase = samples.baseAddress,
+                  let destinationBase = destination.baseAddress else {
+                return
             }
+            destinationBase.advanced(by: writeIndex).update(
+                from: sourceBase,
+                count: firstCount
+            )
+            if secondCount > 0 {
+                destinationBase.update(
+                    from: sourceBase.advanced(by: firstCount),
+                    count: secondCount
+                )
+            }
+        }
+        writeIndex += samples.count
+        if writeIndex >= capacity {
+            writeIndex -= capacity
         }
         count += samples.count
         return true
@@ -103,13 +118,14 @@ private final class FloatRingBuffer {
         guard count > 0 else { return false }
 
         result.reserveCapacity(count)
-        result.append(contentsOf: repeatElement(Float.zero, count: count))
-        for index in 0..<count {
-            result[index] = storage[readIndex]
-            readIndex += 1
-            if readIndex == capacity {
-                readIndex = 0
-            }
+        let firstCount = min(count, capacity - readIndex)
+        result.append(contentsOf: storage[readIndex..<(readIndex + firstCount)])
+        if firstCount < count {
+            result.append(contentsOf: storage[0..<(count - firstCount)])
+        }
+        readIndex += count
+        if readIndex >= capacity {
+            readIndex -= capacity
         }
         count = 0
         return true
