@@ -496,6 +496,29 @@
     min-width: 2px;
   }
 
+  /* Processing bars animate on the compositor. The old implementation woke
+     the renderer every 33 ms to calculate 72 sine values and write 18 style
+     transforms; the bars only need a visual pulse, not JavaScript state. */
+  .processing-frequency-element {
+    animation: processing-frequency-wave 1.2s ease-in-out infinite;
+  }
+
+  @keyframes processing-frequency-wave {
+    0%,
+    100% {
+      transform: scaleY(var(--processing-min-scale, 0.1666666667));
+    }
+    50% {
+      transform: scaleY(var(--processing-max-scale, 0.75));
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .processing-frequency-element {
+      animation: none;
+    }
+  }
+
   /* Define BOTH endpoints with the same transform function list (translateZ
      keeps the GPU/compositing hint live during the animation). A single `to`
      would leave the implicit `from` as the element's base transform —

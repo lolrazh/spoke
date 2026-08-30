@@ -2,7 +2,6 @@ import React, { useEffect, useRef } from "react";
 import { getAudioLevel, subscribeAudioLevel } from "../state/audioLevel";
 
 const FREQUENCY_BAR_COUNT = 18;
-const PROCESSING_FRAME_INTERVAL_MS = 33;
 const MAX_FREQUENCY_HEIGHT = 12;
 
 const BASE_FREQUENCY_HEIGHTS = Array.from(
@@ -64,49 +63,52 @@ export const ListeningFrequencyBars: React.FC = React.memo(() => {
   return <StaticFrequencyBars barsRef={barsRef} />;
 });
 
-/** Processing visualizer. Its animation never enters React state. */
-export const ProcessingFrequencyBars: React.FC = React.memo(() => {
-  const barsRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    let timeoutId: number | null = null;
-
-    const animate = () => {
-      updateProcessingBars(barsRef.current, performance.now());
-      timeoutId = window.setTimeout(animate, PROCESSING_FRAME_INTERVAL_MS);
-    };
-
-    timeoutId = window.setTimeout(animate, PROCESSING_FRAME_INTERVAL_MS);
-    return () => {
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  return <StaticFrequencyBars barsRef={barsRef} />;
-});
+/** Processing visualizer. CSS owns the animation; no renderer timer is needed. */
+export const ProcessingFrequencyBars: React.FC = React.memo(() => (
+  <StaticFrequencyBars barClassName="processing-frequency-element" />
+));
 
 function StaticFrequencyBars({
   barsRef,
+  barClassName = "",
 }: {
-  barsRef: React.MutableRefObject<HTMLDivElement | null>;
+  barsRef?: React.MutableRefObject<HTMLDivElement | null>;
+  barClassName?: string;
 }) {
   return (
     <div
-      ref={(node) => {
-        barsRef.current = node;
-      }}
+      ref={
+        barsRef
+          ? (node) => {
+              barsRef.current = node;
+            }
+          : undefined
+      }
       className="frequency-bars-container"
     >
       {Array.from({ length: FREQUENCY_BAR_COUNT }, (_, index) => (
         <div
           key={`freq-${index}`}
-          className="frequency-element as-bar"
+          className={`frequency-element as-bar ${barClassName}`}
           style={{
             height: `${MAX_FREQUENCY_HEIGHT}px`,
             width: "2px",
             borderRadius: "1px",
             transform: "scaleY(0.1666666667)",
             transformOrigin: "center",
+            ...(barClassName
+              ? ({
+                  animationDelay: `${-index * 0.06}s`,
+                  "--processing-min-scale": String(
+                    Math.max(2, BASE_FREQUENCY_HEIGHTS[index] * 0.35) /
+                      MAX_FREQUENCY_HEIGHT,
+                  ),
+                  "--processing-max-scale": String(
+                    Math.min(9, BASE_FREQUENCY_HEIGHTS[index] * 2.15) /
+                      MAX_FREQUENCY_HEIGHT,
+                  ),
+                } as React.CSSProperties)
+              : {}),
           }}
         />
       ))}
@@ -130,32 +132,6 @@ function updateListeningBars(container: HTMLDivElement | null): void {
         BASE_FREQUENCY_HEIGHTS[index] *
           (0.35 + audioLevel * 2.6) *
           variation,
-      ),
-    );
-    (elements[index] as HTMLElement).style.transform = `scaleY(${height / MAX_FREQUENCY_HEIGHT})`;
-  }
-}
-
-function updateProcessingBars(
-  container: HTMLDivElement | null,
-  timestamp: number,
-): void {
-  if (!container) return;
-
-  const time = timestamp / 66;
-  const elements = container.children;
-  for (let index = 0; index < elements.length; index += 1) {
-    const wave = Math.sin(time + index * 0.5) * 0.5 + 0.5;
-    const slowVariation = Math.sin(timestamp / 198 + index * 0.4) * 0.12;
-    const fastVariation = Math.sin(timestamp / 99 + index * 0.8) * 0.08;
-    const microVariation = Math.sin(timestamp / 82.5 + index * 1.2) * 0.05;
-    const totalVariation =
-      1 + slowVariation + fastVariation + microVariation;
-    const height = Math.max(
-      2,
-      Math.min(
-        9,
-        BASE_FREQUENCY_HEIGHTS[index] * (0.35 + wave * 1.8) * totalVariation,
       ),
     );
     (elements[index] as HTMLElement).style.transform = `scaleY(${height / MAX_FREQUENCY_HEIGHT})`;

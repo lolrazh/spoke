@@ -52,5 +52,6 @@ describe("imperative frequency bars", () => {
 
     expect(bar?.style.height).toBe("12px");
     expect(bar?.style.transform).toMatch(/^scaleY\(/);
+    expect(bar?.classList.contains("processing-frequency-element")).toBe(true);
   });
 });
