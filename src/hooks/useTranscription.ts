@@ -22,9 +22,7 @@ import {
 import { isTranscriptionSessionError } from "../core/transcription/sessionErrors";
 import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
-import { PcmCaptureSession } from "../utils/pcmCaptureSession";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
-import { NativePcmCaptureSession } from "../utils/nativePcmCaptureSession";
 import type { VadAudioResult } from "../utils/vadTrimmer";
 import type {
   StreamingVadSessionHandle,
@@ -49,9 +47,7 @@ import type {
   LocalChunkedDictation,
   LocalChunkedDictationOptions,
 } from "../core/transcription/localChunkedDictation";
-import {
-  LocalStreamingDictation,
-} from "../core/transcription/localStreamingDictation";
+import type { LocalStreamingDictation } from "../core/transcription/localStreamingDictation";
 import {
   ENABLE_SCREEN_CONTEXT,
   ENABLE_TRANSCRIPT_ENHANCEMENT,
@@ -82,6 +78,38 @@ async function createLocalChunkedDictation(
     "../core/transcription/localChunkedDictation"
   );
   return new LocalChunkedDictation(options);
+}
+
+async function createLocalStreamingDictation(
+  options: ConstructorParameters<typeof LocalStreamingDictation>[0],
+): Promise<LocalStreamingDictation> {
+  const { LocalStreamingDictation } = await import(
+    "../core/transcription/localStreamingDictation"
+  );
+  return new LocalStreamingDictation(options);
+}
+
+type CaptureSessionOptions = {
+  targetSampleRateHz: number;
+  onAudioLevel: (level: number) => void;
+  onError: (error: Error) => void;
+  onPcmFrame: (frame: Int16Array) => void;
+  retainPcm: boolean;
+};
+
+async function createCaptureSession(
+  nativeCaptureAvailable: boolean,
+  options: CaptureSessionOptions,
+): Promise<AudioCaptureSession> {
+  if (nativeCaptureAvailable) {
+    const { NativePcmCaptureSession } = await import(
+      "../utils/nativePcmCaptureSession"
+    );
+    return new NativePcmCaptureSession(options);
+  }
+
+  const { PcmCaptureSession } = await import("../utils/pcmCaptureSession");
+  return new PcmCaptureSession(options);
 }
 
 export interface UseTranscriptionReturn {
@@ -319,7 +347,7 @@ export function useTranscription(
         provider.descriptor.kind === "local" &&
         prepareResult?.localModel?.streaming
       ) {
-        localStreamingDictation = new LocalStreamingDictation({
+        localStreamingDictation = await createLocalStreamingDictation({
           modelId: prepareResult.localModel.modelId,
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
           batchMs: prepareResult.localModel.streamingChunkMs ?? 320,
@@ -332,6 +360,10 @@ export function useTranscription(
             requestStopRef.current();
           },
         });
+        if (!isCurrentStart()) {
+          await localStreamingDictation.cancel();
+          return;
+        }
         // Publish the adapter before startup. It buffers bounded PCM batches
         // until the main process finishes loading the pinned model.
         localStreamingDictationRef.current = localStreamingDictation;
@@ -389,36 +421,29 @@ export function useTranscription(
           stream = await initStream();
         }
 
-        const recorder: AudioCaptureSession = nativeCaptureAvailableRef.current
-          ? new NativePcmCaptureSession({
-              targetSampleRateHz: TARGET_SAMPLE_RATE_HZ,
-              onAudioLevel: setAudioLevel,
-              onError: (err) => {
-                log.error("Native PCM capture error:", err);
-                reportTranscriptionError(err.message);
-                requestCancelRef.current();
-              },
-              onPcmFrame: (frame) => {
-                streamingVadSession?.pushFrame(frame);
-                localChunkedDictation?.pushFrame(frame);
-                localStreamingDictation?.pushFrame(frame);
-              },
-              retainPcm: !localStreamingDictation,
-            })
-          : new PcmCaptureSession({
-              onAudioLevel: setAudioLevel,
-              onError: (err) => {
-                log.error("PCM capture error:", err);
-                reportTranscriptionError(err.message);
-                requestCancelRef.current();
-              },
-              onPcmFrame: (frame) => {
-                streamingVadSession?.pushFrame(frame);
-                localChunkedDictation?.pushFrame(frame);
-                localStreamingDictation?.pushFrame(frame);
-              },
-              retainPcm: !localStreamingDictation,
-            });
+        const recorder = await createCaptureSession(
+          nativeCaptureAvailableRef.current,
+          {
+            targetSampleRateHz: TARGET_SAMPLE_RATE_HZ,
+            onAudioLevel: setAudioLevel,
+            onError: (err) => {
+              log.error(
+                nativeCaptureAvailableRef.current
+                  ? "Native PCM capture error:"
+                  : "PCM capture error:",
+                err,
+              );
+              reportTranscriptionError(err.message);
+              requestCancelRef.current();
+            },
+            onPcmFrame: (frame) => {
+              streamingVadSession?.pushFrame(frame);
+              localChunkedDictation?.pushFrame(frame);
+              localStreamingDictation?.pushFrame(frame);
+            },
+            retainPcm: !localStreamingDictation,
+          },
+        );
         await recorder.start(stream ?? undefined);
         return recorder;
       })();
