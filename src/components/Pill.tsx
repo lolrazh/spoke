@@ -371,7 +371,6 @@ const Pill: React.FC<PillProps> = ({
                       <SettingsPanel
                         embeddedMode={true}
                         onToggleFloatingBar={onToggleFloatingBar}
-                        onRequestCollapse={onCollapse}
                         onHeightChange={onSettingsPanelHeightChange}
                         initialTab={initialSettingsTab}
                       />

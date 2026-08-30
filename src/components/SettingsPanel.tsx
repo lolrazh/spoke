@@ -588,7 +588,6 @@ const UpdateCapsuleRow: React.FC<{ appVersion: string }> = React.memo(
 // --- Main Component --- //
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
-  onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
   onToggleFloatingBar?: (enabled: boolean) => void;
   onHeightChange?: (height: number) => void;
   initialTab?: SettingsPanelInitialTab; // Initial tab to show (for paste-shortcut → history UX)
