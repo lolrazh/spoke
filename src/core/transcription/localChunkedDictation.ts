@@ -36,16 +36,18 @@ export class LocalChunkedDictation {
   private limitReached = false;
   private finished = false;
   private dispatchedChunkCount = 0;
+  private readonly maxSamples: number;
 
-  constructor(private readonly options: LocalChunkedDictationOptions) {}
+  constructor(private readonly options: LocalChunkedDictationOptions) {
+    this.maxSamples = Math.round(
+      (options.maxDurationMs * options.sampleRateHz) / 1000,
+    );
+  }
 
   pushFrame(frame: Int16Array): void {
     if (this.finished || frame.length === 0) return;
 
-    const maxSamples = Math.round(
-      (this.options.maxDurationMs * this.options.sampleRateHz) / 1000,
-    );
-    const remainingSamples = maxSamples - this.totalSamples;
+    const remainingSamples = this.maxSamples - this.totalSamples;
     if (remainingSamples <= 0) return;
 
     const acceptedFrame =
