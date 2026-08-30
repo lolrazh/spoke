@@ -115,6 +115,12 @@ private final class FloatRingBuffer {
         return true
     }
 
+    var hasSamples: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return count > 0
+    }
+
     func discard() {
         lock.lock()
         defer { lock.unlock() }
@@ -143,6 +149,7 @@ private struct Command: Codable {
 private final class AudioCaptureController {
     private let emitter: EventEmitter
     private let converterQueue = DispatchQueue(label: "com.spoke.audio.converter", qos: .userInitiated)
+    private let conversionScheduleLock = NSLock()
 
     private var engine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
@@ -155,6 +162,7 @@ private final class AudioCaptureController {
     private var pendingPcm16Start = 0
     private var isCapturing = false
     private var inputOverflowReported = false
+    private var conversionScheduled = false
 
     init(emitter: EventEmitter) {
         self.emitter = emitter
@@ -307,8 +315,38 @@ private final class AudioCaptureController {
             return
         }
 
+        scheduleConversion()
+    }
+
+    private func scheduleConversion() {
+        conversionScheduleLock.lock()
+        guard !conversionScheduled else {
+            conversionScheduleLock.unlock()
+            return
+        }
+        conversionScheduled = true
+        conversionScheduleLock.unlock()
+
         converterQueue.async { [weak self] in
-            self?.drainAndConvert()
+            self?.drainScheduledConversion()
+        }
+    }
+
+    private func drainScheduledConversion() {
+        while true {
+            drainAndConvert()
+
+            // Keep one conversion task alive while the ring still has work.
+            // This coalesces callbacks when conversion falls behind instead of
+            // allocating one queued closure per audio tap callback.
+            conversionScheduleLock.lock()
+            let hasPendingSamples = ringBuffer?.hasSamples ?? false
+            if !hasPendingSamples {
+                conversionScheduled = false
+                conversionScheduleLock.unlock()
+                return
+            }
+            conversionScheduleLock.unlock()
         }
     }
 
@@ -550,6 +588,9 @@ private final class AudioCaptureController {
         pendingPcm16.removeAll(keepingCapacity: true)
         pendingPcm16Start = 0
         inputOverflowReported = false
+        conversionScheduleLock.lock()
+        conversionScheduled = false
+        conversionScheduleLock.unlock()
     }
 }
 
