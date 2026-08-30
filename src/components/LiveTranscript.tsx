@@ -56,6 +56,7 @@ export function LiveTranscriptFromStore(
   const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
   const latestPropsRef = useRef(props);
   const caretTimerRef = useRef<number | null>(null);
+  const caretLastUpdatedAtRef = useRef<number | null>(null);
   const fallbackMeasureFrameRef = useRef<number | null>(null);
   const lastMeasuredHeightRef = useRef<number | null>(null);
   const committedTextRef = useRef<string | null>(null);
@@ -70,6 +71,34 @@ export function LiveTranscriptFromStore(
     latestPropsRef.current.onTextMetricsChange({
       wrappedTextHeight: roundedHeight,
     });
+  }, []);
+
+  const armCaretTimer = useCallback(() => {
+    if (caretTimerRef.current !== null) return;
+
+    const lastUpdatedAt = caretLastUpdatedAtRef.current;
+    const remainingMs =
+      lastUpdatedAt === null
+        ? LIVE_TRANSCRIPT_CARET_IDLE_MS
+        : Math.max(
+            0,
+            LIVE_TRANSCRIPT_CARET_IDLE_MS - (Date.now() - lastUpdatedAt),
+          );
+
+    caretTimerRef.current = window.setTimeout(() => {
+      caretTimerRef.current = null;
+      const caret = caretRef.current;
+      const latestUpdate = caretLastUpdatedAtRef.current;
+      if (!caret || latestUpdate === null) return;
+
+      const remaining =
+        LIVE_TRANSCRIPT_CARET_IDLE_MS - (Date.now() - latestUpdate);
+      if (remaining > 0) {
+        armCaretTimer();
+        return;
+      }
+      caret.classList.add("is-blinking");
+    }, remainingMs);
   }, []);
 
   const updateText = useCallback((text: string) => {
@@ -95,18 +124,20 @@ export function LiveTranscriptFromStore(
       measuredTextRef.current = text;
     }
 
-    if (caretTimerRef.current !== null) {
-      window.clearTimeout(caretTimerRef.current);
-      caretTimerRef.current = null;
+    const shouldBlink = !isProcessing && !reducedMotion;
+    if (!shouldBlink) {
+      caretLastUpdatedAtRef.current = null;
+      if (caretTimerRef.current !== null) {
+        window.clearTimeout(caretTimerRef.current);
+        caretTimerRef.current = null;
+      }
     }
     const caret = caretRef.current;
     if (caret) {
       caret.classList.remove("is-blinking");
-      if (!isProcessing && !reducedMotion) {
-        caretTimerRef.current = window.setTimeout(() => {
-          caret.classList.add("is-blinking");
-          caretTimerRef.current = null;
-        }, LIVE_TRANSCRIPT_CARET_IDLE_MS);
+      if (shouldBlink) {
+        caretLastUpdatedAtRef.current = Date.now();
+        armCaretTimer();
       }
     }
 
@@ -117,7 +148,7 @@ export function LiveTranscriptFromStore(
         if (measure) publishMeasuredHeight(measure.getBoundingClientRect().height);
       });
     }
-  }, [publishMeasuredHeight]);
+  }, [armCaretTimer, publishMeasuredHeight]);
 
   useLayoutEffect(() => {
     updateText(getLiveTranscript());
@@ -131,6 +162,7 @@ export function LiveTranscriptFromStore(
         window.clearTimeout(caretTimerRef.current);
         caretTimerRef.current = null;
       }
+      caretLastUpdatedAtRef.current = null;
       if (fallbackMeasureFrameRef.current !== null) {
         window.cancelAnimationFrame(fallbackMeasureFrameRef.current);
         fallbackMeasureFrameRef.current = null;

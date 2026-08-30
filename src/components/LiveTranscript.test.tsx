@@ -77,6 +77,15 @@ describe("LiveTranscript caret", () => {
     });
     expect(caret?.classList.contains("is-blinking")).toBe(false);
 
+    const timerCount = vi.getTimerCount();
+    act(() => {
+      setLiveTranscript("Hello world again");
+      setLiveTranscript("Hello world again and again");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+    expect(vi.getTimerCount()).toBe(timerCount);
+
     rerender(<LiveTranscriptFromStore {...commonProps} />);
   });
 
