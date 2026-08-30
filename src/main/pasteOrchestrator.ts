@@ -14,10 +14,7 @@ import fs from "node:fs";
 import { getHelperPath } from "./helperPaths";
 import { spawnHelper } from "./helperProcess";
 import { pasteViaDaemon } from "./pasteDaemon";
-import {
-  applyAutoSpace,
-  formatDictationForInsertion,
-} from "./contextualDictationFormatter";
+import { formatDictationForInsertion } from "./contextualDictationFormatter";
 import { inspectFocusedSelection } from "./selectionInspect";
 import { state } from "./windowState";
 
@@ -26,8 +23,6 @@ export interface InsertTextAtCursorResult {
   error?: string;
   verified?: boolean;
 }
-
-export { applyAutoSpace };
 
 const INSERTION_CONTEXT_CHARS = 96;
 

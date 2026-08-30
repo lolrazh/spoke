@@ -3,8 +3,6 @@ import { distance } from "fastest-levenshtein";
 import subtlexWords from "subtlex-word-frequencies";
 import { createLogger } from "../utils/logger";
 
-export { isDictionaryWord } from "./dictionaryMembership";
-
 const log = createLogger("DictCorrect");
 
 const MIN_TOKEN_LENGTH = 4;

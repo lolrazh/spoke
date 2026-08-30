@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { correctTranscript, isDictionaryWord } from "./dictionaryCorrection";
+import { correctTranscript } from "./dictionaryCorrection";
+import { isDictionaryWord } from "./dictionaryMembership";
 
 describe("main/dictionaryCorrection", () => {
   it("corrects a phonetically garbled name against the dictionary", () => {
