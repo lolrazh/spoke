@@ -159,7 +159,7 @@ const Onboarding: React.FC = () => {
     deepLinkGraceMs: 4000,
     includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
-  const [isDev, setIsDev] = useState(false);
+  const isDev = devFlags.isDevelopment;
   const [pttApiReady, setPttApiReady] = useState(false);
   const [optKeyPressed, setOptKeyPressed] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -247,11 +247,6 @@ const Onboarding: React.FC = () => {
   // No longer part of onboarding wizard flow
 
   // Initial permission check via shared hook
-  useEffect(() => {
-    // Mirror previous debug mode flag
-    setIsDev(devFlags.isDevelopment);
-  }, []);
-
   useEffect(() => {
     initPermissions();
   }, []);
@@ -438,7 +433,7 @@ const Onboarding: React.FC = () => {
       window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
       try {
-        (window.electron as any)?.revealPillForTest?.();
+        void window.electron?.revealPillForTest?.();
       } catch {}
     }
   }, [currentStep]);

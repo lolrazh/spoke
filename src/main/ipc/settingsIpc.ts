@@ -167,19 +167,6 @@ export function registerSettingsIpc(): void {
     // Renderer will show any post-sign-in notification; keep main focused on window.
   });
 
-  // Reset local onboarding flag for dev testing
-  ipcMain.handle("onboarding:reset-local-flag", () => {
-    try {
-      state.onboardingPrefs = { ...state.onboardingPrefs, done: false };
-      persistOnboardingPrefs();
-      console.log("[IPC] Local onboarding flag reset to false");
-      return { ok: true };
-    } catch (error) {
-      console.error("[IPC] Failed to reset local onboarding flag:", error);
-      return { ok: false };
-    }
-  });
-
   // Get saved onboarding step
   ipcMain.handle("onboarding:get-step", () => {
     return state.onboardingPrefs.currentStep || null;

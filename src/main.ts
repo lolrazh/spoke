@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  screen,
   session,
   globalShortcut,
   Notification,

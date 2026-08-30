@@ -7,7 +7,6 @@
 
 import {
   OPENAI_CLOUD_PROVIDER_ID,
-  GROQ_CLOUD_PROVIDER_ID,
   type ApiKeyTranscriptionProviderId,
 } from "../core/transcription/providerCatalog";
 import { getRequiredProviderApiKey } from "./providerStore";

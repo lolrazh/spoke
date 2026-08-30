@@ -93,7 +93,6 @@ declare global {
       onDown: (cb: () => void) => () => void;
       onUp: (cb: () => void) => () => void;
       onReady: (cb: () => void) => () => void;
-      onCancelDown: (cb: () => void) => () => void;
       onCancel: (cb: () => void) => () => void;
     };
     island: {
@@ -105,8 +104,6 @@ declare global {
       focusWindow: () => void;
       expandPill: (callback: () => void) => () => void;
       onPasteShortcutPressed: (callback: () => void) => () => void;
-      requestExpandPill: () => Promise<{ ok: boolean }>;
-      revealPill: () => Promise<{ ok: boolean }>;
       revealPillForTest?: () => Promise<{ ok: boolean }>;
       checkPermissions: () => Promise<{
         needAX: boolean;
@@ -152,7 +149,6 @@ declare global {
       ) => Promise<{ success: boolean }>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
-      resetOnboardingFlag: () => Promise<{ ok: boolean }>;
       getOnboardingStep: () => Promise<string | null>;
       setOnboardingStep: (step: string) => Promise<{ ok: boolean }>;
       getAppPath: () => Promise<string>;

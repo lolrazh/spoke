@@ -47,8 +47,3 @@ export function getWeightsDir(family?: LocalModelFamily): string {
 export function getLocalSttDir(): string {
   return path.join(app.getPath("userData"), "local-stt");
 }
-
-/** Dev-only: weights directory inside the repo. */
-export function getDevWeightsDir(): string {
-  return path.join(app.getAppPath(), "local-stt", "weights");
-}

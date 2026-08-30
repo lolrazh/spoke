@@ -241,30 +241,6 @@ describe("localSttLifecycle", () => {
     expect(mocks.killSidecar).not.toHaveBeenCalled();
   });
 
-  it("does not spawn when the sidecar is already running", async () => {
-    mocks.isSidecarRunning.mockReturnValue(true);
-    const { ensureLocalSidecarRunning } = await importLifecycle();
-
-    await ensureLocalSidecarRunning();
-
-    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
-    expect(mocks.setAutoRestart).toHaveBeenCalledWith(true);
-  });
-
-  it("stops a running sidecar for the wrong model before starting the active one", async () => {
-    mocks.isSidecarRunning.mockReturnValueOnce(true).mockReturnValueOnce(false);
-    mocks.getSidecarModelId.mockReturnValue("old-model");
-    const { ensureLocalSidecarRunning } = await importLifecycle();
-
-    await ensureLocalSidecarRunning();
-
-    expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
-    expect(mocks.spawnSidecar).toHaveBeenCalledWith("current-model");
-    expect(mocks.killSidecar.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.spawnSidecar.mock.invocationCallOrder[0],
-    );
-  });
-
   it("stops the sidecar when syncing a non-local provider", async () => {
     mocks.isPreferredProviderLocal.mockReturnValue(false);
     const { syncLocalSidecarForCurrentProvider } = await importLifecycle();
@@ -668,7 +644,7 @@ describe("localSttLifecycle", () => {
         "current-model",
         Buffer.from([1]),
       );
-      // Let ensureLocalSidecarRunning settle so the request is registered.
+      // Let queued sidecar startup settle so the request is registered.
       await Promise.resolve();
       await Promise.resolve();
 

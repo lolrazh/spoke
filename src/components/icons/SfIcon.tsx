@@ -90,7 +90,7 @@ function sanitizeSvg(svg: string, title?: string): string {
     .replace(/<!DOCTYPE[\s\S]*?>/gi, "")
     .trim();
 
-  cleaned = cleaned.replace(/<svg([^>]*)>/i, (match, attrs) => {
+  cleaned = cleaned.replace(/<svg([^>]*)>/i, (_match, attrs) => {
     const withoutDimensions = attrs
       .replace(/\s+width="[^"]*"/gi, "")
       .replace(/\s+height="[^"]*"/gi, "")
@@ -102,7 +102,7 @@ function sanitizeSvg(svg: string, title?: string): string {
 
   cleaned = cleaned.replace(/<title>[\s\S]*?<\/title>/gi, "");
 
-  cleaned = cleaned.replace(/\sfill="([^"]*)"/gi, (match, value) => {
+  cleaned = cleaned.replace(/\sfill="([^"]*)"/gi, (_match, value) => {
     const normalized = value.trim().toLowerCase();
     if (normalized === "none" || normalized.startsWith("url(")) {
       return ` fill="${value}"`;
@@ -110,7 +110,7 @@ function sanitizeSvg(svg: string, title?: string): string {
     return ' fill="currentColor"';
   });
 
-  cleaned = cleaned.replace(/\sstroke="([^"]*)"/gi, (match, value) => {
+  cleaned = cleaned.replace(/\sstroke="([^"]*)"/gi, (_match, value) => {
     const normalized = value.trim().toLowerCase();
     if (normalized === "none" || normalized.startsWith("url(")) {
       return ` stroke="${value}"`;
@@ -121,7 +121,7 @@ function sanitizeSvg(svg: string, title?: string): string {
   if (title) {
     cleaned = cleaned.replace(
       /<svg([^>]*)>/i,
-      (match, attrs) => `<svg${attrs}><title>${escapeHtml(title)}</title>`,
+      (_match, attrs) => `<svg${attrs}><title>${escapeHtml(title)}</title>`,
     );
   }
 

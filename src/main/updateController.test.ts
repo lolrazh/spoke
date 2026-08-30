@@ -110,7 +110,7 @@ describe("updateController", () => {
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
 
     expect(controller.getUpdateStatus()).toBe("available");
-    expect(controller.getUpdateAvailableVersion()).toBe("0.1.7");
+    expect(controller.getUpdateSnapshot().version).toBe("0.1.7");
     expect(controller.isUpdateReadyToInstall()).toBe(false);
     expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
       "Update available",
@@ -170,7 +170,7 @@ describe("updateController", () => {
 
     expect(controller.getUpdateStatus()).toBe("available");
     expect(controller.isUpdateReadyToInstall()).toBe(true);
-    expect(controller.getUpdateAvailableVersion()).toBe("0.1.5");
+    expect(controller.getUpdateSnapshot().version).toBe("0.1.5");
     expect(controller.getUpdateSnapshot().downloadPercent).toBe(100);
     expect(sendNotify).toHaveBeenCalledWith("Update ready. Restart to update");
     expect(electron.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
@@ -208,7 +208,7 @@ describe("updateController", () => {
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toContain("No updater response");
+    expect(controller.getUpdateSnapshot().error).toContain("No updater response");
     expect(sendNotify).toHaveBeenCalledWith(
       "Update check timed out. Try again in a moment.",
     );
@@ -229,7 +229,7 @@ describe("updateController", () => {
     // ...but once progress truly stops, the stall watchdog trips.
     await vi.advanceTimersByTimeAsync(90_000);
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toContain("stalled");
+    expect(controller.getUpdateSnapshot().error).toContain("stalled");
     expect(sendNotify).toHaveBeenCalledWith(
       "Update download stalled. Try again in a moment.",
     );
@@ -245,7 +245,7 @@ describe("updateController", () => {
     );
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toBe(
+    expect(controller.getUpdateSnapshot().error).toBe(
       "The command is disabled and cannot be executed",
     );
     expect(sendNotify).toHaveBeenCalledWith(
@@ -282,7 +282,7 @@ describe("updateController", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toBe("boom");
+    expect(controller.getUpdateSnapshot().error).toBe("boom");
     expect(sendNotify).toHaveBeenCalledWith("Update download failed: boom");
   });
 
@@ -440,7 +440,7 @@ describe("updateController", () => {
     await vi.advanceTimersByTimeAsync(120_000);
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toContain("Install handoff");
+    expect(controller.getUpdateSnapshot().error).toContain("Install handoff");
     expect(sendNotify).toHaveBeenCalledWith(
       "Update install did not start. Try again.",
     );

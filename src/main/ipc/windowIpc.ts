@@ -1,14 +1,14 @@
 /**
  * Window IPC
  *
- * Pill window controls: expand/reveal, the pill's right-click context menu,
+ * Pill window controls: onboarding test reveal, the pill's right-click context menu,
  * slide/bounds updates, click-through & focusable toggles, floating-bar
  * visibility, and dock icon visibility.
  */
 
 import { app, BrowserWindow, ipcMain, Menu, screen } from "electron";
 
-import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../../constants/window";
+import { ISLAND_VISIBLE_Y } from "../../constants/window";
 import { logger } from "../../utils/logger";
 import { state } from "../windowState";
 import { createWindow, getActiveDisplay, coalescedSetBounds } from "../windows";
@@ -22,101 +22,6 @@ import {
 import { saveAppPreferences } from "../preferences";
 
 export function registerWindowIpc(): void {
-  // Allow other windows (onboarding) to request the pill to expand without directly moving the window
-  ipcMain.handle("pill:expand", () => {
-    try {
-      if (!state.mainWindow || state.mainWindow.isDestroyed()) {
-        createWindow();
-      }
-      if (!state.mainWindow) return { ok: false };
-
-      // Bring pill to visible top-aligned position and reveal
-      const current = state.mainWindow.getBounds();
-      const display = screen.getDisplayMatching(current);
-      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
-      const needMove = current.y !== targetY;
-      if (needMove) {
-        state.mainWindow.setBounds(
-          {
-            x: current.x,
-            y: targetY,
-            width: current.width,
-            height: current.height,
-          },
-          false,
-        );
-        if (process.platform === "darwin") state.mainWindow.invalidateShadow();
-      }
-      // Only run fade-in if currently hidden to avoid flicker
-      if (!state.mainWindow.isVisible()) {
-        smoothShow(state.mainWindow);
-      }
-
-      // Ask renderer to expand the pill UI
-      state.mainWindow.webContents.send("expand-pill");
-      return { ok: true };
-    } catch (e) {
-      console.warn("[pill:expand] Failed to expand pill:", e);
-      return { ok: false };
-    }
-  });
-
-  // Reveal the pill without expanding (used by onboarding test steps)
-  ipcMain.handle("pill:reveal", () => {
-    try {
-      if (!state.mainWindow || state.mainWindow.isDestroyed()) {
-        createWindow();
-      }
-      if (!state.mainWindow) return { ok: false };
-
-      // During onboarding, ensure pill stays hidden and below the top edge
-      if (state.pttTarget === "onboarding") {
-        const current = state.mainWindow.getBounds();
-        const display = screen.getDisplayMatching(current);
-        const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
-        if (current.y !== hideY) {
-          state.mainWindow.setBounds(
-            {
-              x: current.x,
-              y: hideY,
-              width: current.width,
-              height: current.height,
-            },
-            false,
-          );
-          if (process.platform === "darwin")
-            state.mainWindow.invalidateShadow();
-        }
-        // Do not show the window while onboarding owns the flow
-        return { ok: true };
-      }
-
-      const current = state.mainWindow.getBounds();
-      const display = screen.getDisplayMatching(current);
-      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
-      const needMove = current.y !== targetY;
-      if (needMove) {
-        state.mainWindow.setBounds(
-          {
-            x: current.x,
-            y: targetY,
-            width: current.width,
-            height: current.height,
-          },
-          false,
-        );
-        if (process.platform === "darwin") state.mainWindow.invalidateShadow();
-      }
-      if (!state.mainWindow.isVisible()) {
-        smoothShow(state.mainWindow);
-      }
-      return { ok: true };
-    } catch (e) {
-      console.warn("[pill:reveal] Failed to reveal pill:", e);
-      return { ok: false };
-    }
-  });
-
   // Reveal pill specifically for onboarding test steps (compact, no expansion)
   ipcMain.handle("pill:reveal-for-test", () => {
     try {
@@ -288,14 +193,14 @@ export function registerWindowIpc(): void {
   );
 
   // Handle dynamic click-through control
-  ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
+  ipcMain.on("set-click-through", (_event, clickThrough: boolean) => {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
     }
   });
 
   // Allow renderer to toggle focusable during expanded settings mode
-  ipcMain.on("set-focusable", (event, focusable: boolean) => {
+  ipcMain.on("set-focusable", (_event, focusable: boolean) => {
     try {
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         // setFocusable is a no-op on some platforms; call defensively

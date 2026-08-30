@@ -5,7 +5,6 @@ import {
 
 const listeners = new Set<(items: TranscriptionItem[]) => void>();
 let items: TranscriptionItem[] = [];
-let initialized = false;
 let initPromise: Promise<TranscriptionItem[]> | null = null;
 
 function emit() {
@@ -28,12 +27,10 @@ export async function initTranscriptionHistory(): Promise<TranscriptionItem[]> {
   initPromise = (async () => {
     try {
       items = await window.transcriptions.getAll();
-      initialized = true;
       // Loaded successfully
     } catch (error) {
       console.error("[TranscriptionHistory] Failed to load:", error);
       items = [];
-      initialized = true;
     }
     return items;
   })();
@@ -46,13 +43,6 @@ export async function initTranscriptionHistory(): Promise<TranscriptionItem[]> {
  */
 export function getTranscriptionHistory(): TranscriptionItem[] {
   return items;
-}
-
-/**
- * Check if history has been initialized.
- */
-export function isTranscriptionHistoryInitialized(): boolean {
-  return initialized;
 }
 
 /**
@@ -107,23 +97,4 @@ export async function deleteTranscription(id: string): Promise<boolean> {
   }
 
   return success;
-}
-
-/**
- * Clear all transcription history.
- */
-export async function clearTranscriptionHistory(): Promise<void> {
-  await window.transcriptions.clear();
-  items = [];
-  emit();
-}
-
-/**
- * Reset state for tests.
- */
-export function resetTranscriptionHistoryForTests(): void {
-  items = [];
-  initialized = false;
-  initPromise = null;
-  listeners.clear();
 }

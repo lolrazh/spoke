@@ -29,4 +29,3 @@ export const LOCAL_STT_CHUNK_OVERLAP_MS = 750;
 // extra pause makes the effective natural-boundary guard about 1.4s, close to
 // the later legacy implementation's 1.5s sentence pause.
 export const LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS = 1200;
-export const LOCAL_STT_MAX_REQUEST_MS = 30 * 1000;

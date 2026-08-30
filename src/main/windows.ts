@@ -103,27 +103,6 @@ export function getDisplayForWindow(): Display {
   return screen.getDisplayNearestPoint({ x: cx, y: cy });
 }
 
-function centerWindowOnDisplay(
-  display: Display,
-  preserveRelativeY = true,
-): void {
-  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
-  const currentBounds = state.mainWindow.getBounds();
-  const newX =
-    display.bounds.x +
-    Math.round((display.size.width - currentBounds.width) / 2);
-  // Always snap to safe top of target display to keep pill flush to menu bar/notch
-  const newY = display.workArea.y + ISLAND_VISIBLE_Y;
-  if (currentBounds.x !== newX || currentBounds.y !== newY) {
-    coalescedSetBounds({
-      x: newX,
-      y: newY,
-      width: currentBounds.width,
-      height: currentBounds.height,
-    });
-  }
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -321,7 +300,7 @@ export function stopFollowCursor(): void {
 function resumeFollowCursorOnShow(): void {
   if (!followCursorActive) return;
   // Land the pill on the display it should be on before polling resumes.
-  syncToCurrentDisplay("window-shown");
+  syncToCurrentDisplay();
   runFollowCursorInterval();
 }
 
@@ -331,7 +310,7 @@ function pauseFollowCursorOnHide(): void {
   pauseFollowCursorInterval();
 }
 
-export function syncToCurrentDisplay(reason: string): void {
+export function syncToCurrentDisplay(): void {
   try {
     // On OS display changes, select display based on current window location
     const display = getDisplayForWindow();
@@ -392,15 +371,15 @@ function debouncedRefreshNotchInfoAndEmit(reason: string): void {
 // React to OS display changes to keep the pill consistent
 export function registerDisplayChangeListeners(): void {
   screen.on("display-added", () => {
-    syncToCurrentDisplay("display-added");
+    syncToCurrentDisplay();
     debouncedRefreshNotchInfoAndEmit("display-added");
   });
   screen.on("display-removed", () => {
-    syncToCurrentDisplay("display-removed");
+    syncToCurrentDisplay();
     debouncedRefreshNotchInfoAndEmit("display-removed");
   });
   screen.on("display-metrics-changed", () => {
-    syncToCurrentDisplay("display-metrics-changed");
+    syncToCurrentDisplay();
     debouncedRefreshNotchInfoAndEmit("display-metrics-changed");
   });
 }
@@ -832,7 +811,7 @@ export function createOnboardingWindow() {
   // Add comprehensive error handling
   state.onboardingWindow.webContents.on(
     "did-fail-load",
-    (event, errorCode, errorDescription, validatedURL) => {
+    (_event, errorCode, errorDescription, validatedURL) => {
       console.error(
         "[Onboarding] Failed to load:",
         errorCode,

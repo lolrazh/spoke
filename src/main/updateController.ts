@@ -108,16 +108,8 @@ export function getUpdateStatus(): UpdateStatus {
   return updateStatus;
 }
 
-export function getUpdateAvailableVersion(): string | null {
-  return updateAvailableVersion;
-}
-
 export function isUpdateReadyToInstall(): boolean {
   return updateReadyToInstall;
-}
-
-export function getUpdateError(): string | null {
-  return updateError;
 }
 
 export function getUpdateSnapshot(): UpdateSnapshot {

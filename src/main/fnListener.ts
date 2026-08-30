@@ -204,15 +204,6 @@ export function startFnListener() {
             mirrorWindow !== targetWindow
           )
             mirrorWindow.webContents.send("ptt-up");
-        } else if (trimmedLine === "cmdR-down") {
-          // Right Command: visual press state only
-          targetWindow?.webContents.send("ptt-cancel-down");
-          if (
-            state.pttTarget === "main" &&
-            mirrorWindow &&
-            mirrorWindow !== targetWindow
-          )
-            mirrorWindow.webContents.send("ptt-cancel-down");
         } else if (trimmedLine === "cmdR-up") {
           // Right Command: trigger cancel on release
           targetWindow?.webContents.send("ptt-cancel");

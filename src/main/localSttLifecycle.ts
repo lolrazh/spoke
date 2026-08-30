@@ -170,12 +170,6 @@ async function ensureLocalSidecarRunningOnce(modelId: string): Promise<void> {
   armIdleTimer();
 }
 
-export async function ensureLocalSidecarRunning(): Promise<void> {
-  await enqueueLifecycle(() =>
-    ensureLocalSidecarRunningOnce(getActiveModelId()),
-  );
-}
-
 function queueLocalSidecarPrewarm(
   reason: string,
   generation: number,

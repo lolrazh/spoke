@@ -85,7 +85,7 @@ describe("components/SettingsPanel", () => {
     (window as any).mic = {
       select: vi.fn(async (_id: string) => ({ ok: true })),
       getSelected: vi.fn(async () => ({ id: "default" })),
-      onSelectedChanged: (cb: (p: { id: string }) => void) => () => {},
+      onSelectedChanged: (_cb: (p: { id: string }) => void) => () => {},
       onRefreshRequest: (_cb: () => void) => () => {},
       updateDevices: (_d: any, _s?: string) => {},
     } as any;

@@ -31,10 +31,6 @@ export function getMicDevices(): MicDevice[] {
   return micDevices;
 }
 
-export function getMicPreferences(): MicPreferences {
-  return micPreferences;
-}
-
 export function getSelectedMicId(): string {
   return micPreferences.selectedMicId || "default";
 }

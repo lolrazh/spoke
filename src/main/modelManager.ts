@@ -19,7 +19,6 @@ import {
   isKnownModelId,
   LOCAL_MODEL_IDS,
   LOCAL_MODEL_MANIFEST_VERSION,
-  LOCAL_MODELS,
   resolveLocalModelId,
 } from "./localModelContract";
 import type {

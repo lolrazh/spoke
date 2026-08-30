@@ -84,10 +84,6 @@ const TRANSCRIPTION_PROVIDER_CATALOG: TranscriptionProviderCatalogEntry[] = [
   },
 ];
 
-export function listTranscriptionProviderCatalog(): TranscriptionProviderCatalogEntry[] {
-  return [...TRANSCRIPTION_PROVIDER_CATALOG];
-}
-
 export function buildTranscriptionProviderSettingsSnapshot(input: {
   preferredProviderId: PreferredTranscriptionProviderId;
   configuredApiKeyProviderIds?: ApiKeyTranscriptionProviderId[];
