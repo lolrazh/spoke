@@ -206,7 +206,12 @@ export class LocalStreamingDictation {
       !this.failure &&
       !this.cancelRequested
     ) {
-      const pcm = this.queuedBatches[this.queuedBatchStart];
+      const batchIndex = this.queuedBatchStart;
+      const pcm = this.queuedBatches[batchIndex];
+      // The IPC promise owns the batch after pushLocalStream() starts. Drop
+      // the queue's reference now instead of retaining every sent batch until
+      // a slow pump becomes idle.
+      this.queuedBatches[batchIndex] = EMPTY_PCM16;
       this.queuedBatchStart += 1;
       try {
         await window.stt.pushLocalStream(sessionId, pcm.buffer as ArrayBuffer);

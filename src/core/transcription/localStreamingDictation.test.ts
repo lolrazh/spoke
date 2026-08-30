@@ -115,6 +115,9 @@ describe("LocalStreamingDictation", () => {
     await Promise.resolve();
     expect(pushedBuffers).toHaveLength(2);
     expect(pushedBuffers[1]).not.toBe(pushedBuffers[0]);
+    expect(
+      (stream as unknown as { queuedBatches: Int16Array[] }).queuedBatches[0],
+    ).toHaveLength(0);
 
     releaseSecond();
     await Promise.resolve();
