@@ -28,5 +28,3 @@ export const MOTION = {
     transcript: { stiffness: 520, damping: 46, mass: 1 } as SpringToken,
   },
 } as const;
-
-export type MotionTokens = typeof MOTION;
