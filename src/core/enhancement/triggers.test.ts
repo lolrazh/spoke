@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectTriggers, getTriggerNames } from "./triggers";
+import { detectTriggers } from "./triggers";
 
 describe("services/llm/triggers", () => {
   describe("detectTriggers - spelling", () => {
@@ -274,21 +274,6 @@ describe("services/llm/triggers", () => {
       const result = detectTriggers("MAKE THIS UPPERCASE AND SPELL IT");
       expect(result.triggers.has("casing")).toBe(true);
       expect(result.triggers.has("spelling")).toBe(true);
-    });
-  });
-
-  describe("getTriggerNames", () => {
-    it("returns array of trigger names", () => {
-      const context = detectTriggers("Make it uppercase and add a symbol");
-      const names = getTriggerNames(context);
-      expect(names).toContain("casing");
-      expect(names).toContain("symbols");
-    });
-
-    it("returns empty array for no triggers", () => {
-      const context = detectTriggers("Normal text");
-      const names = getTriggerNames(context);
-      expect(names).toEqual([]);
     });
   });
 
