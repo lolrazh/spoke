@@ -104,24 +104,24 @@ const AppInner: React.FC = () => {
     (height: number) => {
       if (!Number.isFinite(height) || height <= 0) return;
       const normalized = Math.round(height);
-      if (!settingsPanelMeasured) setSettingsPanelMeasured(true);
+      setSettingsPanelMeasured(true);
       setSettingsPanelContentHeight((prev) =>
         prev === normalized ? prev : normalized,
       );
     },
-    [settingsPanelMeasured],
+    [],
   );
 
   const handlePermissionsPanelHeight = useCallback(
     (height: number) => {
       if (!Number.isFinite(height) || height <= 0) return;
       const normalized = Math.round(height);
-      if (!permissionsPanelMeasured) setPermissionsPanelMeasured(true);
+      setPermissionsPanelMeasured(true);
       setPermissionsPanelContentHeight((prev) =>
         prev === normalized ? prev : normalized,
       );
     },
-    [permissionsPanelMeasured],
+    [],
   );
 
   useLayoutEffect(() => {
