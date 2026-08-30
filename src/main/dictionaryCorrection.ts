@@ -107,11 +107,15 @@ function buildIndex(dictionary: readonly string[]): Index {
     if (canonical.has(lower)) continue;
     canonical.set(lower, word);
     const [primary, secondary] = doubleMetaphone(word);
-    for (const code of [primary, secondary]) {
-      if (!code) continue;
-      const bucket = phonetic.get(code);
-      if (bucket) bucket.push(word);
-      else phonetic.set(code, [word]);
+    if (primary) {
+      const bucket = phonetic.get(primary);
+      if (bucket) bucket.push(lower);
+      else phonetic.set(primary, [lower]);
+    }
+    if (secondary && secondary !== primary) {
+      const bucket = phonetic.get(secondary);
+      if (bucket) bucket.push(lower);
+      else phonetic.set(secondary, [lower]);
     }
   }
 
@@ -166,38 +170,10 @@ function similarity(a: string, b: string): number {
   return 1 - distance(a, b) / max;
 }
 
-type Scored = { word: string; sim: number };
+type Scored = { key: string; sim: number };
 
 function bestFrom(
-  candidates: readonly string[],
-  lower: string,
-  threshold: number,
-): Scored[] {
-  const minLength = Math.ceil(lower.length * threshold);
-  const maxLength = Math.floor(lower.length / threshold);
-  const seen = new Set<string>();
-  let best: Scored | null = null;
-  let secondBest: Scored | null = null;
-  for (const word of candidates) {
-    if (word.length < minLength || word.length > maxLength) continue;
-    const key = word.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const sim = similarity(lower, key);
-    if (sim < threshold) continue;
-    const scored = { word, sim };
-    if (!best || sim > best.sim) {
-      secondBest = best;
-      best = scored;
-    } else if (!secondBest || sim > secondBest.sim) {
-      secondBest = scored;
-    }
-  }
-  return best ? (secondBest ? [best, secondBest] : [best]) : [];
-}
-
-function bestFromUnique(
-  candidates: ReadonlyMap<string, string>,
+  candidates: Iterable<string>,
   lower: string,
   threshold: number,
 ): Scored[] {
@@ -205,11 +181,11 @@ function bestFromUnique(
   const maxLength = Math.floor(lower.length / threshold);
   let best: Scored | null = null;
   let secondBest: Scored | null = null;
-  for (const [key, word] of candidates) {
+  for (const key of candidates) {
     if (key.length < minLength || key.length > maxLength) continue;
     const sim = similarity(lower, key);
     if (sim < threshold) continue;
-    const scored = { word, sim };
+    const scored = { key, sim };
     if (!best || sim > best.sim) {
       secondBest = best;
       best = scored;
@@ -306,18 +282,21 @@ function findPhraseMatch(key: string, index: Index): PhraseMatch | null {
 function findMatch(stem: string, lower: string, index: Index): Match | null {
   const [primary, secondary] = doubleMetaphone(stem);
   const candidates: string[] = [];
-  for (const code of [primary, secondary]) {
-    if (!code) continue;
-    const bucket = index.phonetic.get(code);
+  if (primary) {
+    const bucket = index.phonetic.get(primary);
+    if (bucket) candidates.push(...bucket);
+  }
+  if (secondary && secondary !== primary) {
+    const bucket = index.phonetic.get(secondary);
     if (bucket) candidates.push(...bucket);
   }
 
   let scored = bestFrom(candidates, lower, PHONETIC_THRESHOLD);
   let path: Match["path"] = "phonetic";
   if (scored.length === 0) {
-    // canonical values are already unique by lowercase spelling, so avoid a
-    // fresh de-duplication Set for every fuzzy fallback token.
-    scored = bestFromUnique(index.canonical, lower, FUZZY_THRESHOLD);
+    // Canonical keys are unique and already lowercase, so the fuzzy fallback
+    // can iterate them directly without another array or de-duplication Set.
+    scored = bestFrom(index.canonical.keys(), lower, FUZZY_THRESHOLD);
     path = "fuzzy";
   }
   if (scored.length === 0) return null;
@@ -326,7 +305,9 @@ function findMatch(stem: string, lower: string, index: Index): Match | null {
   if (scored.length >= 2 && scored[0].sim - scored[1].sim < TIE_MARGIN) {
     return null;
   }
-  return { word: scored[0].word, sim: scored[0].sim, path };
+  const word = index.canonical.get(scored[0].key);
+  if (word === undefined) return null;
+  return { word, sim: scored[0].sim, path };
 }
 
 export function correctTranscript(
