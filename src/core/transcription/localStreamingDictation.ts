@@ -115,10 +115,14 @@ export class LocalStreamingDictation {
         this.batchSamples - this.pendingSamples,
         frame.length - frameOffset,
       );
-      this.pendingBatch.set(
-        frame.subarray(frameOffset, frameOffset + copyLength),
-        this.pendingSamples,
-      );
+      if (frameOffset === 0 && copyLength === frame.length) {
+        this.pendingBatch.set(frame, this.pendingSamples);
+      } else {
+        this.pendingBatch.set(
+          frame.subarray(frameOffset, frameOffset + copyLength),
+          this.pendingSamples,
+        );
+      }
       this.pendingSamples += copyLength;
       frameOffset += copyLength;
 
