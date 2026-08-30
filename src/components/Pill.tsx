@@ -153,10 +153,14 @@ const Pill: React.FC<PillProps> = ({
 
   useEffect(() => {
     if (hasLiveTranscript) return;
-    setLiveTranscriptMetrics({
-      wrappedTextHeight: 0,
-      maxWrappedTextHeight: 0,
-    });
+    setLiveTranscriptMetrics((previous) =>
+      previous.wrappedTextHeight === 0 && previous.maxWrappedTextHeight === 0
+        ? previous
+        : {
+            wrappedTextHeight: 0,
+            maxWrappedTextHeight: 0,
+          },
+    );
   }, [hasLiveTranscript]);
 
   const liveTranscriptLayout = calculateLiveTranscriptLayout({
