@@ -13,6 +13,8 @@ const NUM_BARS = 24;
 const RESTING_BAR_HEIGHT = 6;
 const MAX_BAR_HEIGHT = RESTING_BAR_HEIGHT + 80;
 const RESTING_BAR_OPACITY = 0.45;
+const RESTING_BAR_TRANSFORM = `scaleY(${RESTING_BAR_HEIGHT / MAX_BAR_HEIGHT})`;
+const RESTING_BAR_OPACITY_STYLE = `${RESTING_BAR_OPACITY}`;
 
 export function MicBars({
   analyserRef,
@@ -31,8 +33,8 @@ export function MicBars({
       if (!bars) return;
       for (let index = 0; index < bars.length; index += 1) {
         const bar = bars[index] as HTMLElement;
-        bar.style.transform = `scaleY(${RESTING_BAR_HEIGHT / MAX_BAR_HEIGHT})`;
-        bar.style.opacity = `${RESTING_BAR_OPACITY}`;
+        bar.style.transform = RESTING_BAR_TRANSFORM;
+        bar.style.opacity = RESTING_BAR_OPACITY_STYLE;
       }
     };
 
@@ -43,6 +45,9 @@ export function MicBars({
 
     let rafId: number | null = null;
     let freqData: Uint8Array<ArrayBuffer> | null = null;
+    let binsPerBar = 1;
+    const previousHeights = new Int16Array(NUM_BARS).fill(-1);
+    const previousOpacities = new Float64Array(NUM_BARS).fill(-1);
 
     const tick = () => {
       const analyser = analyserRef.current;
@@ -50,9 +55,9 @@ export function MicBars({
       if (analyser && bars) {
         if (!freqData || freqData.length !== analyser.frequencyBinCount) {
           freqData = new Uint8Array(analyser.frequencyBinCount);
+          binsPerBar = Math.max(1, Math.floor(freqData.length / NUM_BARS));
         }
         analyser.getByteFrequencyData(freqData);
-        const binsPerBar = Math.max(1, Math.floor(freqData.length / NUM_BARS));
         for (let i = 0; i < NUM_BARS; i++) {
           let sum = 0;
           const start = i * binsPerBar;
@@ -65,8 +70,15 @@ export function MicBars({
             RESTING_BAR_HEIGHT,
             Math.round(RESTING_BAR_HEIGHT + value * 80),
           );
-          bar.style.transform = `scaleY(${height / MAX_BAR_HEIGHT})`;
-          bar.style.opacity = `${0.45 + value * 0.55}`;
+          if (previousHeights[i] !== height) {
+            previousHeights[i] = height;
+            bar.style.transform = `scaleY(${height / MAX_BAR_HEIGHT})`;
+          }
+          const opacity = RESTING_BAR_OPACITY + value * 0.55;
+          if (previousOpacities[i] !== opacity) {
+            previousOpacities[i] = opacity;
+            bar.style.opacity = `${opacity}`;
+          }
         }
       }
       rafId = window.requestAnimationFrame(tick);
@@ -89,7 +101,7 @@ export function MicBars({
           className="flex-1 rounded-[3px] bg-white/70"
           style={{
             height: `${MAX_BAR_HEIGHT}px`,
-            transform: `scaleY(${RESTING_BAR_HEIGHT / MAX_BAR_HEIGHT})`,
+            transform: RESTING_BAR_TRANSFORM,
             transformOrigin: "bottom",
             opacity: RESTING_BAR_OPACITY,
           }}
