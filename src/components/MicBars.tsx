@@ -11,6 +11,7 @@ import { useEffect, useRef, type RefObject } from "react";
 
 const NUM_BARS = 24;
 const RESTING_BAR_HEIGHT = 6;
+const MAX_BAR_HEIGHT = RESTING_BAR_HEIGHT + 80;
 const RESTING_BAR_OPACITY = 0.45;
 
 export function MicBars({
@@ -30,7 +31,7 @@ export function MicBars({
       if (!bars) return;
       for (let index = 0; index < bars.length; index += 1) {
         const bar = bars[index] as HTMLElement;
-        bar.style.height = `${RESTING_BAR_HEIGHT}px`;
+        bar.style.transform = `scaleY(${RESTING_BAR_HEIGHT / MAX_BAR_HEIGHT})`;
         bar.style.opacity = `${RESTING_BAR_OPACITY}`;
       }
     };
@@ -60,7 +61,11 @@ export function MicBars({
           const avg = sum / (end - start || 1);
           const value = avg / 255;
           const bar = bars[i] as HTMLElement;
-          bar.style.height = `${Math.max(6, Math.round(6 + value * 80))}px`;
+          const height = Math.max(
+            RESTING_BAR_HEIGHT,
+            Math.round(RESTING_BAR_HEIGHT + value * 80),
+          );
+          bar.style.transform = `scaleY(${height / MAX_BAR_HEIGHT})`;
           bar.style.opacity = `${0.45 + value * 0.55}`;
         }
       }
@@ -83,7 +88,9 @@ export function MicBars({
           key={index}
           className="flex-1 rounded-[3px] bg-white/70"
           style={{
-            height: `${RESTING_BAR_HEIGHT}px`,
+            height: `${MAX_BAR_HEIGHT}px`,
+            transform: `scaleY(${RESTING_BAR_HEIGHT / MAX_BAR_HEIGHT})`,
+            transformOrigin: "bottom",
             opacity: RESTING_BAR_OPACITY,
           }}
           aria-hidden
