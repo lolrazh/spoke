@@ -3,6 +3,7 @@ import { getAudioLevel, subscribeAudioLevel } from "../state/audioLevel";
 
 const FREQUENCY_BAR_COUNT = 18;
 const PROCESSING_FRAME_INTERVAL_MS = 33;
+const MAX_FREQUENCY_HEIGHT = 12;
 
 const BASE_FREQUENCY_HEIGHTS = Array.from(
   { length: FREQUENCY_BAR_COUNT },
@@ -104,7 +105,13 @@ function StaticFrequencyBars({
         <div
           key={`freq-${index}`}
           className="frequency-element as-bar"
-          style={{ height: "2px", width: "2px", borderRadius: "1px" }}
+          style={{
+            height: `${MAX_FREQUENCY_HEIGHT}px`,
+            width: "2px",
+            borderRadius: "1px",
+            transform: "scaleY(0.1666666667)",
+            transformOrigin: "center",
+          }}
         />
       ))}
     </div>
@@ -129,7 +136,7 @@ function updateListeningBars(container: HTMLDivElement | null): void {
           variation,
       ),
     );
-    (elements[index] as HTMLElement).style.height = `${height}px`;
+    (elements[index] as HTMLElement).style.transform = `scaleY(${height / MAX_FREQUENCY_HEIGHT})`;
   }
 }
 
@@ -155,6 +162,6 @@ function updateProcessingBars(
         BASE_FREQUENCY_HEIGHTS[index] * (0.35 + wave * 1.8) * totalVariation,
       ),
     );
-    (elements[index] as HTMLElement).style.height = `${height}px`;
+    (elements[index] as HTMLElement).style.transform = `scaleY(${height / MAX_FREQUENCY_HEIGHT})`;
   }
 }
