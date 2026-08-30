@@ -56,11 +56,19 @@ async function loadSvgForName(
       }
 
       // Start loading and cache the promise
-      const loadPromise = loader().then((svg) => {
-        svgCache.set(candidate, svg);
-        loadingPromises.delete(candidate);
-        return svg;
-      });
+      const loadPromise = loader().then(
+        (svg) => {
+          svgCache.set(candidate, svg);
+          loadingPromises.delete(candidate);
+          return svg;
+        },
+        (error) => {
+          // Do not pin a failed lazy import forever. A later render can retry
+          // after a transient chunk-load failure.
+          loadingPromises.delete(candidate);
+          throw error;
+        },
+      );
       loadingPromises.set(candidate, loadPromise);
       return loadPromise;
     }
@@ -172,8 +180,9 @@ const SfIcon: React.FC<SfIconProps> = ({
   // Load SVG if not cached
   useEffect(() => {
     // Skip if already loaded
-    if (getCachedSvg(name, weight)) {
-      setRawSvg(getCachedSvg(name, weight));
+    const cachedSvg = getCachedSvg(name, weight);
+    if (cachedSvg !== null) {
+      setRawSvg(cachedSvg);
       return;
     }
 
