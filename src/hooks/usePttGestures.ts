@@ -68,29 +68,19 @@ export function usePttGestures({
   pushTrace,
 }: UsePttGesturesOptions): void {
   const transRef = useRef(trans);
-  useEffect(() => {
-    transRef.current = trans;
-  }, [trans]);
+  transRef.current = trans;
 
   const pillDispatchRef = useRef(pillDispatch);
-  useEffect(() => {
-    pillDispatchRef.current = pillDispatch;
-  }, [pillDispatch]);
+  pillDispatchRef.current = pillDispatch;
 
   const canProceedWithStartRef = useRef(canProceedWithStart);
-  useEffect(() => {
-    canProceedWithStartRef.current = canProceedWithStart;
-  }, [canProceedWithStart]);
+  canProceedWithStartRef.current = canProceedWithStart;
 
   const onMicPermissionDeniedRef = useRef(onMicPermissionDenied);
-  useEffect(() => {
-    onMicPermissionDeniedRef.current = onMicPermissionDenied;
-  }, [onMicPermissionDenied]);
+  onMicPermissionDeniedRef.current = onMicPermissionDenied;
 
   const pushTraceRef = useRef(pushTrace);
-  useEffect(() => {
-    pushTraceRef.current = pushTrace;
-  }, [pushTrace]);
+  pushTraceRef.current = pushTrace;
 
   const trace = (msg: string) => pushTraceRef.current?.(msg);
 
