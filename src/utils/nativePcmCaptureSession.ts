@@ -1,5 +1,4 @@
 import {
-  concatPcm16,
   createCapturedAudio,
   type CapturedAudio,
 } from "../core/transcription/capturedAudio";
@@ -7,6 +6,7 @@ import {
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
 import type { AudioCaptureSession } from "./audioCaptureSession";
+import { Pcm16Accumulator } from "./pcm16Accumulator";
 
 // Native AVAudioEngine capture bypasses the browser's WebRTC auto-gain control.
 // Keep the PCM sent to STT untouched, but calibrate the pill-only meter so a
@@ -31,7 +31,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   private readonly onError?: (error: Error) => void;
   private readonly onPcmFrame?: (frame: Int16Array) => void;
   private readonly retainPcm: boolean;
-  private readonly chunks: Int16Array[] = [];
+  private readonly retainedPcm = new Pcm16Accumulator();
   private readonly removeFrameListener: () => void;
   private readonly removeStoppedListener: () => void;
   private readonly removeErrorListener: () => void;
@@ -108,8 +108,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
       this.removeListeners();
     }
 
-    const pcm16 = concatPcm16(this.chunks);
-    this.chunks.length = 0;
+    const pcm16 = this.retainedPcm.take();
     return createCapturedAudio(pcm16, {
       sampleRateHz: this.targetSampleRateHz,
     });
@@ -122,12 +121,12 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
     this.stopResolver = null;
     this.stopRejecter = null;
     this.removeListeners();
-    this.chunks.length = 0;
+    this.retainedPcm.clear();
     void window.audioCapture?.cancel();
   }
 
   discardBufferedPcm(): void {
-    this.chunks.length = 0;
+    this.retainedPcm.clear();
   }
 
   private handleFrame(payload: Uint8Array | ArrayBuffer): void {
@@ -141,7 +140,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
 
     const pcm16 = decodePcm16(bytes);
 
-    if (this.retainPcm) this.chunks.push(pcm16);
+    if (this.retainPcm) this.retainedPcm.append(pcm16);
     this.onAudioLevel?.(
       Math.min(1, calculatePcm16Level(pcm16) * NATIVE_VISUAL_LEVEL_GAIN),
     );
