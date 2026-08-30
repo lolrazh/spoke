@@ -156,7 +156,6 @@ const Onboarding: React.FC = () => {
     setPermissions,
   } = usePermissions(mockProvider, {
     pollIntervalMs: 1000,
-    deepLinkGraceMs: 4000,
     includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
   const isDev = devFlags.isDevelopment;

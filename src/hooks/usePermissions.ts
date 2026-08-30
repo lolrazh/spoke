@@ -52,7 +52,6 @@ export type PermissionUiState = {
 
 type Options = {
   pollIntervalMs?: number;
-  deepLinkGraceMs?: number;
   includeScreenRecording?: boolean;
 };
 

@@ -46,7 +46,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
     requestInputMonitoring,
   } = usePermissions(undefined, {
     pollIntervalMs: 1000,
-    deepLinkGraceMs: 4000,
     includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
 
