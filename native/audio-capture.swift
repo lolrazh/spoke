@@ -3,7 +3,7 @@ import CoreAudio
 import Foundation
 
 private let targetSampleRate = 16_000.0
-private let outputFrameSamples = 480
+private let outputFrameSamples = 1_536
 private let tapBufferSize: AVAudioFrameCount = 1_024
 private let ringBufferSeconds = 2.0
 
@@ -34,7 +34,7 @@ private final class EventEmitter {
         defer { lock.unlock() }
 
         // FileHandle.write is synchronous, so the packet storage can be
-        // reused after each write. This avoids one heap allocation per 30 ms
+        // reused after each write. This avoids one heap allocation per 96 ms
         // audio frame while keeping the wire format unchanged.
         packet.removeAll(keepingCapacity: true)
         packet.reserveCapacity(MemoryLayout<UInt32>.size + 1 + payload.count)

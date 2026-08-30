@@ -31,9 +31,9 @@ import { createLogger } from "./logger";
 const log = createLogger("StreamingVAD");
 
 // The Silero legacy model (see @ricky0123/vad-web's NonRealTimeVAD.new)
-// requires fixed 1536-sample windows at 16kHz (96ms). Our capture frames are
-// 30ms (480 samples @ 16kHz, see PCM_CAPTURE_FRAME_SAMPLES in config/audio.ts)
-// and don't divide evenly into that, so we re-chunk here.
+// requires fixed 1536-sample windows at 16kHz (96ms). The canonical capture
+// frame has this same size, but pushFrame still accepts arbitrary frame sizes
+// so alternate capture sources and test inputs remain safe.
 const MODEL_FRAME_SAMPLES = 1536;
 const MODEL_SAMPLES_PER_MS = 16; // 16,000 Hz / 1000 ms
 const PCM16_TO_FLOAT_GAIN = 1 / 32768;
@@ -114,8 +114,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private workerReleased = false;
 
   // Persistent scratch for samples that don't yet fill a model window. Sized
-  // for a full window (leftover is always < MODEL_FRAME_SAMPLES), so it's
-  // allocated once and reused rather than re-sliced every 30ms frame.
+  // for a full window (leftover is always < MODEL_FRAME_SAMPLES), so it is
+  // allocated once and reused rather than re-sliced for every capture frame.
   private readonly carryBuf = new Float32Array(MODEL_FRAME_SAMPLES);
   private carryLen = 0;
   private readonly pendingWindows: PendingVadWindow[] = [];
@@ -186,7 +186,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
 
   private appendSamples(pcm16: Int16Array): void {
     // Emit as many full MODEL_FRAME_SAMPLES windows as carry + this frame can
-    // fill, without materializing a Float32Array for every 30ms capture frame.
+    // fill, without materializing a Float32Array for every capture frame.
     // Each window is still its own Float32Array because it is transferred to
     // the worker; the PCM conversion writes directly into those windows.
     let inputOffset = 0;

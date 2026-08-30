@@ -1,8 +1,8 @@
 /**
  * Live audio level store.
  *
- * During recording the PCM capture emits an audio level ~33x/sec (once per
- * 30ms frame). Holding that in React state re-renders every component that
+ * During recording the PCM capture emits an audio level once per capture
+ * frame. Holding that in React state re-renders every component that
  * consumes it. This tiny external store keeps the value outside React. The
  * visualizer subscribes imperatively and updates its existing DOM nodes, so
  * audio frames do not schedule React renders.
