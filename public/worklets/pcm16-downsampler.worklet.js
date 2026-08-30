@@ -167,15 +167,18 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     let phase = this._phase;
     for (let n = 0; n < input.length; n++) {
       dl[idx] = input[n];
-      idx = (idx + 1) % TAPS;
+      idx += 1;
+      if (idx === TAPS) idx = 0;
       phase++;
       if (phase === 3) {
         // Convolution centered at idx-1 (most recent sample)
         let acc = 0.0;
-        let di = (idx - 1 + TAPS) % TAPS;
+        let di = idx - 1;
+        if (di < 0) di = TAPS - 1;
         for (let k = 0; k < TAPS; k++) {
           acc += taps[k] * dl[di];
-          di = (di - 1 + TAPS) % TAPS;
+          di -= 1;
+          if (di < 0) di = TAPS - 1;
         }
         this._pushSample(acc);
         phase = 0;
