@@ -1,6 +1,4 @@
-const wordSegmenter = new Intl.Segmenter(undefined, {
-  granularity: "word",
-});
+let wordSegmenter: Intl.Segmenter | null = null;
 const SIMPLE_ASCII_LIVE_TEXT_RE = /^[\t\n\r\x20-\x26\x28-\x2c\x2e-\x2f\x3a-\x7f]*$/;
 
 export type LiveTranscriptText = {
@@ -23,7 +21,9 @@ export function splitLiveTranscriptText(
   if (simpleAsciiResult) return simpleAsciiResult;
 
   let tentativeStart: number | null = null;
-  for (const segment of wordSegmenter.segment(text)) {
+  const segmenter =
+    (wordSegmenter ??= new Intl.Segmenter(undefined, { granularity: "word" }));
+  for (const segment of segmenter.segment(text)) {
     if (segment.isWordLike) tentativeStart = segment.index;
   }
 
