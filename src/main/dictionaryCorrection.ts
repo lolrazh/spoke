@@ -175,9 +175,12 @@ function bestFrom(
   lower: string,
   threshold: number,
 ): Scored[] {
+  const minLength = Math.ceil(lower.length * threshold);
+  const maxLength = Math.floor(lower.length / threshold);
   const seen = new Set<string>();
   const scored: Scored[] = [];
   for (const word of candidates) {
+    if (word.length < minLength || word.length > maxLength) continue;
     const key = word.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -193,8 +196,11 @@ function bestFromUnique(
   lower: string,
   threshold: number,
 ): Scored[] {
+  const minLength = Math.ceil(lower.length * threshold);
+  const maxLength = Math.floor(lower.length / threshold);
   const scored: Scored[] = [];
   for (const word of candidates) {
+    if (word.length < minLength || word.length > maxLength) continue;
     const key = word.toLowerCase();
     const sim = similarity(lower, key);
     if (sim >= threshold) scored.push({ word, sim });
