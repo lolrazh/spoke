@@ -695,91 +695,64 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [autoSpace, setAutoSpace] = useState<boolean | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
 
-  // Load app version from main via preload bridge
-  useEffect(() => {
-    (async () => {
-      try {
-        const v = await window.app?.getVersion?.();
-        if (v && typeof v === "string") setAppVersion(v);
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
-
-  // Initialize from main visibility state (source of truth)
+  // Load independent startup settings together so their async results commit
+  // in one React update instead of causing a render per bridge response.
   useEffect(() => {
     let isMounted = true;
 
-    (async () => {
-      try {
-        // Prefer persisted intent if available; fallback to current visibility
-        const pref = await window.electron?.getFloatingBarEnabled?.();
-        if (pref && typeof pref.enabled === "boolean") {
-          if (isMounted) setShowFloatingBar(pref.enabled);
-          return;
-        }
-        const vis = await window.electron?.isFloatingBarVisible?.();
-        if (isMounted) {
-          setShowFloatingBar(
-            vis && typeof vis.visible === "boolean" ? vis.visible : true,
-          );
-        }
-      } catch {
-        // Resolve to a value so the toggle never sticks on the placeholder.
-        if (isMounted) setShowFloatingBar(true);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Initialize dock visibility from main process
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const result = await window.electron?.getDockVisible?.();
-        if (isMounted) {
-          setShowInDock(
-            result && typeof result.visible === "boolean"
+    const loadInitialSettings = async () => {
+      const [version, floatingBar, dock, autoSpaceEnabled] = await Promise.all([
+        (async () => {
+          try {
+            const value = await window.app?.getVersion?.();
+            return value && typeof value === "string" ? value : "";
+          } catch {
+            return "";
+          }
+        })(),
+        (async () => {
+          try {
+            // Prefer persisted intent if available; fallback to current visibility.
+            const pref = await window.electron?.getFloatingBarEnabled?.();
+            if (pref && typeof pref.enabled === "boolean") {
+              return pref.enabled;
+            }
+            const vis = await window.electron?.isFloatingBarVisible?.();
+            return vis && typeof vis.visible === "boolean" ? vis.visible : true;
+          } catch {
+            return true;
+          }
+        })(),
+        (async () => {
+          try {
+            const result = await window.electron?.getDockVisible?.();
+            return result && typeof result.visible === "boolean"
               ? result.visible
-              : true,
-          );
-        }
-      } catch {
-        // Resolve to a value so the toggle never sticks on the placeholder.
-        if (isMounted) setShowInDock(true);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Initialize auto-space preference from main process
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const result = await window.electron?.getAutoSpaceEnabled?.();
-        if (isMounted) {
-          setAutoSpace(
-            result && typeof result.enabled === "boolean"
+              : true;
+          } catch {
+            return true;
+          }
+        })(),
+        (async () => {
+          try {
+            const result = await window.electron?.getAutoSpaceEnabled?.();
+            return result && typeof result.enabled === "boolean"
               ? result.enabled
-              : true,
-          );
-        }
-      } catch {
-        // Resolve to a value so the toggle never sticks on the placeholder.
-        if (isMounted) setAutoSpace(true);
-      }
-    })();
+              : true;
+          } catch {
+            return true;
+          }
+        })(),
+      ]);
+
+      if (!isMounted) return;
+      setAppVersion(version);
+      setShowFloatingBar(floatingBar);
+      setShowInDock(dock);
+      setAutoSpace(autoSpaceEnabled);
+    };
+
+    void loadInitialSettings();
 
     return () => {
       isMounted = false;
