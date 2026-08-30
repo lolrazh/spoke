@@ -7,6 +7,7 @@ import type { MicDevice } from "../types/shared";
 const AUDIO_CAPTURE_APP_NAME = "Spoke Audio Capture.app";
 const AUDIO_CAPTURE_EXECUTABLE_NAME = "Spoke Audio Capture";
 const HEADER_BYTES = 4;
+const EMPTY_STDOUT_BUFFER = Buffer.alloc(0);
 export const NATIVE_AUDIO_STOP_TIMEOUT_MS = 2_000;
 
 enum AudioEventType {
@@ -85,7 +86,7 @@ class NativeAudioCaptureManager {
   private pendingStart: PendingResult<void> | null = null;
   private pendingStop: PendingResult<void> | null = null;
   private stopPromise: Promise<void> | null = null;
-  private stdoutBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+  private stdoutBuffer: Buffer<ArrayBufferLike> = EMPTY_STDOUT_BUFFER;
 
   async start(target: WebContents, deviceId: string): Promise<void> {
     if (!isNativeAudioCaptureAvailable()) {
@@ -214,7 +215,7 @@ class NativeAudioCaptureManager {
       detached: false,
     });
     this.process = child;
-    this.stdoutBuffer = Buffer.alloc(0);
+    this.stdoutBuffer = EMPTY_STDOUT_BUFFER;
 
     this.ready = new Promise<void>((resolve, reject) => {
       child.stdout.on("data", (chunk: Buffer) => this.handleStdout(chunk));
@@ -266,7 +267,10 @@ class NativeAudioCaptureManager {
       if (this.stdoutBuffer.length < packetLength) return;
 
       const packet = this.stdoutBuffer.subarray(HEADER_BYTES, packetLength);
-      this.stdoutBuffer = this.stdoutBuffer.subarray(packetLength);
+      this.stdoutBuffer =
+        this.stdoutBuffer.length === packetLength
+          ? EMPTY_STDOUT_BUFFER
+          : this.stdoutBuffer.subarray(packetLength);
       const type = packet[0] as AudioEventType;
       this.handleEvent(type, packet.subarray(1));
     }
@@ -346,7 +350,7 @@ class NativeAudioCaptureManager {
       this.ready = null;
       this.active = false;
       this.target = null;
-      this.stdoutBuffer = Buffer.alloc(0);
+      this.stdoutBuffer = EMPTY_STDOUT_BUFFER;
     }
 
     try {

@@ -160,6 +160,8 @@ describe("getAudioCapturePath", () => {
       const forwarded = send.mock.calls[0][1] as Buffer;
       expect(forwarded).toEqual(Buffer.from([0x34, 0x12, 0xf9, 0xff]));
       expect(forwarded.buffer).toBe(packet.buffer);
+      expect(state.stdoutBuffer.byteLength).toBe(0);
+      expect(state.stdoutBuffer.buffer).not.toBe(packet.buffer);
     } finally {
       state.stdoutBuffer = Buffer.alloc(0);
       state.target = null;
