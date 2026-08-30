@@ -65,10 +65,6 @@ declare global {
     contextMenu: {
       showPill: () => void;
     };
-    transcript: {
-      update: (text: string) => void;
-      subscribe: (cb: (text: string) => void) => () => void;
-    };
     clipboard: {
       insertText: (
         text: string,

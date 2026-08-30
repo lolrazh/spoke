@@ -41,16 +41,6 @@ contextBridge.exposeInMainWorld("contextMenu", {
   showPill: () => ipcRenderer.send("show-pill-context-menu"),
 });
 
-contextBridge.exposeInMainWorld("transcript", {
-  update: (text: string) => ipcRenderer.send("transcript:update", text),
-  subscribe: (cb: (text: string) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, text: string) =>
-      cb(text);
-    ipcRenderer.on("transcript:updated", listener);
-    return () => ipcRenderer.removeListener("transcript:updated", listener);
-  },
-});
-
 contextBridge.exposeInMainWorld("clipboard", {
   insertText: (text: string) =>
     ipcRenderer.invoke("insert-text-at-cursor", text),

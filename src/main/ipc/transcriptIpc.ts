@@ -1,12 +1,11 @@
 /**
  * Transcript IPC
  *
- * Paste-at-cursor orchestration plus the last-transcript broadcast and the
- * transcription history CRUD handlers backed by lib/transcriptionStorage.
+ * Paste-at-cursor orchestration plus transcription history CRUD handlers
+ * backed by lib/transcriptionStorage.
  */
 
 import {
-  BrowserWindow,
   clipboard,
   ipcMain,
   type IpcMainInvokeEvent,
@@ -48,17 +47,6 @@ export function registerTranscriptIpc(): void {
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }
-  });
-
-  // Handle last transcript updates from renderer
-  ipcMain.on("transcript:update", (_event, text: string) => {
-    console.log(`[IPC] Received transcript update (${text.length} chars)`);
-    state.lastTranscript = text;
-    BrowserWindow.getAllWindows().forEach((window) => {
-      try {
-        window.webContents.send("transcript:updated", text);
-      } catch {}
-    });
   });
 
   // Auto-space preference (trailing space appended after inserted dictation)
