@@ -107,12 +107,6 @@ declare global {
         isDev: boolean;
       }>;
       requestAccessibilityPermission: () => Promise<void>;
-      requestInputMonitoringPermission: () => Promise<{
-        success: boolean;
-        isDev: boolean;
-        alreadyGranted?: boolean;
-        error?: string;
-      }>;
       askIM: () => Promise<{
         success: boolean;
         status?: string;
@@ -152,10 +146,8 @@ declare global {
       postPermissionGrant?: (
         type: "accessibility" | "microphone",
       ) => Promise<void> | void;
-      // Window controls
+      // Onboarding window control
       closeOnboarding: () => Promise<void>;
-      minimizeOnboarding: () => Promise<void>;
-      maximizeOnboarding: () => Promise<void>;
       // Floating bar visibility helpers
       isFloatingBarVisible: () => Promise<{ visible: boolean }>;
       getFloatingBarEnabled: () => Promise<{ enabled: boolean }>;

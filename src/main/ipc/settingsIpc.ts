@@ -4,7 +4,7 @@
  * Onboarding orchestration (helper/pill prepare steps, completion,
  * step/flag persistence), the miscellaneous app-control handlers
  * (open-external, reload, app path/version), permission post-grant
- * follow-ups, onboarding window controls, and the updater handlers.
+ * follow-ups, and the updater handlers.
  *
  * The onboarding prefs (`onboarding.json`) are read/written with raw
  * `fs`/JSON calls here rather than through src/main/preferences.ts: that
@@ -212,22 +212,6 @@ export function registerSettingsIpc(): void {
   ipcMain.handle("close-onboarding", () => {
     if (state.onboardingWindow) {
       state.onboardingWindow.close();
-    }
-  });
-
-  ipcMain.handle("minimize-onboarding", () => {
-    if (state.onboardingWindow) {
-      state.onboardingWindow.minimize();
-    }
-  });
-
-  ipcMain.handle("maximize-onboarding", () => {
-    if (state.onboardingWindow) {
-      if (state.onboardingWindow.isMaximized()) {
-        state.onboardingWindow.unmaximize();
-      } else {
-        state.onboardingWindow.maximize();
-      }
     }
   });
 

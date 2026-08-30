@@ -281,8 +281,6 @@ contextBridge.exposeInMainWorld("electron", {
   checkPermissions: () => ipcRenderer.invoke("check-permissions"),
   requestAccessibilityPermission: () =>
     ipcRenderer.invoke("request-accessibility-permission"),
-  requestInputMonitoringPermission: () =>
-    ipcRenderer.invoke("request-input-monitoring-permission"),
   askIM: () => ipcRenderer.invoke("ask-im"),
   requestMicrophonePermission: () =>
     ipcRenderer.invoke("request-microphone-permission"),
@@ -308,10 +306,8 @@ contextBridge.exposeInMainWorld("electron", {
   // Permission lifecycle helpers
   postPermissionGrant: (type: "accessibility" | "microphone") =>
     ipcRenderer.invoke("permissions:post-grant", type),
-  // Window controls
+  // Onboarding window control
   closeOnboarding: () => ipcRenderer.invoke("close-onboarding"),
-  minimizeOnboarding: () => ipcRenderer.invoke("minimize-onboarding"),
-  maximizeOnboarding: () => ipcRenderer.invoke("maximize-onboarding"),
   // Floating bar visibility helpers
   isFloatingBarVisible: (): Promise<{ visible: boolean }> =>
     ipcRenderer.invoke("floating-bar:is-visible"),
