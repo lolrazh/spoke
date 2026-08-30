@@ -67,18 +67,6 @@ export function registerMiscIpc(): void {
     }
   });
 
-  // Screenshot test handler (for PoC performance testing)
-  ipcMain.handle("screenshot:test", async () => {
-    try {
-      const { testScreenshotCapture } = await import("../../utils/screenshot");
-      return await testScreenshotCapture();
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error("[Screenshot Test] Failed:", errorMsg);
-      return { success: false, error: errorMsg };
-    }
-  });
-
   // Microphone management IPC handlers
   ipcMain.on(
     "mic:devices-update",

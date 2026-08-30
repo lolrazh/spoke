@@ -331,7 +331,6 @@ contextBridge.exposeInMainWorld("electron", {
     quality?: number;
     maxDimension?: number;
   }) => ipcRenderer.invoke("screenshot:capture", options),
-  testScreenshot: () => ipcRenderer.invoke("screenshot:test"),
 });
 
 // Expose application metadata

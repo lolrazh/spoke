@@ -6,9 +6,6 @@
  */
 
 import { desktopCapturer, screen, BrowserWindow } from "electron";
-import { createLogger } from "./logger";
-
-const screenshotTestLog = createLogger("Screenshot Test");
 
 export interface ScreenshotResult {
   /** Base64-encoded PNG data (no data URI prefix) */
@@ -174,43 +171,5 @@ function getTargetDisplay(display: "active" | number): Electron.Display {
     }
 
     return targetDisplay;
-  }
-}
-
-/**
- * Test function - captures a screenshot and logs metrics.
- * Can be called from DevTools console via IPC.
- */
-export async function testScreenshotCapture(): Promise<{
-  success: boolean;
-  metrics?: {
-    captureTimeMs: number;
-    sizeKb: number;
-    displayId: number;
-    resolution: string;
-  };
-  error?: string;
-}> {
-  try {
-    screenshotTestLog.info("Starting capture...");
-    const result = await captureScreenshot();
-
-    const metrics = {
-      captureTimeMs: result.captureTimeMs,
-      sizeKb: result.sizeKb,
-      displayId: result.displayId,
-      resolution: `${result.displayBounds.width}x${result.displayBounds.height}`,
-    };
-
-    screenshotTestLog.info("Success!", metrics);
-    screenshotTestLog.info(
-      `Base64 preview (first 100 chars): ${result.imageBase64.substring(0, 100)}...`,
-    );
-
-    return { success: true, metrics };
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error("[Screenshot Test] ❌ Failed:", errorMsg);
-    return { success: false, error: errorMsg };
   }
 }

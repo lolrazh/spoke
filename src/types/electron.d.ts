@@ -196,16 +196,6 @@ declare global {
         displayBounds?: { x: number; y: number; width: number; height: number };
         error?: string;
       }>;
-      testScreenshot: () => Promise<{
-        success: boolean;
-        metrics?: {
-          captureTimeMs: number;
-          sizeKb: number;
-          displayId: number;
-          resolution: string;
-        };
-        error?: string;
-      }>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (
