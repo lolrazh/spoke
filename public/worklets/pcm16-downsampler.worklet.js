@@ -70,21 +70,16 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     // Track pause state
     this._paused = false;
 
-    // Respond to parameter updates from node if needed later
+    // Handle control messages from the capture session.
     this.port.onmessage = (ev) => {
       const msg = ev.data || {};
-      if (msg.type === "reset") {
-        this._resetState();
-        this._paused = false;
-      } else if (msg.type === "flush") {
+      if (msg.type === "flush") {
         this._emitPartialFrame();
         this.port.postMessage({
           type: "flushed",
         });
       } else if (msg.type === "pause") {
         this._paused = true;
-      } else if (msg.type === "resume") {
-        this._paused = false;
       } else if (
         msg.type === "recycle" &&
         msg.samples instanceof ArrayBuffer &&
@@ -96,19 +91,6 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
         this._recycledFrame = new Int16Array(msg.samples);
       }
     };
-  }
-
-  _resetState() {
-    this._last = 0.0;
-    this._pos = 0.0;
-    this._frame = new Int16Array(this.frameSamples);
-    this._recycledFrame = null;
-    this._frameIndex = 0;
-    if (this.mode === "decimate3") {
-      this._dl.fill(0);
-      this._dlIdx = 0;
-      this._phase = 0;
-    }
   }
 
   _floatToInt16(sample) {
