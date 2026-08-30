@@ -77,26 +77,30 @@ private final class FloatRingBuffer {
         return true
     }
 
-    func drain() -> [Float] {
+    func drain(into result: inout [Float]) -> Bool {
         lock.lock()
         defer { lock.unlock() }
 
-        guard count > 0 else { return [] }
+        result.removeAll(keepingCapacity: true)
+        guard count > 0 else { return false }
 
-        var result = Array(repeating: Float.zero, count: count)
+        result.reserveCapacity(count)
+        result.append(contentsOf: repeatElement(Float.zero, count: count))
         for index in 0..<count {
             result[index] = storage[readIndex]
             readIndex = (readIndex + 1) % capacity
         }
         count = 0
-        return result
+        return true
     }
 
-    var availableSamples: Int {
+    func discard() {
         lock.lock()
         defer { lock.unlock() }
-        return count
+        count = 0
+        readIndex = writeIndex
     }
+
 }
 
 private struct AudioDeviceInfo: Codable {
@@ -125,6 +129,7 @@ private final class AudioCaptureController {
     private var sourceFormat: AVAudioFormat?
     private var targetFormat: AVAudioFormat?
     private var ringBuffer: FloatRingBuffer?
+    private var conversionSamples: [Float] = []
     private var pendingPcm16: [Int16] = []
     private var pendingPcm16Start = 0
     private var isCapturing = false
@@ -246,7 +251,7 @@ private final class AudioCaptureController {
         converterQueue.sync {
             pendingPcm16.removeAll(keepingCapacity: true)
             pendingPcm16Start = 0
-            _ = ringBuffer?.drain()
+            ringBuffer?.discard()
         }
         resetState()
     }
@@ -287,7 +292,8 @@ private final class AudioCaptureController {
     }
 
     private func drainAndConvert() {
-        guard let samples = ringBuffer?.drain(), !samples.isEmpty else { return }
+        guard let ringBuffer, ringBuffer.drain(into: &conversionSamples) else { return }
+        let samples = conversionSamples
         guard let sourceFormat, let targetFormat, let converter else { return }
 
         guard let inputBuffer = AVAudioPCMBuffer(
@@ -514,6 +520,7 @@ private final class AudioCaptureController {
         sourceFormat = nil
         targetFormat = nil
         ringBuffer = nil
+        conversionSamples.removeAll(keepingCapacity: false)
         pendingPcm16.removeAll(keepingCapacity: true)
         pendingPcm16Start = 0
         inputOverflowReported = false
