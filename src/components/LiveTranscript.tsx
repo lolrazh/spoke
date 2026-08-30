@@ -1,12 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { m } from "framer-motion";
 
 import {
   ListeningFrequencyBars,
   ProcessingFrequencyBars,
 } from "./FrequencyBars";
-import { splitLiveTranscriptText } from "./liveTranscriptText";
-import { useLiveTranscript } from "../state/liveTranscript";
+import {
+  getLiveTranscript,
+  subscribeLiveTranscript,
+} from "../state/liveTranscript";
+import { splitLiveTranscriptText, type LiveTranscriptText } from "./liveTranscriptText";
 
 export const LIVE_TRANSCRIPT_CARET_IDLE_MS = 480;
 
@@ -25,12 +35,129 @@ export type LiveTranscriptProps = {
   onTextMetricsChange: (metrics: LiveTranscriptMetrics) => void;
 };
 
-/** Store-connected leaf so live partials do not re-render the pill shell. */
+type LiveTranscriptVisualProps = Omit<LiveTranscriptProps, "text">;
+
+type LiveTranscriptRefs = {
+  committed: RefObject<HTMLSpanElement>;
+  tentative: RefObject<HTMLSpanElement>;
+  caret: RefObject<HTMLSpanElement>;
+  measure: RefObject<HTMLSpanElement>;
+};
+
+/**
+ * Store-connected leaf. Partial hypotheses update existing text nodes directly
+ * so even the live transcript leaf does not enter React's render path.
+ */
 export function LiveTranscriptFromStore(
-  props: Omit<LiveTranscriptProps, "text">,
+  props: LiveTranscriptVisualProps,
 ) {
-  const text = useLiveTranscript();
-  return <LiveTranscript {...props} text={text} />;
+  const committedRef = useRef<HTMLSpanElement>(null);
+  const tentativeRef = useRef<HTMLSpanElement>(null);
+  const caretRef = useRef<HTMLSpanElement>(null);
+  const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
+  const latestPropsRef = useRef(props);
+  const caretTimerRef = useRef<number | null>(null);
+  const fallbackMeasureFrameRef = useRef<number | null>(null);
+  const lastMeasuredHeightRef = useRef<number | null>(null);
+  latestPropsRef.current = props;
+
+  const publishMeasuredHeight = useCallback((height: number) => {
+    const roundedHeight = Math.ceil(Math.max(height, 0));
+    if (lastMeasuredHeightRef.current === roundedHeight) return;
+    lastMeasuredHeightRef.current = roundedHeight;
+    latestPropsRef.current.onTextMetricsChange({
+      wrappedTextHeight: roundedHeight,
+    });
+  }, []);
+
+  const updateText = useCallback((text: string) => {
+    const { isProcessing, reducedMotion } = latestPropsRef.current;
+    const displayText = splitLiveTranscriptText(text, isProcessing);
+
+    if (committedRef.current) {
+      committedRef.current.textContent = displayText.committed;
+    }
+    if (tentativeRef.current) {
+      tentativeRef.current.textContent = displayText.tentative;
+    }
+    if (wrappedMeasureRef.current) {
+      wrappedMeasureRef.current.textContent = text;
+    }
+
+    if (caretTimerRef.current !== null) {
+      window.clearTimeout(caretTimerRef.current);
+      caretTimerRef.current = null;
+    }
+    const caret = caretRef.current;
+    if (caret) {
+      caret.classList.remove("is-blinking");
+      if (!isProcessing && !reducedMotion) {
+        caretTimerRef.current = window.setTimeout(() => {
+          caret.classList.add("is-blinking");
+          caretTimerRef.current = null;
+        }, LIVE_TRANSCRIPT_CARET_IDLE_MS);
+      }
+    }
+
+    if (!window.ResizeObserver && fallbackMeasureFrameRef.current === null) {
+      fallbackMeasureFrameRef.current = window.requestAnimationFrame(() => {
+        fallbackMeasureFrameRef.current = null;
+        const measure = wrappedMeasureRef.current;
+        if (measure) publishMeasuredHeight(measure.getBoundingClientRect().height);
+      });
+    }
+  }, [publishMeasuredHeight]);
+
+  useLayoutEffect(() => {
+    updateText(getLiveTranscript());
+    const unsubscribe = subscribeLiveTranscript(() => {
+      updateText(getLiveTranscript());
+    });
+
+    return () => {
+      unsubscribe();
+      if (caretTimerRef.current !== null) {
+        window.clearTimeout(caretTimerRef.current);
+        caretTimerRef.current = null;
+      }
+      if (fallbackMeasureFrameRef.current !== null) {
+        window.cancelAnimationFrame(fallbackMeasureFrameRef.current);
+        fallbackMeasureFrameRef.current = null;
+      }
+    };
+  }, [updateText]);
+
+  useEffect(() => {
+    updateText(getLiveTranscript());
+  }, [props.isProcessing, props.reducedMotion, updateText]);
+
+  useEffect(() => {
+    const wrappedMeasure = wrappedMeasureRef.current;
+    const ResizeObserverCtor = window.ResizeObserver;
+    if (!wrappedMeasure || !ResizeObserverCtor) return;
+
+    const observer = new ResizeObserverCtor(([entry]) => {
+      publishMeasuredHeight(entry?.contentRect.height ?? 0);
+    });
+    observer.observe(wrappedMeasure);
+    return () => observer.disconnect();
+  }, [publishMeasuredHeight, props.textWidth]);
+
+  return (
+    <LiveTranscriptMarkup
+      {...props}
+      text=""
+      displayText={{ committed: "", tentative: "" }}
+      caretIdle={false}
+      imperativeText
+      refs={{
+        committed: committedRef,
+        tentative: tentativeRef,
+        caret: caretRef,
+        measure: wrappedMeasureRef,
+      }}
+    />
+  );
 }
 
 /** Visual-only partial transcript. Final publication remains in useTranscription. */
@@ -44,6 +171,9 @@ export function LiveTranscript({
   reducedMotion,
   onTextMetricsChange,
 }: LiveTranscriptProps) {
+  const committedRef = useRef<HTMLSpanElement>(null);
+  const tentativeRef = useRef<HTMLSpanElement>(null);
+  const caretRef = useRef<HTMLSpanElement>(null);
   const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
   const lastMeasuredHeightRef = useRef<number | null>(null);
   const [caretIdle, setCaretIdle] = useState(false);
@@ -99,6 +229,46 @@ export function LiveTranscript({
   }, [publishMeasuredHeight, text, textWidth]);
 
   return (
+    <LiveTranscriptMarkup
+      text={text}
+      isProcessing={isProcessing}
+      textWidth={textWidth}
+      visibleTextHeight={visibleTextHeight}
+      railOffsetY={railOffsetY}
+      overflowing={overflowing}
+      reducedMotion={reducedMotion}
+      onTextMetricsChange={onTextMetricsChange}
+      displayText={displayText}
+      caretIdle={caretIdle}
+      refs={{
+        committed: committedRef,
+        tentative: tentativeRef,
+        caret: caretRef,
+        measure: wrappedMeasureRef,
+      }}
+    />
+  );
+}
+
+function LiveTranscriptMarkup({
+  text,
+  isProcessing,
+  textWidth,
+  visibleTextHeight,
+  railOffsetY,
+  overflowing,
+  reducedMotion,
+  displayText,
+  caretIdle,
+  refs,
+  imperativeText = false,
+}: LiveTranscriptProps & {
+  displayText: LiveTranscriptText;
+  caretIdle: boolean;
+  refs: LiveTranscriptRefs;
+  imperativeText?: boolean;
+}) {
+  return (
     <m.div
       className="live-transcript"
       aria-hidden="true"
@@ -131,11 +301,12 @@ export function LiveTranscript({
               : { duration: 0.14, ease: [0.2, 0, 0, 1] }
           }
         >
-          <span className="live-transcript-committed">
-            {displayText.committed}
+          <span ref={refs.committed} className="live-transcript-committed">
+            {imperativeText ? null : displayText.committed}
           </span>
           <m.span
-            key={displayText.committed}
+            key={imperativeText ? undefined : displayText.committed}
+            ref={refs.tentative}
             className="live-transcript-tentative"
             initial={reducedMotion ? false : { opacity: 0.72 }}
             animate={{ opacity: 1 }}
@@ -144,10 +315,11 @@ export function LiveTranscript({
               ease: "easeOut",
             }}
           >
-            {displayText.tentative}
+            {imperativeText ? null : displayText.tentative}
           </m.span>
           {!isProcessing && (
             <span
+              ref={refs.caret}
               className={`live-transcript-caret ${caretIdle ? "is-blinking" : ""}`}
             />
           )}
@@ -155,11 +327,11 @@ export function LiveTranscript({
       </div>
 
       <span
-        ref={wrappedMeasureRef}
+        ref={refs.measure}
         className="live-transcript-measure live-transcript-measure-wrapped"
         style={{ width: textWidth }}
       >
-        {text}
+        {imperativeText ? null : text}
       </span>
     </m.div>
   );

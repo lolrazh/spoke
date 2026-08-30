@@ -4,12 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   LIVE_TRANSCRIPT_CARET_IDLE_MS,
+  LiveTranscriptFromStore,
   LiveTranscript,
 } from "./LiveTranscript";
 import {
   getLiveTranscript,
   setLiveTranscript,
-  useLiveTranscript,
 } from "../state/liveTranscript";
 
 vi.mock("./FrequencyBars", () => ({
@@ -103,11 +103,11 @@ describe("live transcript store", () => {
     vi.restoreAllMocks();
   });
 
-  it("publishes the latest hypothesis once per animation frame", () => {
+  it("updates the production leaf without rendering for each hypothesis", () => {
     let renderCount = 0;
     function Probe() {
       renderCount += 1;
-      return <span>{useLiveTranscript()}</span>;
+      return <LiveTranscriptFromStore {...commonProps} />;
     }
 
     const { container } = render(<Probe />);
@@ -120,14 +120,21 @@ describe("live transcript store", () => {
 
     expect(renderCount).toBe(1);
     expect(getLiveTranscript()).toBe("Hello world");
-    expect(container.textContent).toBe("");
+    expect(
+      container.querySelector(".live-transcript-measure")?.textContent,
+    ).toBe("");
 
     act(() => {
       pendingFrame?.(16);
       pendingFrame = null;
     });
 
-    expect(renderCount).toBe(2);
-    expect(container.textContent).toBe("Hello world");
+    expect(renderCount).toBe(1);
+    expect(
+      container.querySelector(".live-transcript-measure")?.textContent,
+    ).toBe("Hello world");
+    expect(
+      container.querySelector(".live-transcript-tentative")?.textContent,
+    ).toBe("world");
   });
 });

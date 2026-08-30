@@ -66,7 +66,7 @@ export function getLiveTranscript(): string {
   return liveTranscript;
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeLiveTranscript(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
@@ -80,13 +80,10 @@ function subscribeActive(listener: () => void): () => void {
   return () => activeListeners.delete(listener);
 }
 
-/** Subscribe a live-transcript leaf to each hypothesis update. */
-export function useLiveTranscript(): string {
-  return useSyncExternalStore(subscribe, getLiveTranscript, getLiveTranscript);
-}
-
 /** Subscribe to only the empty/non-empty transition used by the pill shell. */
 export function useLiveTranscriptActive(): boolean {
+  // Keep this small React subscription for the pill shell. The full text leaf
+  // uses subscribeLiveTranscript imperatively because it updates every frame.
   return useSyncExternalStore(
     subscribeActive,
     getLiveTranscriptActive,
