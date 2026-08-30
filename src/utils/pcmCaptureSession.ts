@@ -30,7 +30,7 @@ export interface PcmCaptureSessionOptions {
 
 type WorkletAudioMessage = {
   type: "audio";
-  samples: ArrayBuffer;
+  samples: Int16Array;
   rate: number;
   seq: number;
 };
@@ -139,7 +139,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
 
   private handleWorkletMessage(message: WorkletMessage): void {
     if (message.type === "audio") {
-      const frame = new Int16Array(message.samples);
+      const frame = message.samples;
       if (this.retainPcm) this.chunks.push(frame);
       try {
         this.onAudioLevel?.(calculatePcm16Level(frame));

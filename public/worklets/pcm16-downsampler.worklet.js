@@ -6,7 +6,7 @@
   - Resamples to 16,000 Hz using linear interpolation (cheap, good for speech)
   - Converts to signed Int16
   - Buffers a configurable frame length (frameSamples), default 100 ms (1600 samples at 16k),
-    and posts frames to the main thread as transferable ArrayBuffers
+    and posts frames to the main thread as transferable Int16Array views
 */
 
 class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
@@ -134,7 +134,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
         type: "audio",
         seq: this._seq++,
         rate: this.targetRate,
-        samples: out.buffer,
+        samples: out,
       },
       [out.buffer],
     );

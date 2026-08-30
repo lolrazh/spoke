@@ -21,7 +21,7 @@ describe("PcmCaptureSession", () => {
 
     testSession.handleWorkletMessage({
       type: "audio",
-      samples: samples.buffer,
+      samples,
       rate: 16_000,
       seq: 0,
     });
@@ -45,7 +45,7 @@ describe("PcmCaptureSession", () => {
 
     testSession.handleWorkletMessage({
       type: "audio",
-      samples: new Int16Array([1]).buffer,
+      samples: new Int16Array([1]),
       rate: 16_000,
       seq: 0,
     });

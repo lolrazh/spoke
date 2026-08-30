@@ -50,7 +50,7 @@ export class FakeAudioWorkletNode {
     this.port.onmessage?.({
       data: {
         type: "audio",
-        samples: copy.buffer,
+        samples: copy,
         rate,
         seq,
       },
