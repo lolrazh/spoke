@@ -188,6 +188,21 @@ function bestFrom(
   return scored;
 }
 
+function bestFromUnique(
+  candidates: string[],
+  lower: string,
+  threshold: number,
+): Scored[] {
+  const scored: Scored[] = [];
+  for (const word of candidates) {
+    const key = word.toLowerCase();
+    const sim = similarity(lower, key);
+    if (sim >= threshold) scored.push({ word, sim });
+  }
+  scored.sort((a, b) => b.sim - a.sim);
+  return scored;
+}
+
 // An entry with intentional casing (Sandheep, iPhone) always wins. An
 // all-lowercase entry carries no casing signal, so inherit the token's leading
 // capital rather than downcasing a sentence start or a proper noun the model
@@ -283,7 +298,9 @@ function findMatch(stem: string, lower: string, index: Index): Match | null {
   let scored = bestFrom(candidates, lower, PHONETIC_THRESHOLD);
   let path: Match["path"] = "phonetic";
   if (scored.length === 0) {
-    scored = bestFrom(index.words, lower, FUZZY_THRESHOLD);
+    // canonical values are already unique by lowercase spelling, so avoid a
+    // fresh de-duplication Set for every fuzzy fallback token.
+    scored = bestFromUnique(index.words, lower, FUZZY_THRESHOLD);
     path = "fuzzy";
   }
   if (scored.length === 0) return null;
