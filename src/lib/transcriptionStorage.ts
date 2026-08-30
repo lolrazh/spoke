@@ -172,11 +172,3 @@ export function deleteTranscription(id: string): boolean {
 
   return true;
 }
-
-/**
- * Clear all transcriptions
- */
-export function clearTranscriptions(): void {
-  cache = [];
-  writeStore([]);
-}

@@ -292,7 +292,6 @@ declare global {
         mode: "dictation" | "edit";
       }) => Promise<TranscriptionItem>;
       delete: (id: string) => Promise<boolean>;
-      clear: () => Promise<{ ok: boolean }>;
     };
   }
 }

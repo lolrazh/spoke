@@ -363,8 +363,6 @@ contextBridge.exposeInMainWorld("transcriptions", {
     ipcRenderer.invoke("transcriptions:save", payload),
   delete: (id: string): Promise<boolean> =>
     ipcRenderer.invoke("transcriptions:delete", { id }),
-  clear: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("transcriptions:clear"),
 });
 
 // Event bridge for active display updates

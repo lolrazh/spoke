@@ -15,7 +15,6 @@ import {
   getTranscriptions,
   saveTranscription,
   deleteTranscription,
-  clearTranscriptions,
 } from "../../lib/transcriptionStorage";
 import { bootTimeline } from "../bootTimeline";
 import { insertTextAtCursor } from "../pasteOrchestrator";
@@ -108,8 +107,4 @@ export function registerTranscriptIpc(): void {
     return deleteTranscription(payload.id);
   });
 
-  ipcMain.handle("transcriptions:clear", () => {
-    clearTranscriptions();
-    return { ok: true };
-  });
 }
