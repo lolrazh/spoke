@@ -333,11 +333,6 @@
     opacity: 1;
   }
 
-  .pill-icon {
-    opacity: 0.9;
-    box-shadow: 0 0 1px rgba(0, 0, 0, 0.12);
-  }
-
   /* Common container for dots and bars */
   .visualization-container {
     width: 75%;
@@ -938,14 +933,6 @@ body {
       sans-serif;
   }
 
-  /* Frosted Glass with Noise elevation system - cleaner for native vibrancy */
-  .card-elevated {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    border: 1px solid var(--stroke-fg);
-    box-shadow: var(--shadow-elevated); /* gentler shadow */
-  }
-
   /* Primary cards - clean styling without shadows */
   .card-primary {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
@@ -965,43 +952,6 @@ body {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
     border: 1px solid var(--stroke-fg);
     box-shadow: var(--shadow-floating); /* gentler shadow for vibrancy */
-  }
-
-  /* Interactive card with hover effects */
-  .card-interactive {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url('%23noiseFilter')' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(var(--blur-md));
-    border: 1px solid var(--stroke-fg);
-    box-shadow: var(--shadow-interactive);
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    position: relative;
-  }
-
-  .card-interactive::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image: radial-gradient(
-      400px circle at var(--mouse-x) var(--mouse-y),
-      rgba(255, 255, 255, 0.04),
-      transparent 70%
-    );
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: 1;
-  }
-
-  .card-interactive:hover::before {
-    opacity: 1;
-  }
-
-  .card-interactive:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
-    border: 1px solid var(--stroke-fg-strong);
-    box-shadow: var(--shadow-interactive-hover);
-    transform: translateY(-2px);
   }
 
   /* Typography enhancements */
@@ -1099,54 +1049,6 @@ body {
     color: rgba(255, 255, 255, 0.4);
   }
 
-  /* Tricks Component Styles */
-  .meta-directive-tag {
-    /* Base styling from btn-secondary */
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(var(--blur-md));
-    border: 1px solid var(--stroke-fg);
-    color: rgba(255, 255, 255, 0.6);
-
-    /* Use same border radius as buttons */
-    border-radius: var(--radius-lg);
-
-    /* Smaller size - more compact than buttons */
-    padding: 4px 8px;
-    height: auto;
-    min-height: 24px;
-    font-size: 12px;
-    font-weight: 500;
-
-    /* Button-like behavior */
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    white-space: nowrap;
-    position: relative;
-    overflow: hidden;
-    transition: all var(--duration-standard) var(--ease-standard);
-  }
-
-  .meta-directive-tag-inactive {
-    opacity: 0.6;
-    filter: blur(0.3px);
-    transition: all var(--duration-standard) var(--ease-standard);
-  }
-
-  .meta-directive-tag-active,
-  .meta-directive-tag:hover,
-  .meta-directive-tag:focus-visible,
-  .meta-directive-tag-inactive:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    border: 1px solid var(--stroke-fg-xstrong);
-    color: rgba(255, 255, 255, 0.9);
-    opacity: 1;
-    filter: blur(0px);
-    transform: translateY(-1px);
-  }
-
   /* Button enhancements - remove bloom, add crisp edges, fix vibrancy artifacts */
   .btn-primary {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
@@ -1214,29 +1116,6 @@ body {
   }
 
   .shimmer:hover::before {
-    left: 150%;
-  }
-
-  /* Faster shimmer for smaller buttons */
-  .shimmer-fast::before {
-    content: "";
-    position: absolute;
-    z-index: 1;
-    top: 0;
-    left: -150%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      110deg,
-      transparent 25%,
-      rgba(255, 255, 255, 0.08) 50%,
-      transparent 75%
-    );
-    transform: skewX(-25deg);
-    transition: left 0.4s ease-in-out;
-  }
-
-  .shimmer-fast:hover::before {
     left: 150%;
   }
 
@@ -1377,12 +1256,6 @@ body {
     will-change: transform;
     backface-visibility: hidden;
     transform: translateZ(0);
-  }
-  .will-change-opacity {
-    will-change: opacity;
-  }
-  .will-change-bg-pos {
-    will-change: background-position;
   }
 
   /* Ensure native traffic lights work properly */
