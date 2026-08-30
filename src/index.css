@@ -1041,7 +1041,6 @@ body {
       background-color 260ms var(--ease-emphasized),
       height 260ms var(--ease-emphasized),
       opacity 260ms var(--ease-emphasized);
-    will-change: transform, flex-grow;
   }
   .onboarding-progress-bar.grow-active {
     flex-grow: 6;
