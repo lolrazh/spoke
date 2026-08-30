@@ -19,7 +19,7 @@ import { MIN_UI_SCALE, MAX_UI_SCALE } from "../constants/display";
 import { TOKENS } from "../config/uiTokens";
 import {
   PermissionsProvider,
-  usePermissionsController,
+  useMissingPermissions,
 } from "../state/permissionsContext";
 import { usePttGestures } from "../hooks/usePttGestures";
 import {
@@ -75,7 +75,7 @@ const AppInner: React.FC = () => {
     useState(false);
   const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
     useState(PERMISSIONS_CONTENT_HEIGHT);
-  const { missingPermissions } = usePermissionsController();
+  const missingPermissions = useMissingPermissions();
   const [panelView, setPanelView] = useState<"settings" | "permissions">(
     "settings",
   );

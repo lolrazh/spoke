@@ -11,7 +11,7 @@ import {
 } from "../hooks/usePermissions";
 import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 
-type MissingPermission = keyof PermissionsState;
+export type MissingPermission = keyof PermissionsState;
 
 type PermissionsControllerContext = {
   permissions: PermissionsState;
@@ -26,6 +26,9 @@ type PermissionsControllerContext = {
 };
 
 const PermissionsContext = createContext<PermissionsControllerContext | null>(
+  null,
+);
+const MissingPermissionsContext = createContext<MissingPermission[] | null>(
   null,
 );
 
@@ -113,9 +116,11 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   return (
-    <PermissionsContext.Provider value={contextValue}>
-      {children}
-    </PermissionsContext.Provider>
+    <MissingPermissionsContext.Provider value={missingPermissions}>
+      <PermissionsContext.Provider value={contextValue}>
+        {children}
+      </PermissionsContext.Provider>
+    </MissingPermissionsContext.Provider>
   );
 };
 
@@ -124,6 +129,16 @@ export function usePermissionsController(): PermissionsControllerContext {
   if (!ctx) {
     throw new Error(
       "usePermissionsController must be used within a PermissionsProvider",
+    );
+  }
+  return ctx;
+}
+
+export function useMissingPermissions(): MissingPermission[] {
+  const ctx = useContext(MissingPermissionsContext);
+  if (!ctx) {
+    throw new Error(
+      "useMissingPermissions must be used within a PermissionsProvider",
     );
   }
   return ctx;
