@@ -74,22 +74,6 @@ export function pcm16ToFloat32(pcm16: Int16Array): Float32Array {
   return out;
 }
 
-export function concatPcm16(chunks: readonly Int16Array[]): Int16Array {
-  let totalSamples = 0;
-  for (const chunk of chunks) {
-    assertPcm16(chunk);
-    totalSamples += chunk.length;
-  }
-
-  const out = new Int16Array(totalSamples);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return out;
-}
-
 export function normalizePcm16TrimRange(
   sampleCount: number,
   range: Pcm16TrimRange,
