@@ -8,7 +8,6 @@ import React, {
   useLayoutEffect,
 } from "react";
 import IntroExperience from "./intro/IntroExperience";
-import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
 import {
@@ -30,7 +29,6 @@ import {
   type OnboardingStep,
 } from "./onboardingFlow";
 import {
-  ENABLE_ONBOARDING_PARTICLES,
   ENABLE_SCREEN_CONTEXT,
 } from "../config/featureFlags";
 import { HOLD_DURATION_MS, DOUBLE_TAP_MS } from "../constants/gestures";
@@ -652,7 +650,6 @@ const Onboarding: React.FC = () => {
   if (introOnly) {
     return (
       <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
-        {showIntro && ENABLE_ONBOARDING_PARTICLES && <ParticlesCanvas />}
         {renderIntroOrReplay()}
       </div>
     );
@@ -662,7 +659,6 @@ const Onboarding: React.FC = () => {
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
       {/* The intro owns its own grid; avoid painting a hidden page grid below it. */}
       {!showIntro && <GridBackground />}
-      {ENABLE_ONBOARDING_PARTICLES && <ParticlesCanvas />}
 
       {showIntro && (
         <IntroExperience
