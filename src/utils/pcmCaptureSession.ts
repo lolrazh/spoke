@@ -24,6 +24,8 @@ export interface PcmCaptureSessionOptions {
   onPcmFrame?: (frame: Int16Array) => void;
   /** Set false when another consumer drains frames incrementally. */
   retainPcm?: boolean;
+  /** Return transferred worklet frames after onPcmFrame consumes them. */
+  recyclePcmFrames?: boolean;
 }
 
 type WorkletAudioMessage = {
@@ -50,6 +52,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
   private readonly onError?: (error: Error) => void;
   private readonly onPcmFrame?: (frame: Int16Array) => void;
   private readonly retainPcm: boolean;
+  private readonly recyclePcmFrames: boolean;
   private readonly chunks: Int16Array[] = [];
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
@@ -65,6 +68,8 @@ export class PcmCaptureSession implements AudioCaptureSession {
     this.onError = options.onError;
     this.onPcmFrame = options.onPcmFrame;
     this.retainPcm = options.retainPcm ?? true;
+    this.recyclePcmFrames =
+      (options.recyclePcmFrames ?? false) && !this.retainPcm;
   }
 
   async start(stream?: MediaStream): Promise<void> {
@@ -136,8 +141,12 @@ export class PcmCaptureSession implements AudioCaptureSession {
     if (message.type === "audio") {
       const frame = new Int16Array(message.samples);
       if (this.retainPcm) this.chunks.push(frame);
-      this.onAudioLevel?.(calculatePcm16Level(frame));
-      this.onPcmFrame?.(frame);
+      try {
+        this.onAudioLevel?.(calculatePcm16Level(frame));
+        this.onPcmFrame?.(frame);
+      } finally {
+        this.recycleWorkletFrame(frame);
+      }
       return;
     }
 
@@ -207,6 +216,27 @@ export class PcmCaptureSession implements AudioCaptureSession {
 
     if (audioContext && audioContext.state !== "closed") {
       await audioContext.close();
+    }
+  }
+
+  private recycleWorkletFrame(frame: Int16Array): void {
+    if (!this.recyclePcmFrames || !(frame.buffer instanceof ArrayBuffer)) {
+      return;
+    }
+    if (
+      frame.byteOffset !== 0 ||
+      frame.byteLength !== frame.buffer.byteLength
+    ) {
+      return;
+    }
+
+    try {
+      this.workletNode?.port.postMessage(
+        { type: "recycle", samples: frame.buffer },
+        [frame.buffer],
+      );
+    } catch {
+      // The worklet may already be detached during cancellation.
     }
   }
 

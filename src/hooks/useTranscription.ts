@@ -108,6 +108,7 @@ type CaptureSessionOptions = {
   onError: (error: Error) => void;
   onPcmFrame: (frame: Int16Array) => void;
   retainPcm: boolean;
+  recyclePcmFrames: boolean;
 };
 
 async function createCaptureSession(
@@ -435,6 +436,7 @@ export function useTranscription(
               localStreamingDictation?.pushFrame(frame);
             },
             retainPcm: !localStreamingDictation,
+            recyclePcmFrames: Boolean(localStreamingDictation),
           },
         );
         await recorder.start(stream ?? undefined);

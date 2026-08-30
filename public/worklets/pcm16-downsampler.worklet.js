@@ -64,6 +64,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     // Output frame buffer. Keep this fixed-size on the audio thread to avoid
     // per-sample JS array growth and slicing during recording.
     this._frame = new Int16Array(this.frameSamples);
+    this._recycledFrame = null;
     this._frameIndex = 0;
     this._seq = 0;
 
@@ -88,6 +89,15 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
         this._paused = true;
       } else if (msg.type === "resume") {
         this._paused = false;
+      } else if (
+        msg.type === "recycle" &&
+        msg.samples instanceof ArrayBuffer &&
+        msg.samples.byteLength === this.frameSamples * 2
+      ) {
+        // The renderer returns a transferred full frame after all consumers
+        // have copied it. Keep only the newest spare so a slow audio thread
+        // cannot accumulate returned buffers.
+        this._recycledFrame = new Int16Array(msg.samples);
       }
     };
   }
@@ -96,6 +106,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this._last = 0.0;
     this._pos = 0.0;
     this._frame = new Int16Array(this.frameSamples);
+    this._recycledFrame = null;
     this._frameIndex = 0;
     if (this.mode === "decimate3") {
       this._dl.fill(0);
@@ -131,7 +142,8 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
 
   _emitFullFrame() {
     const out = this._frame;
-    this._frame = new Int16Array(this.frameSamples);
+    this._frame = this._recycledFrame || new Int16Array(this.frameSamples);
+    this._recycledFrame = null;
     this._frameIndex = 0;
     this._postFrame(out);
   }
