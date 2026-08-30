@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { AnimatePresence, m } from "framer-motion";
 import { Switch } from "./ui/switch";
 import {
@@ -8,7 +15,6 @@ import {
   SelectTrigger,
 } from "./ui/select";
 import SettingsCard from "./SettingsCard";
-import ModelsList from "./ModelsList";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
 import ProgressRing from "./ui/ProgressRing";
@@ -32,7 +38,15 @@ type SettingsPanelInitialTab = Extract<
   "settings" | "history"
 >;
 
+const ModelsList = lazy(() => import("./ModelsList"));
+
 const DEFAULT_MIC_DEVICE = DEFAULT_MICROPHONE;
+
+const TabLoadingFallback: React.FC = () => (
+  <div className="flex justify-center py-8 text-[13px] text-primary/50">
+    Loading…
+  </div>
+);
 
 type UpdatePanelState = {
   status:
@@ -1028,7 +1042,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <SectionSeparator title="Transcription" />
                     </m.div>
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      <ModelsList enabled={activeTab === "models"} />
+                      <Suspense fallback={<TabLoadingFallback />}>
+                        <ModelsList enabled={activeTab === "models"} />
+                      </Suspense>
                     </div>
                   </m.section>
                 </m.div>

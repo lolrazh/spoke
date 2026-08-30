@@ -1,4 +1,5 @@
 import React, { act } from "react";
+import { waitFor } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
@@ -315,7 +316,10 @@ describe("components/SettingsPanel", () => {
     expect(modelsTab).toBeTruthy();
     await act(async () => {
       modelsTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("Cohere Transcribe 03-2026");
     });
 
     const text = container.textContent ?? "";

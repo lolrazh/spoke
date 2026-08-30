@@ -1,4 +1,6 @@
 import React, {
+  lazy,
+  Suspense,
   useState,
   useEffect,
   useRef,
@@ -24,7 +26,6 @@ import {
   SelectValue,
 } from "./ui/select";
 import SfIcon from "./icons/SfIcon";
-import ModelsList from "./ModelsList";
 import {
   usePermissions,
   type PermissionProvider,
@@ -46,6 +47,12 @@ import {
   panelCascadeItem,
 } from "./shared/panelMotion";
 import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
+
+const ModelsList = lazy(() => import("./ModelsList"));
+
+const ModelsLoadingFallback: React.FC = () => (
+  <div className="py-8 text-sm text-muted-foreground">Loading models…</div>
+);
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
 const devLog = createLogger("DEV");
@@ -1232,10 +1239,12 @@ const Onboarding: React.FC = () => {
                         active, dim check (brightens on hover, click to activate)
                         when installed-but-inactive. Installing one and making it
                         active is what flips this step's Next on. */}
-                    <ModelsList
-                      enabled={shouldLoadTranscriptionSetup}
-                      inGroup={false}
-                    />
+                    <Suspense fallback={<ModelsLoadingFallback />}>
+                      <ModelsList
+                        enabled={shouldLoadTranscriptionSetup}
+                        inGroup={false}
+                      />
+                    </Suspense>
                   </m.div>
                 </m.div>
               )}
