@@ -82,7 +82,7 @@ function createWorkerForFrameProcessor(
       });
       return {
         events,
-        frame: frame.buffer as ArrayBuffer,
+        frame,
       } satisfies VadWorkerProcessResult;
     }),
     finish: vi.fn(async (frameIndex: number) => {

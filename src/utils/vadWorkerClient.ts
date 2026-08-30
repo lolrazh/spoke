@@ -92,11 +92,10 @@ class BrowserVadWorkerClient implements VadWorkerClient {
     frameIndex: number,
   ): Promise<VadWorkerProcessResult> {
     await this.ready();
-    const buffer = frame.buffer as ArrayBuffer;
     const result = await this.request(
-      { type: "process", frameIndex, frame: buffer },
+      { type: "process", frameIndex, frame },
       VAD_MIN_TIMEOUT_MS,
-      [buffer],
+      [frame.buffer],
     );
     return result as VadWorkerProcessResult;
   }

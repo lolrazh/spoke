@@ -128,7 +128,7 @@ async function handle(request: VadWorkerRequest): Promise<void> {
       if (!vad) throw new Error("VAD worker is not initialized");
       let events: VadWorkerEvent[] | undefined;
       const frame = request.frame;
-      await vad.frameProcessor.process(new Float32Array(frame), (event) => {
+      await vad.frameProcessor.process(frame, (event) => {
         const boundary = boundaryEvent(event.msg, request.frameIndex);
         if (boundary) (events ??= []).push(boundary);
       });
@@ -139,7 +139,7 @@ async function handle(request: VadWorkerRequest): Promise<void> {
           type: "result",
           result: { events: events ?? EMPTY_VAD_EVENTS, frame },
         },
-        [frame],
+        [frame.buffer],
       );
       return;
     }

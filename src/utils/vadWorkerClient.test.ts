@@ -68,6 +68,7 @@ describe("vadWorkerClient", () => {
       type: "process",
       frameIndex: 7,
     });
+    expect(processRequest.frame).toBe(frame);
     expect(processMessage.transfer).toEqual([frame.buffer]);
     worker.respond({
       id: processRequest.id,
