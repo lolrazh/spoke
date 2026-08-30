@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { AnimatePresence, m } from "framer-motion";
 import { Switch } from "./ui/switch";
+import { NativeSelect } from "./ui/native-select";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
@@ -125,36 +126,13 @@ const SelectField: React.FC<{
       }
       inGroup={inGroup}
     >
-      <div className="relative ml-2">
-        <select
-          aria-label={label}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          className="card-floating flex h-10 w-48 cursor-pointer appearance-none items-center rounded-lg border border-white/10 bg-transparent px-3 py-2 pr-9 text-left text-sm font-normal text-white/70 outline-none transition-colors duration-200 hover:bg-white/5 focus:border-white/20 focus:bg-white/5 focus:ring-2 focus:ring-white/10"
-          style={{
-            colorScheme: "dark",
-            WebkitAppRegion: "no-drag",
-          }}
-        >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </div>
+      <NativeSelect
+        aria-label={label}
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        className="ml-2 w-48"
+      />
     </SettingsCard>
   );
 };

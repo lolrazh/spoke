@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 
 type MicrophoneDevice = {
   id: string;
@@ -23,18 +17,15 @@ const OnboardingMicSelector: React.FC<OnboardingMicSelectorProps> = ({
   selectedId,
   onChange,
 }) => (
-  <Select value={selectedId} onValueChange={onChange}>
-    <SelectTrigger className="w-full">
-      <SelectValue placeholder="Select microphone" />
-    </SelectTrigger>
-    <SelectContent inPlace>
-      {devices.map((device) => (
-        <SelectItem key={device.id} value={device.id} className="text-sm">
-          {device.label || "Microphone"}
-        </SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
+  <NativeSelect
+    aria-label="Microphone"
+    value={selectedId}
+    onValueChange={onChange}
+    options={devices.map((device) => ({
+      value: device.id,
+      label: device.label || "Microphone",
+    }))}
+  />
 );
 
 export default OnboardingMicSelector;
