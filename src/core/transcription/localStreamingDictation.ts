@@ -22,7 +22,7 @@ export class LocalStreamingDictation {
   private readonly batchSamples: number;
   private readonly maxSamples: number;
   private readonly queuedBatches: Int16Array[] = [];
-  private readonly recycledBatches: Int16Array[] = [];
+  private recycledBatch: Int16Array | null = null;
   private pendingBatch: Int16Array;
   private queuedBatchStart = 0;
   private pendingSamples = 0;
@@ -166,7 +166,7 @@ export class LocalStreamingDictation {
       this.cleanupListener();
       this.sessionId = null;
       this.pendingBatch = EMPTY_PCM16;
-      this.recycledBatches.length = 0;
+      this.recycledBatch = null;
     }
   }
 
@@ -178,7 +178,7 @@ export class LocalStreamingDictation {
     this.pendingBatch = EMPTY_PCM16;
     this.queuedBatches.length = 0;
     this.queuedBatchStart = 0;
-    this.recycledBatches.length = 0;
+    this.recycledBatch = null;
     this.pendingSamples = 0;
     this.cleanupListener();
     this.sessionId = null;
@@ -192,7 +192,8 @@ export class LocalStreamingDictation {
   private queueFullBatch(): void {
     const pcm = this.pendingBatch;
     this.pendingBatch =
-      this.recycledBatches.pop() ?? new Int16Array(this.batchSamples);
+      this.recycledBatch ?? new Int16Array(this.batchSamples);
+    this.recycledBatch = null;
     this.pendingSamples = 0;
     this.queuedBatches.push(pcm);
     this.drainQueuedBatches();
@@ -226,7 +227,7 @@ export class LocalStreamingDictation {
           // Keep one reusable buffer only. A slow IPC consumer may let the
           // queued list grow; retaining every completed batch would recreate
           // the memory spike this pool is meant to avoid.
-          this.recycledBatches[0] = pcm;
+          this.recycledBatch = pcm;
         }
       } catch (error) {
         this.failure = asError(error);
