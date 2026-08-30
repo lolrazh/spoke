@@ -18,12 +18,33 @@ import type {
 
 type VadInstance = Awaited<ReturnType<typeof NonRealTimeVAD.new>>;
 
+type FrameProcessorWithAudioBuffer = {
+  audioBuffer?: Array<{ frame: Float32Array; isSpeech: boolean }>;
+  reset(): void;
+  resume(): void;
+};
+
 let vad: VadInstance | null = null;
 let operationQueue: Promise<void> = Promise.resolve();
 
 function post(response: VadWorkerResponse): void {
   self.postMessage(response);
 }
+
+// NonRealTimeVAD keeps every processed frame so it can return speech audio.
+// StreamingVAD only consumes boundary events, so release those frame views
+// after each model call while keeping the small isSpeech history intact.
+function releaseBufferedAudioFrames(): void {
+  const frameProcessor = vad?.frameProcessor as unknown as
+    | FrameProcessorWithAudioBuffer
+    | undefined;
+  if (!frameProcessor?.audioBuffer) return;
+  for (const item of frameProcessor.audioBuffer) {
+    item.frame = EMPTY_AUDIO_FRAME;
+  }
+}
+
+const EMPTY_AUDIO_FRAME = new Float32Array(0);
 
 async function fetchArrayBuffer(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url);
@@ -87,11 +108,20 @@ async function handle(request: VadWorkerRequest): Promise<void> {
     case "process": {
       if (!vad) throw new Error("VAD worker is not initialized");
       const events: VadWorkerEvent[] = [];
-      await vad.frameProcessor.process(new Float32Array(request.frame), (event) => {
+      const frame = request.frame;
+      await vad.frameProcessor.process(new Float32Array(frame), (event) => {
         const boundary = boundaryEvent(event.msg, request.frameIndex);
         if (boundary) events.push(boundary);
       });
-      post({ id: request.id, type: "result", result: events });
+      releaseBufferedAudioFrames();
+      self.postMessage(
+        {
+          id: request.id,
+          type: "result",
+          result: { events, frame },
+        },
+        [frame],
+      );
       return;
     }
     case "finish": {

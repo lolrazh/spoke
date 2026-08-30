@@ -120,6 +120,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private readonly pendingWindows: PendingVadWindow[] = [];
   private pendingWindowStart = 0;
   private queueDepth = 0;
+  private readonly recycledWindows: Float32Array[] = [];
 
   private segments: VadSpeechSegment[] = [];
   private speaking = false;
@@ -189,7 +190,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     // the worker; the PCM conversion writes directly into those windows.
     let inputOffset = 0;
     while (this.carryLen + (pcm16.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
-      const window = new Float32Array(MODEL_FRAME_SAMPLES);
+      const window =
+        this.recycledWindows.pop() ?? new Float32Array(MODEL_FRAME_SAMPLES);
       if (this.carryLen > 0) {
         window.set(this.carryBuf.subarray(0, this.carryLen), 0);
       }
@@ -263,12 +265,13 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       const pending = this.pendingWindows[this.pendingWindowStart];
       this.pendingWindowStart += 1;
       try {
-        const events = await this.worker.processFrame(
+        const result = await this.worker.processFrame(
           pending.frame,
           pending.frameIndex,
         );
+        this.recycledWindows.push(new Float32Array(result.frame));
         if (this.cancelled || this.status !== "ready") return;
-        for (const event of events) this.handleEvent(event);
+        for (const event of result.events) this.handleEvent(event);
       } catch (error) {
         if (!this.cancelled) {
           this.status = "failed";

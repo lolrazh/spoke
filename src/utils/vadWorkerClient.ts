@@ -7,6 +7,7 @@ import {
 import type {
   VadWorkerEvent,
   VadWorkerRequest,
+  VadWorkerProcessResult,
   VadWorkerResponse,
   VadWorkerResult,
   VadWorkerSegment,
@@ -14,7 +15,10 @@ import type {
 
 export interface VadWorkerClient {
   ready(): Promise<void>;
-  processFrame(frame: Float32Array, frameIndex: number): Promise<VadWorkerEvent[]>;
+  processFrame(
+    frame: Float32Array,
+    frameIndex: number,
+  ): Promise<VadWorkerProcessResult>;
   finish(frameIndex: number): Promise<VadWorkerEvent[]>;
   runClip(
     audio: Float32Array,
@@ -86,7 +90,7 @@ class BrowserVadWorkerClient implements VadWorkerClient {
   async processFrame(
     frame: Float32Array,
     frameIndex: number,
-  ): Promise<VadWorkerEvent[]> {
+  ): Promise<VadWorkerProcessResult> {
     await this.ready();
     const buffer = frame.buffer as ArrayBuffer;
     const result = await this.request(
@@ -94,7 +98,7 @@ class BrowserVadWorkerClient implements VadWorkerClient {
       VAD_MIN_TIMEOUT_MS,
       [buffer],
     );
-    return result as VadWorkerEvent[];
+    return result as VadWorkerProcessResult;
   }
 
   async finish(frameIndex: number): Promise<VadWorkerEvent[]> {

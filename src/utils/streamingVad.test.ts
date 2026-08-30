@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Message } from "@ricky0123/vad-web";
 import { createStreamingVadSession } from "./streamingVad";
 import type { VadWorkerClient } from "./vadWorkerClient";
-import type { VadWorkerEvent } from "./vadWorkerProtocol";
+import type {
+  VadWorkerEvent,
+  VadWorkerProcessResult,
+} from "./vadWorkerProtocol";
 import {
   createCapturedAudio,
   pcm16ToFloat32,
@@ -77,7 +80,10 @@ function createWorkerForFrameProcessor(
           events.push({ type: "misfire", frameIndex });
         }
       });
-      return events;
+      return {
+        events,
+        frame: frame.buffer as ArrayBuffer,
+      } satisfies VadWorkerProcessResult;
     }),
     finish: vi.fn(async (frameIndex: number) => {
       const events: Array<{
@@ -145,6 +151,25 @@ describe("streamingVad", () => {
 
     expect(fp.process).toHaveBeenCalledTimes(3);
     expect(fp.process.mock.calls[2][0]).toHaveLength(1536);
+  });
+
+  it("reuses a processed model window buffer for the next window", async () => {
+    const fp = createManualFrameProcessor();
+    useFrameProcessor(fp);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+    const firstWindow = fp.process.mock.calls[0][0] as Float32Array;
+
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+    const secondWindow = fp.process.mock.calls[1][0] as Float32Array;
+
+    expect(secondWindow.buffer).toBe(firstWindow.buffer);
+    session.dispose();
   });
 
   it("notifies boundary consumers when speech starts and ends", async () => {
@@ -325,7 +350,7 @@ describe("streamingVad", () => {
   it("falls back when the worker backlog reaches its memory bound", async () => {
     const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
     worker.processFrame = vi.fn().mockReturnValue(
-      new Promise<VadWorkerEvent[]>(() => undefined),
+      new Promise<VadWorkerProcessResult>(() => undefined),
     );
     mocks.createVadWorkerClient.mockReturnValue(worker);
 
