@@ -11,6 +11,13 @@ type UseModelsOptions = {
   enabled?: boolean;
 };
 
+type ModelProgressPayload = {
+  modelId: string;
+  progress: number;
+  downloadedBytes: number;
+  totalBytes: number;
+};
+
 /**
  * Multi-model view: pairs each registered model's static info with its live
  * install status and the active-model selection. Used by the models page.
@@ -49,21 +56,64 @@ export function useModels(options: UseModelsOptions = {}) {
 
     refresh();
 
-    const unsubProgress = window.stt?.onModelProgress?.((payload) => {
+    // Network streams can emit many progress events between paints. Keep only
+    // the latest event per model and publish one React update per frame so a
+    // large download cannot turn every response chunk into a render.
+    const pendingProgress = new Map<string, ModelProgressPayload>();
+    let scheduledFrame: number | null = null;
+    let scheduledWithRaf = false;
+
+    const flushProgress = () => {
+      scheduledFrame = null;
+      const updates = Array.from(pendingProgress.values());
+      pendingProgress.clear();
+      if (updates.length === 0) return;
+
       setStatuses((prev) => {
-        const current = prev[payload.modelId];
-        if (!current) return prev;
-        return {
-          ...prev,
-          [payload.modelId]: {
+        let next = prev;
+        for (const payload of updates) {
+          const current = prev[payload.modelId];
+          if (!current) continue;
+          // A late chunk must not move a completed or checksum-verifying
+          // model back to the downloading state.
+          if (current.state === "ready" || current.state === "installing") {
+            continue;
+          }
+          if (
+            current.state === "downloading" &&
+            current.downloadProgress === payload.progress &&
+            current.downloadedBytes === payload.downloadedBytes &&
+            current.totalBytes === payload.totalBytes
+          ) {
+            continue;
+          }
+          if (next === prev) next = { ...prev };
+          next[payload.modelId] = {
             ...current,
             state: "downloading",
             downloadProgress: payload.progress,
             downloadedBytes: payload.downloadedBytes,
             totalBytes: payload.totalBytes,
-          },
-        };
+          };
+        }
+        return next;
       });
+    };
+
+    const scheduleProgressFlush = () => {
+      if (scheduledFrame !== null) return;
+      if (typeof window.requestAnimationFrame === "function") {
+        scheduledWithRaf = true;
+        scheduledFrame = window.requestAnimationFrame(flushProgress);
+      } else {
+        scheduledWithRaf = false;
+        scheduledFrame = window.setTimeout(flushProgress, 0);
+      }
+    };
+
+    const unsubProgress = window.stt?.onModelProgress?.((payload) => {
+      pendingProgress.set(payload.modelId, payload);
+      scheduleProgressFlush();
     });
 
     const onFocus = () => refresh();
@@ -72,6 +122,15 @@ export function useModels(options: UseModelsOptions = {}) {
     return () => {
       unsubProgress?.();
       window.removeEventListener("focus", onFocus);
+      if (scheduledFrame !== null) {
+        if (scheduledWithRaf) {
+          window.cancelAnimationFrame(scheduledFrame);
+        } else {
+          window.clearTimeout(scheduledFrame);
+        }
+        scheduledFrame = null;
+      }
+      pendingProgress.clear();
     };
   }, [enabled, refresh]);
 

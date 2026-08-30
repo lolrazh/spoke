@@ -100,7 +100,7 @@ describe("ModelsList progress rendering", () => {
     };
   });
 
-  it("re-renders only the card whose progress changed", async () => {
+  it("coalesces a progress burst into one render of the changing card", async () => {
     const ModelsList = (await import("./ModelsList")).default;
     const { unmount } = render(<ModelsList />);
 
@@ -111,18 +111,19 @@ describe("ModelsList progress rendering", () => {
     expect(harness.emitProgress).not.toBeNull();
     harness.cardRenders = 0;
 
-    for (const progress of [0.1, 0.2, 0.3]) {
-      await act(async () => {
+    await act(async () => {
+      for (const progress of [0.1, 0.2, 0.3]) {
         harness.emitProgress?.({
           modelId: "model-b",
           progress,
           downloadedBytes: progress * 2000,
           totalBytes: 2000,
         });
-      });
-    }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
 
-    expect(harness.cardRenders).toBe(3);
+    expect(harness.cardRenders).toBe(1);
     unmount();
   });
 });
