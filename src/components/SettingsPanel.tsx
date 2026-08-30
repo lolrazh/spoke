@@ -47,6 +47,21 @@ type UpdatePanelState = {
   downloadPercent: number | null;
 };
 
+function sameUpdatePanelState(
+  previous: UpdatePanelState | null,
+  next: UpdatePanelState | null,
+): boolean {
+  if (previous === next) return true;
+  if (!previous || !next) return previous === next;
+  return (
+    previous.status === next.status &&
+    previous.version === next.version &&
+    previous.readyToInstall === next.readyToInstall &&
+    previous.error === next.error &&
+    previous.downloadPercent === next.downloadPercent
+  );
+}
+
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
   // `null` means "not loaded yet" — render a placeholder instead of guessing
@@ -476,6 +491,9 @@ const UpdateCapsuleRow: React.FC<{ appVersion: string }> = React.memo(
       open: ReturnType<typeof setTimeout> | null;
       close: ReturnType<typeof setTimeout> | null;
     }>({ open: null, close: null });
+    const pendingStateRef = useRef<UpdatePanelState | null>(null);
+    const scheduledStateFrameRef = useRef<number | null>(null);
+    const scheduledWithRafRef = useRef(false);
 
     const capsuleMode = deriveUpdateCapsuleMode(updateState);
 
@@ -508,11 +526,17 @@ const UpdateCapsuleRow: React.FC<{ appVersion: string }> = React.memo(
       return () => clearTimeout(timer);
     }, []);
 
+    const commitUpdateState = (next: UpdatePanelState | null) => {
+      setUpdateState((previous) =>
+        sameUpdatePanelState(previous, next) ? previous : next,
+      );
+    };
+
     const handleInstallUpdate = () => {
       window.update
         ?.installWhenReady?.()
         .then((result) => {
-          if (result?.snapshot) setUpdateState(result.snapshot);
+          if (result?.snapshot) commitUpdateState(result.snapshot);
         })
         .catch(() => {
           // ignore. The engine keeps broadcasting the authoritative state.
@@ -521,21 +545,72 @@ const UpdateCapsuleRow: React.FC<{ appVersion: string }> = React.memo(
 
     useEffect(() => {
       let isMounted = true;
+
+      const flushPendingState = () => {
+        scheduledStateFrameRef.current = null;
+        const pending = pendingStateRef.current;
+        pendingStateRef.current = null;
+        if (isMounted && pending) commitUpdateState(pending);
+      };
+
+      const cancelPendingFrame = () => {
+        const scheduled = scheduledStateFrameRef.current;
+        if (scheduled === null) return;
+        if (scheduledWithRafRef.current) {
+          window.cancelAnimationFrame(scheduled);
+        } else {
+          window.clearTimeout(scheduled);
+        }
+        scheduledStateFrameRef.current = null;
+      };
+
+      const scheduleProgressState = (state: UpdatePanelState) => {
+        pendingStateRef.current = state;
+        if (scheduledStateFrameRef.current !== null) return;
+        if (typeof window.requestAnimationFrame === "function") {
+          scheduledWithRafRef.current = true;
+          scheduledStateFrameRef.current = window.requestAnimationFrame(
+            flushPendingState,
+          );
+        } else {
+          scheduledWithRafRef.current = false;
+          scheduledStateFrameRef.current = window.setTimeout(
+            flushPendingState,
+            0,
+          );
+        }
+      };
+
+      const applyBroadcastState = (state: UpdatePanelState) => {
+        // Progress is the only high-frequency update. Keep its latest value
+        // for the next paint, but apply phase changes immediately so a
+        // completed or failed update cannot wait behind a queued frame.
+        if (state.status === "downloading" && !state.readyToInstall) {
+          scheduleProgressState(state);
+          return;
+        }
+        pendingStateRef.current = null;
+        cancelPendingFrame();
+        if (isMounted) commitUpdateState(state);
+      };
+
       window.update
         ?.getState?.()
         .then((state) => {
-          if (isMounted) setUpdateState(state);
+          if (isMounted) commitUpdateState(state);
         })
         .catch(() => {
-          if (isMounted) setUpdateState(null);
+          if (isMounted) commitUpdateState(null);
         });
 
       const unsubscribe = window.update?.onStateChanged?.((state) => {
-        setUpdateState(state as UpdatePanelState);
+        applyBroadcastState(state as UpdatePanelState);
       });
 
       return () => {
         isMounted = false;
+        pendingStateRef.current = null;
+        cancelPendingFrame();
         unsubscribe?.();
       };
     }, []);
