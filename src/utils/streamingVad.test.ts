@@ -172,7 +172,7 @@ describe("streamingVad", () => {
     session.dispose();
   });
 
-  it("keeps only one completed window in the recycle pool", async () => {
+  it("keeps one completed window in the recycle slot", async () => {
     const fp = createManualFrameProcessor();
     useFrameProcessor(fp);
 
@@ -183,9 +183,9 @@ describe("streamingVad", () => {
     await flush();
 
     const internals = session as unknown as {
-      recycledWindows: Float32Array[];
+      recycledWindow: Float32Array | null;
     };
-    expect(internals.recycledWindows).toHaveLength(1);
+    expect(internals.recycledWindow).toBeInstanceOf(Float32Array);
     session.dispose();
   });
 

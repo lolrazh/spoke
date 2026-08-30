@@ -121,7 +121,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private readonly pendingWindows: PendingVadWindow[] = [];
   private pendingWindowStart = 0;
   private queueDepth = 0;
-  private readonly recycledWindows: Float32Array[] = [];
+  private recycledWindow: Float32Array | null = null;
 
   private segments: VadSpeechSegment[] = [];
   private speaking = false;
@@ -192,7 +192,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     let inputOffset = 0;
     while (this.carryLen + (pcm16.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
       const window =
-        this.recycledWindows.pop() ?? new Float32Array(MODEL_FRAME_SAMPLES);
+        this.recycledWindow ?? new Float32Array(MODEL_FRAME_SAMPLES);
+      this.recycledWindow = null;
       if (this.carryLen > 0) {
         window.set(this.carryBuf.subarray(0, this.carryLen), 0);
       }
@@ -273,7 +274,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         // Keep one spare only. A backlog can finish several windows before
         // capture produces another one; retaining all of them would leave
         // the queue bound resident after the worker catches up.
-        this.recycledWindows[0] = result.frame;
+        this.recycledWindow = result.frame;
         if (this.cancelled || this.status !== "ready") return;
         for (const event of result.events) this.handleEvent(event);
       } catch (error) {
