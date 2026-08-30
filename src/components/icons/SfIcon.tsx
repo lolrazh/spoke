@@ -227,4 +227,6 @@ const SfIcon: React.FC<SfIconProps> = ({
   );
 };
 
-export default SfIcon;
+// Icons are pure leaves. Memoization keeps unchanged SVGs out of parent panel
+// updates such as model-download progress renders.
+export default React.memo(SfIcon);
