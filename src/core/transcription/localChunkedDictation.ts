@@ -211,21 +211,30 @@ export class LocalChunkedDictation {
 export function mergeLocalChunkTexts(
   results: readonly TranscriptionResult[],
 ): string {
-  let merged: string[] = [];
+  const merged: string[] = [];
   for (const result of results) {
-    const next = result.text.trim().split(/\s+/).filter(Boolean);
-    if (next.length === 0) continue;
+    const trimmed = result.text.trim();
+    if (trimmed.length === 0) continue;
+    const next = trimmed.split(/\s+/);
     const maxOverlap = Math.min(12, merged.length, next.length);
     let overlap = 0;
     for (let size = maxOverlap; size > 0; size--) {
-      const previousTail = merged.slice(-size).map(normalizeWord);
-      const nextHead = next.slice(0, size).map(normalizeWord);
-      if (previousTail.every((word, index) => word === nextHead[index])) {
+      let matches = true;
+      for (let index = 0; index < size; index++) {
+        const previousWord = normalizeWord(merged[merged.length - size + index]);
+        if (previousWord !== normalizeWord(next[index])) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
         overlap = size;
         break;
       }
     }
-    merged = merged.concat(next.slice(overlap));
+    for (let index = overlap; index < next.length; index++) {
+      merged.push(next[index]);
+    }
   }
   return merged.join(" ");
 }
