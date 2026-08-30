@@ -57,6 +57,19 @@ describe("LocalChunkedDictation", () => {
     expect(transcribe.mock.calls[0][0].durationMs).toBe(1_000);
   });
 
+  it("transfers an unsubmitted short recording without dispatching a chunk", () => {
+    const { chunker, transcribe } = createChunker();
+    chunker.pushFrame(new Int16Array([1, 2, 3]));
+
+    const audio = chunker.takePendingAudio();
+
+    expect(Array.from(audio.pcm16)).toEqual([1, 2, 3]);
+    expect(audio.durationMs).toBe(30);
+    expect(transcribe).not.toHaveBeenCalled();
+    expect(() => chunker.pushFrame(new Int16Array([4]))).not.toThrow();
+    expect(transcribe).not.toHaveBeenCalled();
+  });
+
   it("waits through the sentence pause and cancels when speech resumes", async () => {
     vi.useFakeTimers();
     try {

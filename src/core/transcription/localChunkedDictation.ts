@@ -1,9 +1,9 @@
 import {
-  concatPcm16,
   createCapturedAudio,
   type CapturedAudio,
 } from "./capturedAudio";
 import type { TranscriptionResult } from "./sessionTypes";
+import { Pcm16Accumulator } from "../../utils/pcm16Accumulator";
 
 export interface LocalChunkedDictationOptions {
   sampleRateHz: number;
@@ -23,7 +23,7 @@ export interface LocalChunkedDictationOptions {
  * enormous renderer buffer or one unbounded sidecar inference.
  */
 export class LocalChunkedDictation {
-  private readonly chunks: Int16Array[] = [];
+  private readonly pendingPcm = new Pcm16Accumulator();
   private readonly chunkTasks: Promise<
     { result: TranscriptionResult } | { error: unknown }
   >[] = [];
@@ -54,7 +54,7 @@ export class LocalChunkedDictation {
       frame.length <= remainingSamples
         ? frame
         : frame.slice(0, remainingSamples);
-    this.chunks.push(acceptedFrame);
+    this.pendingPcm.append(acceptedFrame);
     this.pendingSamples += acceptedFrame.length;
     this.freshSamples += acceptedFrame.length;
     this.totalSamples += acceptedFrame.length;
@@ -117,9 +117,31 @@ export class LocalChunkedDictation {
     this.clearNaturalBoundaryTimer();
     this.naturalBoundaryRequested = false;
     this.naturalBoundaryReady = false;
-    this.chunks.length = 0;
+    this.pendingPcm.clear();
     this.pendingSamples = 0;
     this.freshSamples = 0;
+  }
+
+  /**
+   * Transfer audio that was never sealed into a bounded request. This keeps a
+   * short recording on the normal post-hoc VAD path without making the capture
+   * session retain a second copy of the same frames.
+   */
+  takePendingAudio(): CapturedAudio {
+    if (this.dispatchedChunkCount > 0) {
+      throw new Error("Cannot take audio after local chunks were dispatched.");
+    }
+
+    this.finished = true;
+    this.clearNaturalBoundaryTimer();
+    this.naturalBoundaryRequested = false;
+    this.naturalBoundaryReady = false;
+    this.pendingSamples = 0;
+    this.freshSamples = 0;
+
+    return createCapturedAudio(this.pendingPcm.take(), {
+      sampleRateHz: this.options.sampleRateHz,
+    });
   }
 
   async finish(): Promise<TranscriptionResult[]> {
@@ -153,14 +175,13 @@ export class LocalChunkedDictation {
     if (this.freshSamples === 0) return;
 
     this.clearNaturalBoundaryTimer();
-    const pcm16 = concatPcm16(this.chunks);
+    const pcm16 = this.pendingPcm.take();
     const overlapSamples = Math.min(
       pcm16.length,
       Math.round((this.options.overlapMs * this.options.sampleRateHz) / 1000),
     );
     const overlap = overlapSamples > 0 ? pcm16.slice(-overlapSamples) : null;
-    this.chunks.length = 0;
-    if (overlap && overlap.length > 0) this.chunks.push(overlap);
+    if (overlap && overlap.length > 0) this.pendingPcm.append(overlap);
     this.pendingSamples = overlap?.length ?? 0;
     this.freshSamples = 0;
     this.naturalBoundaryRequested = false;

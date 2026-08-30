@@ -126,11 +126,6 @@ export class PcmCaptureSession implements AudioCaptureSession {
     });
   }
 
-  /** Drop retained audio after an incremental consumer has safely sealed it. */
-  discardBufferedPcm(): void {
-    this.retainedPcm.clear();
-  }
-
   private handleWorkletMessage(message: WorkletMessage): void {
     if (message.type === "audio") {
       const frame = message.samples;

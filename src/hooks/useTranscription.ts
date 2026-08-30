@@ -376,10 +376,6 @@ export function useTranscription(
             LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
           maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
           transcribe: (audio) => {
-            // Until this first chunk, PcmCaptureSession keeps the legacy
-            // short-recording fallback intact. Once a bounded request is
-            // safely sealed, release its duplicate capture copy.
-            recorderRef.current?.discardBufferedPcm();
             return orchestrator.transcribe(providerId, {
               audio,
               context: buildTranscriptionContext(),
@@ -434,8 +430,10 @@ export function useTranscription(
               localChunkedDictation?.pushFrame(frame);
               localStreamingDictation?.pushFrame(frame);
             },
-            retainPcm: !localStreamingDictation,
-            recyclePcmFrames: Boolean(localStreamingDictation),
+            retainPcm: !localStreamingDictation && !localChunkedDictation,
+            recyclePcmFrames: Boolean(
+              localStreamingDictation || localChunkedDictation,
+            ),
           },
         );
         await recorder.start(stream ?? undefined);
@@ -696,8 +694,7 @@ export function useTranscription(
       }
       // Clear the pending start promise now, but keep recorderRef populated
       // until recorder.stop() flushes its final worklet frame. A chunk can be
-      // sealed by that final frame, and the chunk callback may still need to
-      // release the recorder's retained PCM copy.
+      // sealed by that final frame.
       recorderStartPromiseRef.current = null;
       timing.pcmStopStartedAt = performance.now();
 
@@ -706,6 +703,10 @@ export function useTranscription(
       recorderRef.current = null;
       timing.pcmReadyAt = performance.now();
       if (isCancelled()) return;
+
+      if (localChunkedDictation && !localChunkedDictation.hasDispatchedChunks) {
+        capturedAudio = localChunkedDictation.takePendingAudio();
+      }
 
       if (provider.descriptor.kind === "local" && localStreamingDictation) {
         capturedAudio = null;
@@ -836,7 +837,6 @@ export function useTranscription(
       // No bounded request was dispatched. Keep this recording on the
       // single-shot path and prevent a delayed natural-boundary callback from
       // dispatching the same audio after we begin VAD trimming.
-      localChunkedDictation?.discardPendingAudio();
       localChunkedDictationRef.current = null;
       if (!capturedAudio) {
         throw new Error("PCM capture did not produce audio.");

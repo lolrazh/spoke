@@ -125,10 +125,6 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
     void window.audioCapture?.cancel();
   }
 
-  discardBufferedPcm(): void {
-    this.retainedPcm.clear();
-  }
-
   private handleFrame(payload: Uint8Array | ArrayBuffer): void {
     if (this.stopped) return;
 
