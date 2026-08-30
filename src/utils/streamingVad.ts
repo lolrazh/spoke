@@ -36,6 +36,7 @@ const log = createLogger("StreamingVAD");
 // and don't divide evenly into that, so we re-chunk here.
 const MODEL_FRAME_SAMPLES = 1536;
 const MODEL_SAMPLES_PER_MS = 16; // 16,000 Hz / 1000 ms
+const PCM16_TO_FLOAT_GAIN = 1 / 32768;
 const QUIET_POLL_INTERVAL_MS = 20;
 // Keep a slow VAD worker from retaining an unbounded chain of transferred
 // windows. At the normal 96ms model window size this is about 6 seconds of
@@ -422,6 +423,7 @@ function copyPcm16ToFloat32(
   length: number,
 ): void {
   for (let index = 0; index < length; index += 1) {
-    target[targetOffset + index] = source[sourceOffset + index] / 32768;
+    target[targetOffset + index] =
+      source[sourceOffset + index] * PCM16_TO_FLOAT_GAIN;
   }
 }
