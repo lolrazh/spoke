@@ -340,7 +340,6 @@ contextBridge.exposeInMainWorld("app", {
 
 contextBridge.exposeInMainWorld("update", {
   getState: () => ipcRenderer.invoke("update:get-state"),
-  check: () => ipcRenderer.invoke("update:check"),
   restart: () => ipcRenderer.invoke("update:restart"),
   installWhenReady: () => ipcRenderer.invoke("update:install-when-ready"),
   onStateChanged: (cb: (snapshot: unknown) => void) => {

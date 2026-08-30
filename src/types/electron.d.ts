@@ -44,7 +44,6 @@ declare global {
     };
     update: {
       getState: () => Promise<UpdateSnapshot>;
-      check: () => Promise<UpdateSnapshot>;
       restart: () => Promise<{ ok: boolean }>;
       installWhenReady: () => Promise<{
         ok: boolean;

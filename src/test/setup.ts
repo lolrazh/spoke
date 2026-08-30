@@ -48,12 +48,6 @@ if (!globalThis.window.update) {
       readyToInstall: false,
       error: null,
     })),
-    check: vi.fn(async () => ({
-      status: "checking",
-      version: null,
-      readyToInstall: false,
-      error: null,
-    })),
     restart: vi.fn(async () => ({ ok: true })),
     installWhenReady: vi.fn(async () => ({
       ok: true,

@@ -226,11 +226,6 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle("update:get-state", () => getUpdateSnapshot());
 
-  ipcMain.handle("update:check", async () => {
-    await manualCheckForUpdates(false);
-    return getUpdateSnapshot();
-  });
-
   ipcMain.handle("update:restart", () => {
     // Guard: a stray call must not quit-to-same-version. Only install when a
     // downloaded update is actually staged and ready.
