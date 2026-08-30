@@ -32,11 +32,6 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     // Resampler state
     this._last = 0.0; // for linear
     this._pos = 0.0; // for linear
-    // Reuse the linear-resampler input window across render quanta. Audio
-    // worklet input blocks are normally a stable 128 samples, so allocating
-    // this short-lived Float32Array in every process() call creates needless
-    // garbage during the whole recording.
-    this._linearWindow = new Float32Array(0);
 
     // Decimator-by-3 state (small FIR low-pass, Hamming windowed-sinc)
     if (this.mode === "decimate3") {
@@ -149,23 +144,19 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
   _linearResample(input) {
     const srcLen = input.length;
     if (srcLen === 0) return;
-    const windowLen = srcLen + 1;
-    if (this._linearWindow.length < windowLen) {
-      this._linearWindow = new Float32Array(windowLen);
-    }
-    const window = this._linearWindow;
-    window[0] = this._last;
-    window.set(input, 1);
-    while (this._pos + 1 < windowLen) {
+    // Read directly from the current render block. The previous sample is the
+    // only value that crosses a block boundary, so a temporary [last, ...input]
+    // window would only add a copy on every AudioWorklet callback.
+    while (this._pos + 1 < srcLen + 1) {
       const i = Math.floor(this._pos);
       const t = this._pos - i;
-      const a = window[i];
-      const b = window[i + 1];
+      const a = i === 0 ? this._last : input[i - 1];
+      const b = input[i];
       this._pushSample(a + (b - a) * t);
       this._pos += this.ratio;
     }
-    this._pos -= windowLen - 1;
-    this._last = window[srcLen];
+    this._pos -= srcLen;
+    this._last = input[srcLen - 1];
   }
 
   _decimateBy3(input) {
