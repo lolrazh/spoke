@@ -1,6 +1,6 @@
 import React from "react";
 import { m } from "framer-motion";
-import { SectionSeparator } from "./SettingsPanel";
+import { SectionSeparator } from "./SectionSeparator";
 import {
   panelCascadeContainer,
   panelCascadeItem,

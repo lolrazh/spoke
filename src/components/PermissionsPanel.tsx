@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import Spinner from "./ui/Spinner";
 import SfIcon from "./icons/SfIcon";
 import { usePermissionsController } from "../state/permissionsContext";
-import { SectionSeparator } from "./SettingsPanel";
+import { SectionSeparator } from "./SectionSeparator";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 import {
