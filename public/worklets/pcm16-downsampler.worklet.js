@@ -1,3 +1,5 @@
+/* global sampleRate */
+
 /*
   AudioWorkletProcessor that:
   - Accepts mono Float32 input at the AudioContext sampleRate (typically 48k or 44.1k)
@@ -30,6 +32,11 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     // Resampler state
     this._last = 0.0; // for linear
     this._pos = 0.0; // for linear
+    // Reuse the linear-resampler input window across render quanta. Audio
+    // worklet input blocks are normally a stable 128 samples, so allocating
+    // this short-lived Float32Array in every process() call creates needless
+    // garbage during the whole recording.
+    this._linearWindow = new Float32Array(0);
 
     // Decimator-by-3 state (small FIR low-pass, Hamming windowed-sinc)
     if (this.mode === "decimate3") {
@@ -143,7 +150,10 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     const srcLen = input.length;
     if (srcLen === 0) return;
     const windowLen = srcLen + 1;
-    const window = new Float32Array(windowLen);
+    if (this._linearWindow.length < windowLen) {
+      this._linearWindow = new Float32Array(windowLen);
+    }
+    const window = this._linearWindow;
     window[0] = this._last;
     window.set(input, 1);
     while (this._pos + 1 < windowLen) {
@@ -155,7 +165,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       this._pos += this.ratio;
     }
     this._pos -= windowLen - 1;
-    this._last = window[windowLen - 1];
+    this._last = window[srcLen];
   }
 
   _decimateBy3(input) {
