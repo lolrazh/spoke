@@ -14,7 +14,7 @@
  * one worker and terminates it when the session finishes or is cancelled, so
  * no worker state or model memory is shared between recordings.
  */
-import { pcm16ToFloat32, type CapturedAudio } from "../core/transcription/capturedAudio";
+import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import {
   trimCapturedAudioToSpeech,
   type VadAudioResult,
@@ -37,6 +37,10 @@ const log = createLogger("StreamingVAD");
 const MODEL_FRAME_SAMPLES = 1536;
 const MODEL_SAMPLES_PER_MS = 16; // 16,000 Hz / 1000 ms
 const QUIET_POLL_INTERVAL_MS = 20;
+// Keep a slow VAD worker from retaining an unbounded chain of transferred
+// windows. At the normal 96ms model window size this is about 6 seconds of
+// backlog, after which the existing post-hoc VAD path is safer.
+const MAX_PENDING_VAD_WINDOWS = 64;
 
 type SessionStatus = "pending" | "ready" | "failed";
 
@@ -144,7 +148,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private async initialize(): Promise<void> {
     try {
       await this.worker.ready();
-      if (this.cancelled) {
+      if (this.cancelled || this.status === "failed") {
         this.pendingWindows = [];
         this.queueDepth = 0;
         return;
@@ -169,39 +173,52 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       return;
     }
     this.totalCapturedMs += pcm16.length / MODEL_SAMPLES_PER_MS;
-    this.appendSamples(pcm16ToFloat32(pcm16));
+    this.appendSamples(pcm16);
   }
 
-  private appendSamples(float32: Float32Array): void {
+  private appendSamples(pcm16: Int16Array): void {
     // Emit as many full MODEL_FRAME_SAMPLES windows as carry + this frame can
-    // fill, without materializing a `combined` buffer per frame. Each window is
-    // still its own Float32Array because it is transferred to the worker; only
-    // the transient per-frame `combined`/carry slices are gone.
+    // fill, without materializing a Float32Array for every 30ms capture frame.
+    // Each window is still its own Float32Array because it is transferred to
+    // the worker; the PCM conversion writes directly into those windows.
     let inputOffset = 0;
-    while (this.carryLen + (float32.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
+    while (this.carryLen + (pcm16.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
       const window = new Float32Array(MODEL_FRAME_SAMPLES);
       if (this.carryLen > 0) {
         window.set(this.carryBuf.subarray(0, this.carryLen), 0);
       }
       const needed = MODEL_FRAME_SAMPLES - this.carryLen;
-      window.set(float32.subarray(inputOffset, inputOffset + needed), this.carryLen);
+      copyPcm16ToFloat32(pcm16, inputOffset, window, this.carryLen, needed);
       inputOffset += needed;
       this.carryLen = 0;
       this.enqueueWindow(window);
     }
 
     // Stash the remaining (sub-window) samples back into the reusable carry.
-    const remaining = float32.length - inputOffset;
+    const remaining = pcm16.length - inputOffset;
     if (remaining > 0) {
-      this.carryBuf.set(
-        float32.subarray(inputOffset, inputOffset + remaining),
+      copyPcm16ToFloat32(
+        pcm16,
+        inputOffset,
+        this.carryBuf,
         this.carryLen,
+        remaining,
       );
       this.carryLen += remaining;
     }
   }
 
   private enqueueWindow(window: Float32Array): void {
+    if (this.queueDepth >= MAX_PENDING_VAD_WINDOWS) {
+      this.status = "failed";
+      this.pendingWindows = [];
+      this.disposeWorker();
+      log.warn(
+        "Streaming VAD fell behind; falling back to post-hoc VAD:",
+        `queue exceeded ${MAX_PENDING_VAD_WINDOWS} model windows`,
+      );
+      return;
+    }
     this.queueDepth++;
     if (this.status === "ready") {
       this.submitWindow(window);
@@ -352,5 +369,17 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     if (this.workerReleased) return;
     this.workerReleased = true;
     this.worker.dispose();
+  }
+}
+
+function copyPcm16ToFloat32(
+  source: Int16Array,
+  sourceOffset: number,
+  target: Float32Array,
+  targetOffset: number,
+  length: number,
+): void {
+  for (let index = 0; index < length; index += 1) {
+    target[targetOffset + index] = source[sourceOffset + index] / 32768;
   }
 }

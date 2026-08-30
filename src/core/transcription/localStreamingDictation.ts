@@ -21,6 +21,8 @@ export class LocalStreamingDictation {
   private readonly maxSamples: number;
   private readonly pending: Int16Array[] = [];
   private readonly queuedBatches: Int16Array[] = [];
+  private pendingStart = 0;
+  private queuedBatchStart = 0;
   private pendingSamples = 0;
   private totalSamples = 0;
   private sessionId: string | null = null;
@@ -144,7 +146,9 @@ export class LocalStreamingDictation {
     this.cancelRequested = true;
     this.closed = true;
     this.pending.length = 0;
+    this.pendingStart = 0;
     this.queuedBatches.length = 0;
+    this.queuedBatchStart = 0;
     this.pendingSamples = 0;
     this.cleanupListener();
     this.sessionId = null;
@@ -160,17 +164,27 @@ export class LocalStreamingDictation {
     const pcm = new Int16Array(sampleCount);
     let offset = 0;
     while (offset < sampleCount) {
-      const frame = this.pending[0];
+      const frame = this.pending[this.pendingStart];
       const remaining = sampleCount - offset;
       if (frame.length <= remaining) {
         pcm.set(frame, offset);
         offset += frame.length;
-        this.pending.shift();
+        this.pendingStart += 1;
       } else {
         pcm.set(frame.subarray(0, remaining), offset);
-        this.pending[0] = frame.slice(remaining);
+        // Keep the unconsumed tail as a view over the capture frame. The
+        // capture frame is already owned by this adapter on the streaming
+        // path, so copying the remainder only adds GC pressure.
+        this.pending[this.pendingStart] = frame.subarray(remaining);
         offset += remaining;
       }
+    }
+    if (this.pendingStart === this.pending.length) {
+      this.pending.length = 0;
+      this.pendingStart = 0;
+    } else if (this.pendingStart > 0) {
+      this.pending.splice(0, this.pendingStart);
+      this.pendingStart = 0;
     }
     this.pendingSamples -= sampleCount;
     this.queuedBatches.push(pcm);
@@ -180,7 +194,9 @@ export class LocalStreamingDictation {
   private drainQueuedBatches(): void {
     const sessionId = this.sessionId;
     if (!sessionId) return;
-    for (const pcm of this.queuedBatches.splice(0)) {
+    while (this.queuedBatchStart < this.queuedBatches.length) {
+      const pcm = this.queuedBatches[this.queuedBatchStart];
+      this.queuedBatchStart += 1;
       this.sendQueue = this.sendQueue.then(async () => {
         if (this.failure || this.cancelRequested) return;
         try {
@@ -190,6 +206,8 @@ export class LocalStreamingDictation {
         }
       });
     }
+    this.queuedBatches.length = 0;
+    this.queuedBatchStart = 0;
   }
 
   private cleanupListener(): void {

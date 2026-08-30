@@ -322,6 +322,24 @@ describe("streamingVad", () => {
     expect(worker.dispose).toHaveBeenCalledOnce();
   });
 
+  it("falls back when the worker backlog reaches its memory bound", async () => {
+    const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    worker.processFrame = vi.fn().mockReturnValue(
+      new Promise<VadWorkerEvent[]>(() => undefined),
+    );
+    mocks.createVadWorkerClient.mockReturnValue(worker);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    for (let i = 0; i < 65; i++) {
+      session.pushFrame(new Int16Array(1536));
+    }
+
+    expect(session.isUsable()).toBe(false);
+    expect(worker.dispose).toHaveBeenCalledOnce();
+  });
+
   it("terminates the worker when finalization fails", async () => {
     const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
     worker.finish = vi.fn().mockRejectedValue(new Error("finish failed"));
