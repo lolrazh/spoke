@@ -260,9 +260,6 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
-  // Helper to get the current steps array
-  const getSteps = (): OnboardingStep[] => buildOnboardingSteps();
-
   // Permission aggregates
   const allPermissionsGranted =
     permissions.microphone &&
@@ -306,12 +303,7 @@ const Onboarding: React.FC = () => {
       // Check if there's a saved onboarding step (from mid-onboarding restart)
       try {
         const savedStep = await window.electron?.getOnboardingStep?.();
-        const steps = buildOnboardingSteps();
-        if (
-          savedStep &&
-          isOnboardingStep(savedStep) &&
-          steps.includes(savedStep)
-        ) {
+        if (savedStep && isOnboardingStep(savedStep)) {
           // Resuming a session already in progress (e.g. right after the
           // post-permissions auto-restart) — skip the intro and land directly
           // on the saved step so it "reopens from the next page".
@@ -388,7 +380,7 @@ const Onboarding: React.FC = () => {
 
   // Navigation functions
   const nextStep = () => {
-    const steps = getSteps();
+    const steps = buildOnboardingSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       // Reset Option key visual state when leaving hotkey pages
@@ -400,7 +392,7 @@ const Onboarding: React.FC = () => {
   };
 
   const prevStep = () => {
-    const steps = getSteps();
+    const steps = buildOnboardingSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       // Reset Option key visual state when leaving hotkey pages
@@ -562,10 +554,10 @@ const Onboarding: React.FC = () => {
   };
 
   // Step progress indicator
-  // Returns the index among ['welcome','permissions','hotkey-test'], or -1 when not applicable
+  // Returns the index among the visible onboarding steps, or -1 when not applicable.
   const getProgressStepIndex = () => {
-    const steps = getSteps();
-    // Progress steps include welcome and exclude 'complete'
+    const steps = buildOnboardingSteps();
+    // Progress steps exclude the final completion screen.
     const progressSteps = steps.slice(0, -1);
     return progressSteps.indexOf(currentStep);
   };
@@ -702,7 +694,7 @@ const Onboarding: React.FC = () => {
         <div className="absolute top-20 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
           <div className="onboarding-progress-shell">
             {(() => {
-              const progressSteps = getSteps().slice(0, -1);
+              const progressSteps = buildOnboardingSteps().slice(0, -1);
               const idx = getProgressStepIndex();
               return progressSteps.map((step, i) => {
                 const isComplete = i < idx;
