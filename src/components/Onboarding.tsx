@@ -59,7 +59,6 @@ const devFlags = {
   mockPermissionStates: isDevelopment && params.has("mockPerms"),
   showDebugOverlay: isDevelopment,
   fastAnimations: isDevelopment,
-  alwaysShowDevMode: isDevelopment,
   isDevelopment,
   methods: {
     devLog: (...args: unknown[]) => {
@@ -729,7 +728,7 @@ const Onboarding: React.FC = () => {
       )}
 
       {/* Development Mode Indicator & Controls */}
-      {(isDev || devFlags.alwaysShowDevMode) && (
+      {isDev && (
         <div className="absolute top-4 right-4 z-50 space-y-2">
           <div className="card-floating rounded-lg px-3 py-1">
             <span className="text-xs font-medium text-white/80">
