@@ -90,11 +90,6 @@
     z-index: 1;
   }
 
-  /* Controls that must appear above the intro overlay (e.g., speaker toggle) */
-  .sf-intro-controls {
-    z-index: 10001; /* one above .sf-intro-overlay */
-  }
-
   .sf-grid-background {
     position: absolute;
     inset: 0;
@@ -135,26 +130,6 @@
     user-select: none;
   }
 
-  .sf-intro-tagline {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .sf-intro-heading {
-    font-family: "Instrument Serif", Georgia, serif;
-    font-size: clamp(30px, 7.2vw, 60px);
-    line-height: 1.25;
-    letter-spacing: -0.01em;
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 1) 0%,
-      rgba(255, 255, 255, 0.85) 100%
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
   .sf-intro-sub {
     font-family:
       "Lexend Deca",
@@ -185,19 +160,6 @@
   .sf-intro-cta:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.2);
     outline-offset: 2px;
-  }
-
-  .sf-intro-skip {
-    position: absolute;
-    top: 18px;
-    right: 18px;
-    padding: 6px 10px;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 999px;
-    font-size: 12px;
-    backdrop-filter: blur(8px);
   }
 
   /* The main container for the app, which also acts as the hover hot-zone */
@@ -601,20 +563,6 @@ body {
 }
 
 /* Font family utilities */
-.font-sans {
-  font-family:
-    "Lexend Deca",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 /* Onboarding window - solid surface to match pill */
 .onboarding-window {
   background: var(--surface-solid);
@@ -659,17 +607,6 @@ body {
   left: 80px; /* Leave first 80px alone for native traffic lights (3 buttons × 12px + 6px gutter on each side) */
   right: 80px; /* Leave last 80px alone for top-right controls (speaker, etc.) */
   height: 32px;
-  z-index: 1000;
-}
-
-/* Small draggable area on the left - below the native traffic lights */
-.onboarding-header-left {
-  -webkit-app-region: drag;
-  position: absolute;
-  top: 40px; /* Below the native traffic lights area */
-  left: 0;
-  width: 80px; /* Same width as excluded area above */
-  height: 20px;
   z-index: 1000;
 }
 
@@ -850,54 +787,12 @@ body {
   .onboarding-section {
     margin-block: var(--onboarding-section-gap);
   }
-  .onboarding-hint {
-    font-size: 0.8125rem; /* 13px */
-    line-height: 1.5;
-    font-weight: 300;
-  }
-  .onboarding-hint-before {
-    display: block;
-    padding-bottom: var(--onboarding-section-gap);
-  }
-  .onboarding-hint-centered {
-    display: block;
-    text-align: center !important;
-    padding-bottom: calc(var(--onboarding-section-gap) * 0.5);
-    margin-inline: auto;
-  }
   .onboarding-permission-desc {
     font-size: 0.6875rem; /* 11px */
     line-height: 1.5;
     font-weight: 300;
     display: block;
     padding-top: calc(var(--spacing-xs) / 2);
-  }
-
-  /* Onboarding Card and UI Utilities */
-  .onboarding-card {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
-    backdrop-filter: blur(var(--blur-md));
-    border: 1px solid var(--stroke-fg-mid);
-    border-radius: var(--radius-window);
-    box-shadow: var(--shadow-elevated);
-    transition:
-      background-color var(--duration-standard) var(--ease-standard),
-      border-color var(--duration-standard) var(--ease-standard),
-      box-shadow var(--duration-standard) var(--ease-standard);
-  }
-
-  .onboarding-card:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
-    border-color: var(--stroke-fg-strong);
-  }
-
-  .onboarding-row {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
-    border: 1px solid var(--stroke-fg);
-    border-radius: var(--radius);
-    backdrop-filter: blur(var(--blur-md));
-    box-shadow: var(--shadow-floating);
   }
 
   /* Textarea-specific styling without backdrop-filter to prevent timing issues */
@@ -1007,14 +902,6 @@ body {
     height: 84px;
     padding: 0;
   }
-  .keycap-wide {
-    width: 111px;
-  }
-  .keycap-label {
-    position: absolute;
-    bottom: 9px;
-    right: 12px;
-  }
   /* Legends for Option keycap: symbol on top, label on bottom */
   .keycap-legend-top {
     position: absolute;
@@ -1049,31 +936,6 @@ body {
     font-family:
       -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
       sans-serif;
-  }
-
-  .onboarding-close {
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-    border: 1px solid var(--stroke-fg);
-    backdrop-filter: blur(var(--blur-md));
-    box-shadow: var(--shadow-floating);
-    color: rgba(255, 255, 255, 0.8);
-    transition: all var(--duration-standard) var(--ease-standard);
-  }
-  .onboarding-close:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    color: rgba(255, 255, 255, 0.95);
-    border-color: var(--stroke-fg-strong);
-  }
-
-  /* Clean section separators */
-  .section-separator {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   /* Frosted Glass with Noise elevation system - cleaner for native vibrancy */
