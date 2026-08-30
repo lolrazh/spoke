@@ -543,6 +543,7 @@ async function runLocalStream(
   let totalBytes = 0;
   let finishing = false;
   let settled = false;
+  let lastPartialText: string | null = null;
   let finalTimeout: NodeJS.Timeout | null = null;
   let resolveResult!: (result: LocalTranscribeResult) => void;
   let rejectResult!: (error: Error) => void;
@@ -578,7 +579,10 @@ async function runLocalStream(
       try {
         const event: SttEvent = JSON.parse(line);
         if (event.type === "partial") {
-          onPartial(event.text);
+          if (event.text !== lastPartialText) {
+            lastPartialText = event.text;
+            onPartial(event.text);
+          }
         } else if (event.type === "done") {
           if (settled) return false;
           settled = true;

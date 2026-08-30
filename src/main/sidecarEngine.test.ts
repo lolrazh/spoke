@@ -368,6 +368,10 @@ describe("sidecarEngine", () => {
         "data",
         Buffer.from('{"type":"partial","text":"hello"}\n'),
       );
+      proc.stdout.emit(
+        "data",
+        Buffer.from('{"type":"partial","text":"hello"}\n'),
+      );
       const pushing = session.push(Buffer.from([1, 0, 2, 0]));
       expect(proc.stdin.write).toHaveBeenCalledTimes(4);
       await pushing;
@@ -382,6 +386,7 @@ describe("sidecarEngine", () => {
 
       await expect(finishing).resolves.toMatchObject({ text: "hello world" });
       expect(onPartial).toHaveBeenCalledWith("hello");
+      expect(onPartial).toHaveBeenCalledTimes(1);
       const audioLengthBuf = proc.stdin.write.mock.calls[2][0] as Buffer;
       const audioPayload = proc.stdin.write.mock.calls[3][0] as Buffer;
       expect(audioLengthBuf.readUInt32LE(0)).toBe(4);
