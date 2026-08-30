@@ -198,7 +198,7 @@ declare global {
     stt: {
       transcribeLocal: (
         modelId: string,
-        pcmBuffer: ArrayBuffer,
+        pcmBuffer: ArrayBuffer | Uint8Array,
         prompt?: string,
       ) => Promise<LocalTranscribeResult>;
       cancelLocalTranscription: () => Promise<void>;

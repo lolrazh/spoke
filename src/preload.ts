@@ -149,7 +149,11 @@ contextBridge.exposeInMainWorld("audioCapture", {
 
 // Local Whisper bridge
 contextBridge.exposeInMainWorld("stt", {
-  transcribeLocal: (modelId: string, pcmBuffer: ArrayBuffer, prompt?: string) =>
+  transcribeLocal: (
+    modelId: string,
+    pcmBuffer: ArrayBuffer | Uint8Array,
+    prompt?: string,
+  ) =>
     ipcRenderer.invoke(
       "stt:transcribe-local",
       modelId,

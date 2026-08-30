@@ -91,6 +91,37 @@ describe("localSttProvider", () => {
     );
   });
 
+  it("passes partial PCM views without copying their backing buffer", async () => {
+    const backing = new Int16Array([99, 1, 2, 88]);
+    const audio = createCapturedAudio(backing.subarray(1, 3));
+
+    await localSttProvider.transcribe({
+      audio,
+      context: { mode: "dictation" },
+      prepareResult: preparedLocalModel(),
+    });
+
+    const pcmPayload = vi.mocked(window.stt.transcribeLocal).mock.calls[0][1];
+    expect(pcmPayload).toBeInstanceOf(Uint8Array);
+    if (!(pcmPayload instanceof Uint8Array)) {
+      throw new Error("Expected a bounded Uint8Array PCM payload.");
+    }
+    expect(pcmPayload).toMatchObject({
+      buffer: backing.buffer,
+      byteOffset: backing.byteOffset + 2,
+      byteLength: 4,
+    });
+    expect(
+      Array.from(
+        new Int16Array(
+          pcmPayload.buffer,
+          pcmPayload.byteOffset,
+          pcmPayload.byteLength / 2,
+        ),
+      ),
+    ).toEqual([1, 2]);
+  });
+
   it("fails prepare with a clear message when the model is not installed", async () => {
     (window.stt.getModelStatus as any).mockResolvedValueOnce({
       state: "not_installed",

@@ -668,9 +668,17 @@ describe("useTranscription", () => {
     const transcribeLocal = window.stt.transcribeLocal as ReturnType<
       typeof vi.fn
     >;
-    const transcribedPcm = new Int16Array(
-      transcribeLocal.mock.calls[0][1] as ArrayBuffer,
-    );
+    const pcmPayload = transcribeLocal.mock.calls[0][1] as
+      | ArrayBuffer
+      | Uint8Array;
+    const transcribedPcm =
+      pcmPayload instanceof Uint8Array
+        ? new Int16Array(
+            pcmPayload.buffer,
+            pcmPayload.byteOffset,
+            pcmPayload.byteLength / Int16Array.BYTES_PER_ELEMENT,
+          )
+        : new Int16Array(pcmPayload);
     expect(Array.from(transcribedPcm)).toEqual([1, 2, 3, 4]);
   });
 
