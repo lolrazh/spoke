@@ -53,7 +53,10 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       // Normalize DC gain to 1
       for (let n = 0; n < TAPS; n++) taps[n] /= sum;
       this._taps = taps;
-      this._dl = new Float32Array(TAPS);
+      // Store each delay-line sample twice. This lets the convolution scan
+      // backward through a contiguous 31-sample range without a modulo or
+      // wrap branch for every tap.
+      this._dl = new Float32Array(TAPS * 2);
       this._dlIdx = 0;
       this._phase = 0; // emit every 3rd sample
     }
@@ -166,19 +169,20 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     let idx = this._dlIdx;
     let phase = this._phase;
     for (let n = 0; n < input.length; n++) {
-      dl[idx] = input[n];
+      const sample = input[n];
+      dl[idx] = sample;
+      dl[idx + TAPS] = sample;
       idx += 1;
       if (idx === TAPS) idx = 0;
       phase++;
       if (phase === 3) {
-        // Convolution centered at idx-1 (most recent sample)
+        // idx points at the next write slot. The duplicated line guarantees
+        // this range contains the most recent sample followed by all taps.
         let acc = 0.0;
-        let di = idx - 1;
-        if (di < 0) di = TAPS - 1;
+        let di = idx + TAPS - 1;
         for (let k = 0; k < TAPS; k++) {
           acc += taps[k] * dl[di];
           di -= 1;
-          if (di < 0) di = TAPS - 1;
         }
         this._pushSample(acc);
         phase = 0;
