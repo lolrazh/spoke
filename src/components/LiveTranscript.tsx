@@ -59,6 +59,9 @@ export function LiveTranscriptFromStore(
   const caretTimerRef = useRef<number | null>(null);
   const fallbackMeasureFrameRef = useRef<number | null>(null);
   const lastMeasuredHeightRef = useRef<number | null>(null);
+  const committedTextRef = useRef<string | null>(null);
+  const tentativeTextRef = useRef<string | null>(null);
+  const measuredTextRef = useRef<string | null>(null);
   latestPropsRef.current = props;
 
   const publishMeasuredHeight = useCallback((height: number) => {
@@ -74,14 +77,23 @@ export function LiveTranscriptFromStore(
     const { isProcessing, reducedMotion } = latestPropsRef.current;
     const displayText = splitLiveTranscriptText(text, isProcessing);
 
-    if (committedRef.current) {
+    if (
+      committedRef.current &&
+      committedTextRef.current !== displayText.committed
+    ) {
       committedRef.current.textContent = displayText.committed;
+      committedTextRef.current = displayText.committed;
     }
-    if (tentativeRef.current) {
+    if (
+      tentativeRef.current &&
+      tentativeTextRef.current !== displayText.tentative
+    ) {
       tentativeRef.current.textContent = displayText.tentative;
+      tentativeTextRef.current = displayText.tentative;
     }
-    if (wrappedMeasureRef.current) {
+    if (wrappedMeasureRef.current && measuredTextRef.current !== text) {
       wrappedMeasureRef.current.textContent = text;
+      measuredTextRef.current = text;
     }
 
     if (caretTimerRef.current !== null) {
