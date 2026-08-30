@@ -33,9 +33,6 @@ import {
   transcribeWithGroq,
   transcribeWithDeepgram,
 } from "../providerStore";
-import { enhance } from "../enhanceService";
-import { extractOcrWords } from "../ocrService";
-import { resolveEnhancementProvider } from "../llmService";
 import {
   installLocalModelAndSyncSidecar,
   prewarmLocalSidecar,
@@ -116,6 +113,7 @@ export function registerSttIpc(): void {
         selectionText?: string;
       },
     ) => {
+      const { enhance } = await import("../enhanceService");
       return enhance(payload.text, {
         vocabulary: payload.vocabulary,
         mode: payload.mode,
@@ -148,6 +146,8 @@ export function registerSttIpc(): void {
   );
 
   ipcMain.handle("stt:extract-ocr", async (_event, imageBase64: string) => {
+    const [{ extractOcrWords }, { resolveEnhancementProvider }] =
+      await Promise.all([import("../ocrService"), import("../llmService")]);
     const providerId = resolveEnhancementProvider(getPreferredProviderId());
     if (!providerId) {
       return { words: [] };
