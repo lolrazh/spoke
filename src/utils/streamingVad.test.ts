@@ -189,6 +189,60 @@ describe("streamingVad", () => {
     session.dispose();
   });
 
+  it("releases completed window references while a backlog is still processing", async () => {
+    let processCount = 0;
+    let releaseFirst: (() => void) | undefined;
+    let releaseSecond: (() => void) | undefined;
+    const fp = createManualFrameProcessor((frame, handleEvent) => {
+      processCount += 1;
+      return new Promise<void>((resolve) => {
+        if (processCount === 1) {
+          releaseFirst = () => {
+            handleEvent({
+              msg: Message.FrameProcessed,
+              probs: { isSpeech: 0, notSpeech: 1 },
+              frame,
+            });
+            resolve();
+          };
+        } else {
+          releaseSecond = () => {
+            handleEvent({
+              msg: Message.FrameProcessed,
+              probs: { isSpeech: 0, notSpeech: 1 },
+              frame,
+            });
+            resolve();
+          };
+        }
+      });
+    });
+    useFrameProcessor(fp);
+
+    const session = createStreamingVadSession();
+    await flush();
+    session.pushFrame(new Int16Array(1536));
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    expect(releaseFirst).toBeTypeOf("function");
+    releaseFirst!();
+    await flush();
+
+    const internals = session as unknown as {
+      pendingWindows: Array<{ frame: Float32Array }>;
+      pendingWindowStart: number;
+    };
+    expect(internals.pendingWindowStart).toBe(2);
+    expect(internals.pendingWindows[0].frame).toHaveLength(0);
+    expect(internals.pendingWindows[1].frame).toHaveLength(1536);
+
+    expect(releaseSecond).toBeTypeOf("function");
+    releaseSecond!();
+    await flush();
+    session.dispose();
+  });
+
   it("notifies boundary consumers when speech starts and ends", async () => {
     let windowIndex = 0;
     const fp = createManualFrameProcessor((frame, handleEvent) => {

@@ -37,6 +37,7 @@ const log = createLogger("StreamingVAD");
 const MODEL_FRAME_SAMPLES = 1536;
 const MODEL_SAMPLES_PER_MS = 16; // 16,000 Hz / 1000 ms
 const PCM16_TO_FLOAT_GAIN = 1 / 32768;
+const EMPTY_VAD_WINDOW = new Float32Array(0);
 const QUIET_POLL_INTERVAL_MS = 20;
 // Keep a slow VAD worker from retaining an unbounded chain of transferred
 // windows. At the normal 96ms model window size this is about 6 seconds of
@@ -296,6 +297,10 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         }
         return;
       } finally {
+        // The worker has returned (or rejected) this window. Drop the queue
+        // record's typed-array reference immediately instead of keeping every
+        // completed frame reachable until the backlog fully drains.
+        pending.frame = EMPTY_VAD_WINDOW;
         this.queueDepth = Math.max(0, this.queueDepth - 1);
       }
     }
