@@ -82,8 +82,6 @@ export interface UpdateSnapshot {
   downloadPercent: number | null;
 }
 
-export type DevUpdateState = UpdateStatus | "ready";
-
 // ── Internal state ─────────────────────────────────────────────────────
 
 let updateStatus: UpdateStatus = "idle";
@@ -583,38 +581,6 @@ export function downloadUpdate(): void {
   } catch (err: unknown) {
     failDownload(err);
   }
-}
-
-export function setDevUpdateStateForTesting(
-  next: DevUpdateState,
-): { ok: boolean; snapshot: UpdateSnapshot; error?: string } {
-  if (app.isPackaged) {
-    return {
-      ok: false,
-      snapshot: getUpdateSnapshot(),
-      error: "Dev update state is unavailable in packaged builds",
-    };
-  }
-
-  updateReadyToInstall = next === "ready";
-  updateAvailableVersion =
-    next === "available" || next === "ready" || next === "downloading"
-      ? `v${app.getVersion()}-dev`
-      : null;
-  lastNotifiedAvailableVersion =
-    next === "available" ? updateAvailableVersion : null;
-  updateDownloadPercent =
-    next === "ready" ? 100 : next === "downloading" ? 42 : null;
-
-  if (next === "ready") {
-    setUpdateState("available");
-  } else if (next === "error") {
-    setUpdateState("error", { error: "Dev update preview" });
-  } else {
-    setUpdateState(next);
-  }
-
-  return { ok: true, snapshot: getUpdateSnapshot() };
 }
 
 function quitAndInstallWithUpdater(updater: ElectronUpdater): void {
