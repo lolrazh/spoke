@@ -110,31 +110,47 @@ private final class FloatRingBuffer {
         return true
     }
 
-    func drain(into result: inout [Float]) -> Bool {
+    var availableCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func drain(into destination: UnsafeMutableBufferPointer<Float>) -> Int {
         lock.lock()
         defer { lock.unlock() }
 
-        result.removeAll(keepingCapacity: true)
-        guard count > 0 else { return false }
-
-        result.reserveCapacity(count)
-        let firstCount = min(count, capacity - readIndex)
-        result.append(contentsOf: storage[readIndex..<(readIndex + firstCount)])
-        if firstCount < count {
-            result.append(contentsOf: storage[0..<(count - firstCount)])
+        let drainCount = min(count, destination.count)
+        guard drainCount > 0, let destinationBase = destination.baseAddress else {
+            return 0
         }
-        readIndex += count
+
+        let firstCount = min(drainCount, capacity - readIndex)
+        let secondCount = drainCount - firstCount
+        let copied = storage.withUnsafeBufferPointer { source in
+            guard let sourceBase = source.baseAddress else {
+                return false
+            }
+            destinationBase.update(
+                from: sourceBase.advanced(by: readIndex),
+                count: firstCount
+            )
+            if secondCount > 0 {
+                destinationBase.advanced(by: firstCount).update(
+                    from: sourceBase,
+                    count: secondCount
+                )
+            }
+            return true
+        }
+        guard copied else { return 0 }
+
+        readIndex += drainCount
         if readIndex >= capacity {
             readIndex -= capacity
         }
-        count = 0
-        return true
-    }
-
-    var hasSamples: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return count > 0
+        count -= drainCount
+        return drainCount
     }
 
     func discard() {
@@ -177,7 +193,6 @@ private final class AudioCaptureController {
     private var converterOutputBuffer: AVAudioPCMBuffer?
     private var converterOutputCapacity: AVAudioFrameCount = 0
     private var ringBuffer: FloatRingBuffer?
-    private var conversionSamples: [Float] = []
     private var pendingPcm16: [Int16] = []
     private var pendingPcm16Start = 0
     private var isCapturing = false
@@ -360,7 +375,7 @@ private final class AudioCaptureController {
             // This coalesces callbacks when conversion falls behind instead of
             // allocating one queued closure per audio tap callback.
             conversionScheduleLock.lock()
-            let hasPendingSamples = ringBuffer?.hasSamples ?? false
+            let hasPendingSamples = (ringBuffer?.availableCount ?? 0) > 0
             if !hasPendingSamples {
                 conversionScheduled = false
                 conversionScheduleLock.unlock()
@@ -371,28 +386,39 @@ private final class AudioCaptureController {
     }
 
     private func drainAndConvert() {
-        guard let ringBuffer, ringBuffer.drain(into: &conversionSamples) else { return }
-        let samples = conversionSamples
-        guard let sourceFormat, let targetFormat, let converter else { return }
+        guard let ringBuffer else { return }
+        guard let sourceFormat, let targetFormat, let converter else {
+            ringBuffer.discard()
+            return
+        }
+
+        let availableSamples = ringBuffer.availableCount
+        guard availableSamples > 0 else { return }
 
         guard let inputBuffer = ensureConverterInputBuffer(
-            frameCapacity: AVAudioFrameCount(samples.count),
+            frameCapacity: AVAudioFrameCount(availableSamples),
             format: sourceFormat
         ) else {
+            ringBuffer.discard()
             emitter.emitError("Could not allocate the native audio converter input buffer.")
             return
         }
-        inputBuffer.frameLength = AVAudioFrameCount(samples.count)
-        samples.withUnsafeBufferPointer { source in
-            guard let baseAddress = source.baseAddress,
-                  let destination = inputBuffer.floatChannelData?[0] else {
-                return
-            }
-            destination.update(from: baseAddress, count: samples.count)
+        guard let destination = inputBuffer.floatChannelData?[0] else {
+            ringBuffer.discard()
+            emitter.emitError("Native audio converter input buffer has no channel data.")
+            return
         }
+        let sampleCount = ringBuffer.drain(
+            into: UnsafeMutableBufferPointer(
+                start: destination,
+                count: availableSamples
+            )
+        )
+        guard sampleCount > 0 else { return }
+        inputBuffer.frameLength = AVAudioFrameCount(sampleCount)
 
         let outputCapacity = AVAudioFrameCount(
-            max(1, Int(ceil(Double(samples.count) * targetSampleRate / sourceFormat.sampleRate)) + 64)
+            max(1, Int(ceil(Double(sampleCount) * targetSampleRate / sourceFormat.sampleRate)) + 64)
         )
         guard let outputBuffer = ensureConverterOutputBuffer(
             frameCapacity: outputCapacity,
@@ -610,7 +636,6 @@ private final class AudioCaptureController {
         converterOutputBuffer = nil
         converterOutputCapacity = 0
         ringBuffer = nil
-        conversionSamples.removeAll(keepingCapacity: false)
         pendingPcm16.removeAll(keepingCapacity: true)
         pendingPcm16Start = 0
         inputOverflowReported = false
