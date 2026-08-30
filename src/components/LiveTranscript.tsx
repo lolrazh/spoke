@@ -16,7 +16,6 @@ import {
   subscribeLiveTranscript,
 } from "../state/liveTranscript";
 import {
-  boundLiveTranscriptText,
   splitLiveTranscriptText,
   type LiveTranscriptText,
 } from "./liveTranscriptText";
@@ -107,8 +106,7 @@ export function LiveTranscriptFromStore(
 
   const updateText = useCallback((text: string) => {
     const { isProcessing, reducedMotion } = latestPropsRef.current;
-    const boundedText = boundLiveTranscriptText(text);
-    const displayText = splitLiveTranscriptText(boundedText, isProcessing);
+    const displayText = splitLiveTranscriptText(text, isProcessing);
 
     if (
       committedRef.current &&
@@ -126,10 +124,10 @@ export function LiveTranscriptFromStore(
     }
     if (
       wrappedMeasureRef.current &&
-      measuredTextRef.current !== boundedText
+      measuredTextRef.current !== text
     ) {
-      wrappedMeasureRef.current.textContent = boundedText;
-      measuredTextRef.current = boundedText;
+      wrappedMeasureRef.current.textContent = text;
+      measuredTextRef.current = text;
     }
 
     const shouldBlink = !isProcessing && !reducedMotion;
