@@ -9,6 +9,8 @@ export interface LocalStreamingDictationOptions {
   onLimitReached: () => void;
 }
 
+const EMPTY_PCM16 = new Int16Array(0);
+
 /**
  * Bounded renderer adapter for a main-process live STT session.
  *
@@ -19,10 +21,9 @@ export interface LocalStreamingDictationOptions {
 export class LocalStreamingDictation {
   private readonly batchSamples: number;
   private readonly maxSamples: number;
-  private readonly pending: Int16Array[] = [];
   private readonly queuedBatches: Int16Array[] = [];
   private readonly recycledBatches: Int16Array[] = [];
-  private pendingStart = 0;
+  private pendingBatch: Int16Array;
   private queuedBatchStart = 0;
   private pendingSamples = 0;
   private totalSamples = 0;
@@ -46,6 +47,7 @@ export class LocalStreamingDictation {
     this.maxSamples = Math.round(
       (options.maxDurationMs / 1000) * options.sampleRateHz,
     );
+    this.pendingBatch = new Int16Array(this.batchSamples);
   }
 
   get durationMs(): number {
@@ -107,10 +109,22 @@ export class LocalStreamingDictation {
       return;
     }
     this.totalSamples += frame.length;
-    this.pending.push(frame);
-    this.pendingSamples += frame.length;
-    while (this.pendingSamples >= this.batchSamples) {
-      this.sealPending(this.batchSamples);
+    let frameOffset = 0;
+    while (frameOffset < frame.length) {
+      const copyLength = Math.min(
+        this.batchSamples - this.pendingSamples,
+        frame.length - frameOffset,
+      );
+      this.pendingBatch.set(
+        frame.subarray(frameOffset, frameOffset + copyLength),
+        this.pendingSamples,
+      );
+      this.pendingSamples += copyLength;
+      frameOffset += copyLength;
+
+      if (this.pendingSamples === this.batchSamples) {
+        this.queueFullBatch();
+      }
     }
   }
 
@@ -120,7 +134,13 @@ export class LocalStreamingDictation {
     if (!this.startPromise) {
       throw new Error("Local streaming session did not start.");
     }
-    if (this.pendingSamples > 0) this.sealPending(this.pendingSamples);
+    if (this.pendingSamples > 0) {
+      const tail = new Int16Array(this.pendingSamples);
+      tail.set(this.pendingBatch.subarray(0, this.pendingSamples));
+      this.pendingSamples = 0;
+      this.queuedBatches.push(tail);
+      this.drainQueuedBatches();
+    }
     await this.startPromise;
     this.drainQueuedBatches();
     await this.sendPumpPromise;
@@ -138,6 +158,7 @@ export class LocalStreamingDictation {
     } finally {
       this.cleanupListener();
       this.sessionId = null;
+      this.pendingBatch = EMPTY_PCM16;
       this.recycledBatches.length = 0;
     }
   }
@@ -147,8 +168,7 @@ export class LocalStreamingDictation {
       !this.cancelRequested && (this.startPending || this.sessionId !== null);
     this.cancelRequested = true;
     this.closed = true;
-    this.pending.length = 0;
-    this.pendingStart = 0;
+    this.pendingBatch = EMPTY_PCM16;
     this.queuedBatches.length = 0;
     this.queuedBatchStart = 0;
     this.recycledBatches.length = 0;
@@ -162,37 +182,11 @@ export class LocalStreamingDictation {
     await (this.cancelPromise ?? Promise.resolve());
   }
 
-  private sealPending(sampleCount: number): void {
-    if (sampleCount <= 0 || sampleCount > this.pendingSamples) return;
-    const pcm =
-      sampleCount === this.batchSamples
-        ? (this.recycledBatches.pop() ?? new Int16Array(sampleCount))
-        : new Int16Array(sampleCount);
-    let offset = 0;
-    while (offset < sampleCount) {
-      const frame = this.pending[this.pendingStart];
-      const remaining = sampleCount - offset;
-      if (frame.length <= remaining) {
-        pcm.set(frame, offset);
-        offset += frame.length;
-        this.pendingStart += 1;
-      } else {
-        pcm.set(frame.subarray(0, remaining), offset);
-        // Keep the unconsumed tail as a view over the capture frame. The
-        // capture frame is already owned by this adapter on the streaming
-        // path, so copying the remainder only adds GC pressure.
-        this.pending[this.pendingStart] = frame.subarray(remaining);
-        offset += remaining;
-      }
-    }
-    if (this.pendingStart === this.pending.length) {
-      this.pending.length = 0;
-      this.pendingStart = 0;
-    } else if (this.pendingStart > 0) {
-      this.pending.splice(0, this.pendingStart);
-      this.pendingStart = 0;
-    }
-    this.pendingSamples -= sampleCount;
+  private queueFullBatch(): void {
+    const pcm = this.pendingBatch;
+    this.pendingBatch =
+      this.recycledBatches.pop() ?? new Int16Array(this.batchSamples);
+    this.pendingSamples = 0;
     this.queuedBatches.push(pcm);
     this.drainQueuedBatches();
   }

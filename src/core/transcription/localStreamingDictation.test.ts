@@ -120,10 +120,11 @@ describe("LocalStreamingDictation", () => {
     await Promise.resolve();
     await Promise.resolve();
     stream.pushFrame(new Int16Array(32));
+    stream.pushFrame(new Int16Array(32));
     await stream.finish();
 
-    expect(pushedBuffers).toHaveLength(3);
-    expect(pushedBuffers[2]).toBe(pushedBuffers[1]);
+    expect(pushedBuffers).toHaveLength(4);
+    expect(pushedBuffers[3]).toBe(pushedBuffers[1]);
   });
 
   it("forwards only partials for its session", async () => {
