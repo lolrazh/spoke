@@ -34,21 +34,6 @@ const PHRASE_GAP = /^[\p{Zs}\t&+/-]*$/u;
 
 type PhraseKey = { entry: string; key: string };
 
-function expandEntries(dictionary: readonly string[]): string[] {
-  // The dictionary comes from a JSON prefs file that is loaded without shape
-  // validation, so junk here must degrade to "no correction", not break
-  // transcription.
-  if (!Array.isArray(dictionary)) return [];
-  const words: string[] = [];
-  for (const entry of dictionary) {
-    if (typeof entry !== "string") continue;
-    for (const part of entry.split(/\s+/)) {
-      if (part) words.push(part);
-    }
-  }
-  return words;
-}
-
 type Index = {
   canonical: Map<string, string>;
   phonetic: Map<string, string[]>;
@@ -103,20 +88,30 @@ function buildIndex(dictionary: readonly string[]): Index {
   const phraseCanonical = new Map<string, PhraseKey[]>();
   const phrasePhonetic = new Map<string, PhraseKey[]>();
   const indexedPhraseKeys: PhraseKey[] = [];
-  for (const word of expandEntries(dictionary)) {
-    const lower = word.toLowerCase();
-    if (canonical.has(lower)) continue;
-    canonical.set(lower, word);
-    const [primary, secondary] = doubleMetaphone(word);
-    if (primary) {
-      const bucket = phonetic.get(primary);
-      if (bucket) bucket.push(lower);
-      else phonetic.set(primary, [lower]);
-    }
-    if (secondary && secondary !== primary) {
-      const bucket = phonetic.get(secondary);
-      if (bucket) bucket.push(lower);
-      else phonetic.set(secondary, [lower]);
+  // The dictionary comes from a JSON prefs file that is loaded without shape
+  // validation, so junk here must degrade to "no correction", not break
+  // transcription. Expand one raw entry at a time so index construction does
+  // not retain a second full word array while the maps are being built.
+  if (Array.isArray(dictionary)) {
+    for (const rawEntry of dictionary) {
+      if (typeof rawEntry !== "string") continue;
+      for (const word of rawEntry.split(/\s+/)) {
+        if (!word) continue;
+        const lower = word.toLowerCase();
+        if (canonical.has(lower)) continue;
+        canonical.set(lower, word);
+        const [primary, secondary] = doubleMetaphone(word);
+        if (primary) {
+          const bucket = phonetic.get(primary);
+          if (bucket) bucket.push(lower);
+          else phonetic.set(primary, [lower]);
+        }
+        if (secondary && secondary !== primary) {
+          const bucket = phonetic.get(secondary);
+          if (bucket) bucket.push(lower);
+          else phonetic.set(secondary, [lower]);
+        }
+      }
     }
   }
 
