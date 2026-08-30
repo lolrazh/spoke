@@ -141,4 +141,23 @@ describe("useModels", () => {
     expect(result.current.activeModelId).toBe("model-a");
     expect(window.stt.getActiveModel).toHaveBeenCalledTimes(1);
   });
+
+  it("does not re-render or rebuild rows for an unchanged refresh", async () => {
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useModels();
+    });
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+
+    const rows = result.current.rows;
+    const rendersAfterInitialLoad = renders;
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.rows).toBe(rows);
+    expect(renders).toBe(rendersAfterInitialLoad);
+  });
 });
