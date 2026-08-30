@@ -652,6 +652,7 @@ const Onboarding: React.FC = () => {
   if (introOnly) {
     return (
       <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
+        {showIntro && ENABLE_ONBOARDING_PARTICLES && <ParticlesCanvas />}
         {renderIntroOrReplay()}
       </div>
     );
