@@ -4,7 +4,6 @@ import { detectTriggers } from "./triggers";
 import type { EnhancementConfig } from "./types";
 
 const baseConfig: EnhancementConfig = {
-  enabled: true,
   routerEnabled: true,
   provider: "groq",
   model: "llama-3.3-70b-versatile",

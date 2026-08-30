@@ -8,8 +8,6 @@
 export type ModelTier = "bypass" | "default" | "advanced" | "edit";
 
 export interface EnhancementConfig {
-  /** Whether enhancement is enabled */
-  enabled: boolean;
   /** Whether smart routing is enabled (if false, always use default tier) */
   routerEnabled: boolean;
   /** Default tier settings */

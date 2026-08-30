@@ -29,7 +29,6 @@ import { getPreferredProviderId } from "./providerStore";
 // ── Default Config ────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: EnhancementConfig = {
-  enabled: true,
   routerEnabled: true,
   provider: "groq-cloud",
   // Default tier handles punctuation/cleanup only — the small instant model

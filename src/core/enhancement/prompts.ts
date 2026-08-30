@@ -8,10 +8,6 @@ import type { TriggerContext, TriggerType } from "./triggers";
 export interface PromptOptions {
   /** Vocabulary hint from STT (OCR-extracted proper nouns) */
   vocabulary?: string;
-  /** Model name (for potential model-specific optimizations) */
-  model?: string;
-  /** Current date for context */
-  currentDate?: string;
 }
 
 /**
