@@ -32,6 +32,7 @@ export async function initTranscriptionHistory(): Promise<TranscriptionItem[]> {
       console.error("[TranscriptionHistory] Failed to load:", error);
       items = [];
     }
+    emit();
     return items;
   })();
 
@@ -54,6 +55,9 @@ export function subscribeTranscriptionHistory(
 ): () => void {
   listeners.add(listener);
   listener(items);
+  void initTranscriptionHistory().catch(() => {
+    // Keep the empty in-memory state if storage is unavailable.
+  });
   return () => {
     listeners.delete(listener);
   };

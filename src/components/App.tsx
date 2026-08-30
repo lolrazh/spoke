@@ -21,7 +21,6 @@ import {
   PermissionsProvider,
   usePermissionsController,
 } from "../state/permissionsContext";
-import { initTranscriptionHistory } from "../state/transcriptionHistory";
 import { usePttGestures } from "../hooks/usePttGestures";
 import {
   usePermissionNotifications,
@@ -123,14 +122,6 @@ const AppInner: React.FC = () => {
     },
     [permissionsPanelMeasured],
   );
-
-  // Initialize always-on client state on app start
-  useEffect(() => {
-    window.electron?.bootMark?.("app-effect:init-history");
-    initTranscriptionHistory().catch(() => {
-      // Ignore initialization errors; app can function without history
-    });
-  }, []);
 
   useLayoutEffect(() => {
     window.electron?.bootMark?.("app-layout-effect");
