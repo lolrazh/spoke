@@ -1,5 +1,6 @@
 let wordSegmenter: Intl.Segmenter | null = null;
 const SIMPLE_ASCII_LIVE_TEXT_RE = /^[\t\n\r\x20-\x26\x28-\x2c\x2e-\x2f\x3a-\x7f]*$/;
+const MAX_SEGMENTER_SUFFIX_LENGTH = 512;
 
 export type LiveTranscriptText = {
   committed: string;
@@ -23,8 +24,10 @@ export function splitLiveTranscriptText(
   let tentativeStart: number | null = null;
   const segmenter =
     (wordSegmenter ??= new Intl.Segmenter(undefined, { granularity: "word" }));
-  for (const segment of segmenter.segment(text)) {
-    if (segment.isWordLike) tentativeStart = segment.index;
+  const suffixStart = findSegmenterSuffixStart(text);
+  const segmentText = text.slice(suffixStart);
+  for (const segment of segmenter.segment(segmentText)) {
+    if (segment.isWordLike) tentativeStart = suffixStart + segment.index;
   }
 
   if (tentativeStart !== null) {
@@ -35,6 +38,24 @@ export function splitLiveTranscriptText(
   }
 
   return { committed: "", tentative: text };
+}
+
+/**
+ * Only the final word-like segment affects the live split. Keep a little
+ * context before the tail so the segmenter can distinguish punctuation and
+ * contractions, but do not rescan a long transcript on every partial update.
+ * Starting at whitespace preserves a real word boundary. If there is no such
+ * boundary in the suffix, keep the full-text fallback for long unbroken tokens.
+ */
+function findSegmenterSuffixStart(text: string): number {
+  const suffixStart = Math.max(0, text.length - MAX_SEGMENTER_SUFFIX_LENGTH);
+  if (suffixStart === 0) return 0;
+
+  const earliestBoundary = Math.max(0, suffixStart - MAX_SEGMENTER_SUFFIX_LENGTH);
+  for (let index = suffixStart; index >= earliestBoundary; index -= 1) {
+    if (isAsciiWhitespace(text.charCodeAt(index))) return index;
+  }
+  return 0;
 }
 
 /**

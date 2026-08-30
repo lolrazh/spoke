@@ -31,6 +31,14 @@ describe("splitLiveTranscriptText", () => {
     });
   });
 
+  it("segments only the recent tail of a long non-plain-ASCII snapshot", () => {
+    const prefix = Array.from({ length: 180 }, () => "don't").join(" ");
+    expect(splitLiveTranscriptText(`${prefix} final`, false)).toEqual({
+      committed: `${prefix} `,
+      tentative: "final",
+    });
+  });
+
   it("promotes the full snapshot while finalizing", () => {
     expect(splitLiveTranscriptText("The final words", true)).toEqual({
       committed: "The final words",
