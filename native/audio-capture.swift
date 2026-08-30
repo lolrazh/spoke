@@ -193,8 +193,11 @@ private final class AudioCaptureController {
     private var converterOutputBuffer: AVAudioPCMBuffer?
     private var converterOutputCapacity: AVAudioFrameCount = 0
     private var ringBuffer: FloatRingBuffer?
-    private var pendingPcm16: [Int16] = []
-    private var pendingPcm16Start = 0
+    // EventEmitter.emitRaw writes synchronously, so one fixed output frame is
+    // enough. Reusing it avoids growing and compacting an intermediate array
+    // while the converter produces samples.
+    private var pendingPcm16 = [Int16](repeating: 0, count: outputFrameSamples)
+    private var pendingPcm16Count = 0
     private var isCapturing = false
     private var inputOverflowReported = false
     private var conversionScheduled = false
@@ -251,8 +254,7 @@ private final class AudioCaptureController {
             self.sourceFormat = sourceFormat
             self.targetFormat = targetFormat
             self.ringBuffer = ringBuffer
-            self.pendingPcm16.removeAll(keepingCapacity: true)
-            self.pendingPcm16Start = 0
+            self.pendingPcm16Count = 0
             self.inputOverflowReported = false
             self.isCapturing = true
 
@@ -313,8 +315,7 @@ private final class AudioCaptureController {
         inputNode?.removeTap(onBus: 0)
         engine?.stop()
         converterQueue.sync {
-            pendingPcm16.removeAll(keepingCapacity: true)
-            pendingPcm16Start = 0
+            pendingPcm16Count = 0
             ringBuffer?.discard()
         }
         resetState()
@@ -493,55 +494,33 @@ private final class AudioCaptureController {
         guard buffer.frameLength > 0, let samples = buffer.floatChannelData?[0] else { return }
 
         for index in 0..<Int(buffer.frameLength) {
-            pendingPcm16.append(floatToPcm16(samples[index]))
+            pendingPcm16[pendingPcm16Count] = floatToPcm16(samples[index])
+            pendingPcm16Count += 1
+            if pendingPcm16Count == outputFrameSamples {
+                emitFrame(count: outputFrameSamples)
+                pendingPcm16Count = 0
+            }
         }
-
-        while pendingPcm16.count - pendingPcm16Start >= outputFrameSamples {
-            emitFrame(start: pendingPcm16Start, count: outputFrameSamples)
-            pendingPcm16Start += outputFrameSamples
-        }
-        compactPendingPcm16()
     }
 
     private func emitPendingFrame(final: Bool) {
-        let pendingCount = pendingPcm16.count - pendingPcm16Start
+        let pendingCount = pendingPcm16Count
         guard final, pendingCount > 0 else { return }
-        emitFrame(start: pendingPcm16Start, count: pendingCount)
-        pendingPcm16.removeAll(keepingCapacity: true)
-        pendingPcm16Start = 0
+        emitFrame(count: pendingCount)
+        pendingPcm16Count = 0
     }
 
-    private func emitFrame(start: Int, count: Int) {
+    private func emitFrame(count: Int) {
         pendingPcm16.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress else { return }
-            let byteOffset = start * MemoryLayout<Int16>.stride
             let byteCount = count * MemoryLayout<Int16>.stride
             emitter.emitRaw(
                 .frame,
                 payload: UnsafeRawBufferPointer(
-                    start: baseAddress.advanced(by: byteOffset),
+                    start: baseAddress,
                     count: byteCount
                 )
             )
-        }
-    }
-
-    private func compactPendingPcm16() {
-        guard pendingPcm16Start > 0 else { return }
-
-        if pendingPcm16Start >= pendingPcm16.count {
-            pendingPcm16.removeAll(keepingCapacity: true)
-            pendingPcm16Start = 0
-            return
-        }
-
-        // Keep consumed samples out of the live array without paying the
-        // removeFirst() shift cost for every 30 ms frame. Compact only after
-        // the consumed prefix is both meaningful and larger than the tail.
-        if pendingPcm16Start >= 4_096 &&
-            pendingPcm16Start * 2 >= pendingPcm16.count {
-            pendingPcm16.removeSubrange(0..<pendingPcm16Start)
-            pendingPcm16Start = 0
         }
     }
 
@@ -636,8 +615,7 @@ private final class AudioCaptureController {
         converterOutputBuffer = nil
         converterOutputCapacity = 0
         ringBuffer = nil
-        pendingPcm16.removeAll(keepingCapacity: true)
-        pendingPcm16Start = 0
+        pendingPcm16Count = 0
         inputOverflowReported = false
         conversionScheduleLock.lock()
         conversionScheduled = false
