@@ -288,7 +288,6 @@ declare global {
       select: (id: string) => Promise<{ ok: boolean }>;
       getSelected: () => Promise<{ id: string }>;
       onSelectedChanged: (cb: (payload: { id: string }) => void) => () => void;
-      onRefreshRequest: (cb: () => void) => () => void;
     };
     audioCapture?: {
       isAvailable: () => Promise<boolean>;

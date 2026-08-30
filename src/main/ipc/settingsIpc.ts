@@ -195,10 +195,6 @@ export function registerSettingsIpc(): void {
           return { ok: true };
         }
         if (type === "microphone") {
-          // Ask pill to refresh devices list to ensure clean state
-          try {
-            state.mainWindow?.webContents.send("mic:refresh-devices");
-          } catch {}
           return { ok: true };
         }
         return { ok: false, error: "Unknown type" };

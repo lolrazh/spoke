@@ -6,7 +6,7 @@
  * visibility, and dock icon visibility.
  */
 
-import { app, BrowserWindow, ipcMain, Menu, screen } from "electron";
+import { app, ipcMain, Menu, screen } from "electron";
 
 import { ISLAND_VISIBLE_Y } from "../../constants/window";
 import { logger } from "../../utils/logger";
@@ -60,15 +60,6 @@ export function registerWindowIpc(): void {
   ipcMain.on("show-pill-context-menu", () => {
     console.log("[IPC Main] Received show-pill-context-menu event");
     if (state.mainWindow) {
-      // Send refresh request to renderer processes before showing menu to ensure device list is current
-      BrowserWindow.getAllWindows().forEach((window) => {
-        console.log(
-          "[Pill Menu] Sending mic:refresh-devices to window:",
-          window.id,
-        );
-        window.webContents.send("mic:refresh-devices");
-      });
-
       const menuTemplate = buildPillContextMenu();
       const contextMenu = Menu.buildFromTemplate(menuTemplate);
       contextMenu.popup({ window: state.mainWindow });

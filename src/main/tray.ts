@@ -9,7 +9,6 @@
 
 import {
   app,
-  BrowserWindow,
   Menu,
   nativeImage,
   Tray,
@@ -365,16 +364,6 @@ export const createTray = () => {
     console.log("[Tray] Building context menu...");
     const menuTemplate = buildTrayMenu();
     const contextMenu = Menu.buildFromTemplate(menuTemplate);
-
-    // Add event listener for when tray menu is about to open
-    tray.on("click", () => {
-      console.log("[Tray] 🎯 Tray menu opening - requesting device refresh");
-      // Send refresh request to renderer processes before showing menu
-      BrowserWindow.getAllWindows().forEach((window) => {
-        console.log("[Tray] Sending mic:refresh-devices to window:", window.id);
-        window.webContents.send("mic:refresh-devices");
-      });
-    });
 
     // Set the native context menu
     console.log("[Tray] Setting context menu...");

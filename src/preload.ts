@@ -113,12 +113,6 @@ contextBridge.exposeInMainWorld("mic", {
     ipcRenderer.on("mic:selected-changed", listener);
     return () => ipcRenderer.removeListener("mic:selected-changed", listener);
   },
-  /** Subscribe to refresh device requests from main. */
-  onRefreshRequest: (cb: () => void) => {
-    const listener = () => cb();
-    ipcRenderer.on("mic:refresh-devices", listener);
-    return () => ipcRenderer.removeListener("mic:refresh-devices", listener);
-  },
 });
 
 // Native macOS audio capture bridge. Frames are forwarded as raw little-endian

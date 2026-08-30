@@ -166,7 +166,6 @@ if (!globalThis.window.mic) {
       // return unsubscribe
       return (): undefined => undefined;
     },
-    onRefreshRequest: (_cb: () => void) => (): undefined => undefined,
   } as any;
 }
 

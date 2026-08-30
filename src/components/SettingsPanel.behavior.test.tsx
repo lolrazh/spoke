@@ -44,7 +44,6 @@ describe("components/SettingsPanel behavior", () => {
       select: vi.fn(async (_id: string) => ({ ok: true })),
       getSelected: vi.fn(async () => ({ id: "default" })),
       onSelectedChanged: (_cb: (p: { id: string }) => void) => () => {},
-      onRefreshRequest: (_cb: () => void) => () => {},
       updateDevices: (_d: unknown, _s?: string) => {},
     } as any;
     // Media devices
