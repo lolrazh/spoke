@@ -186,6 +186,12 @@ describe("updateController", () => {
       downloadPercent: 30,
     });
     expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+
+    electron.autoUpdater.emit("download-progress", { percent: 30 });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(onStateChange).toHaveBeenCalledTimes(1);
+    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
   });
 
   it("marks the update ready once it finishes downloading", async () => {

@@ -113,6 +113,11 @@ let quitAndInstallInvoked = false;
 let updateInstallHandoffWatchdog: NodeJS.Timeout | null = null;
 let updateInstallHandoffListener: (() => void) | null = null;
 let pendingUpdateStatePublishTimer: NodeJS.Timeout | null = null;
+let publishedUpdateStatus: UpdateStatus | null = null;
+let publishedUpdateVersion: string | null = null;
+let publishedUpdateReadyToInstall = false;
+let publishedUpdateError: string | null = null;
+let publishedUpdateDownloadPercent: number | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -150,6 +155,20 @@ export function getUpdateSnapshot(): UpdateSnapshot {
 // ── State management ───────────────────────────────────────────────────
 
 function publishUpdateState() {
+  if (
+    publishedUpdateStatus === updateStatus &&
+    publishedUpdateVersion === updateAvailableVersion &&
+    publishedUpdateReadyToInstall === updateReadyToInstall &&
+    publishedUpdateError === updateError &&
+    publishedUpdateDownloadPercent === updateDownloadPercent
+  ) {
+    return;
+  }
+  publishedUpdateStatus = updateStatus;
+  publishedUpdateVersion = updateAvailableVersion;
+  publishedUpdateReadyToInstall = updateReadyToInstall;
+  publishedUpdateError = updateError;
+  publishedUpdateDownloadPercent = updateDownloadPercent;
   try {
     callbacks.rebuildTrayMenu();
   } catch {}
@@ -180,10 +199,22 @@ function setUpdateState(
   opts?: { version?: string; error?: string },
   publication: "immediate" | "coalesced" = "immediate",
 ) {
-  updateStatus = next;
-  updateAvailableVersion = opts?.version ?? updateAvailableVersion;
-  updateError =
+  const nextVersion = opts?.version ?? updateAvailableVersion;
+  const nextError =
     opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
+  updateStatus = next;
+  updateAvailableVersion = nextVersion;
+  updateError = nextError;
+  const hasUnpublishedState =
+    publishedUpdateStatus !== updateStatus ||
+    publishedUpdateVersion !== updateAvailableVersion ||
+    publishedUpdateReadyToInstall !== updateReadyToInstall ||
+    publishedUpdateError !== updateError ||
+    publishedUpdateDownloadPercent !== updateDownloadPercent;
+  if (!hasUnpublishedState) {
+    clearPendingUpdateStatePublish();
+    return;
+  }
   if (publication === "coalesced") {
     scheduleUpdateStatePublish();
     return;
