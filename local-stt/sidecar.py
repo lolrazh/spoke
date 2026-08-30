@@ -156,8 +156,17 @@ def log_exception(exc: Exception, *, include_traceback: bool) -> None:
 
 
 def read_exact(stream, length: int) -> bytes:
-    chunks: list[bytes] = []
-    remaining = length
+    if length <= 0:
+        return b""
+
+    first = stream.read(length)
+    if not first:
+        raise EOFError("stdin closed")
+    if len(first) == length:
+        return first
+
+    chunks: list[bytes] = [first]
+    remaining = length - len(first)
     while remaining > 0:
         chunk = stream.read(remaining)
         if not chunk:
