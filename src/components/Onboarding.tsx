@@ -54,7 +54,6 @@ const MicSelectorLoadingFallback: React.FC = () => (
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
 const devLog = createLogger("DEV");
-const devNotifyLog = createLogger("DEV NOTIFY");
 // Make permission mocking opt-in via URL (?mockPerms)
 const params =
   typeof window !== "undefined"
@@ -63,14 +62,10 @@ const params =
 const devFlags = {
   mockPermissionStates: isDevelopment && params.has("mockPerms"),
   showDebugOverlay: isDevelopment,
-  fastAnimations: isDevelopment,
   isDevelopment,
   methods: {
     devLog: (...args: unknown[]) => {
       if (isDevelopment) devLog.info(...args);
-    },
-    devNotify: (message: string) => {
-      if (isDevelopment) devNotifyLog.info(message);
     },
   },
 };
@@ -173,8 +168,6 @@ const Onboarding: React.FC = () => {
     pushToTalk: false,
     handsFree: false,
   });
-  // Track mount state and timeout handles to prevent leaks
-  const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optionDownAtRef = useRef<number | null>(null);
   const lastTapUpAtRef = useRef<number | null>(null);
@@ -260,7 +253,6 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     return () => {
       setOptKeyPressed(false); // Reset Option key state
-      isMountedRef.current = false;
       if (pttCheckTimeoutRef.current) {
         clearTimeout(pttCheckTimeoutRef.current);
         pttCheckTimeoutRef.current = null;
