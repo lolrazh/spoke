@@ -660,8 +660,8 @@ const Onboarding: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
-      {/* Grid and starfield backgrounds */}
-      <GridBackground />
+      {/* The intro owns its own grid; avoid painting a hidden page grid below it. */}
+      {!showIntro && <GridBackground />}
       {ENABLE_ONBOARDING_PARTICLES && <ParticlesCanvas />}
 
       {showIntro && (
