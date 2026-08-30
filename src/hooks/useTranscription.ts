@@ -29,7 +29,6 @@ import type {
 } from "../utils/streamingVad";
 import { playToggleOff } from "../utils/audioFeedback";
 import { invokedBloodyMary } from "../utils/easterEggs";
-import { addTranscription } from "../state/transcriptionHistory";
 import { setAudioLevel } from "../state/audioLevel";
 import { setLiveTranscript } from "../state/liveTranscript";
 import {
@@ -93,6 +92,14 @@ async function createLocalStreamingDictation(
     "../core/transcription/localStreamingDictation"
   );
   return new LocalStreamingDictation(options);
+}
+
+async function addTranscriptionToHistory(
+  text: string,
+  mode: TranscriptionMode,
+): Promise<void> {
+  const { addTranscription } = await import("../state/transcriptionHistory");
+  await addTranscription(text, mode);
 }
 
 type CaptureSessionOptions = {
@@ -587,7 +594,7 @@ export function useTranscription(
       }
 
       // Add to history (fire-and-forget)
-      addTranscription(finalText, DICTATION_MODE).catch((err) =>
+      addTranscriptionToHistory(finalText, DICTATION_MODE).catch((err) =>
         log.warn("Failed to record transcription history:", err),
       );
 
