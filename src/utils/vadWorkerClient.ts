@@ -53,6 +53,7 @@ class BrowserVadWorkerClient implements VadWorkerClient {
   private readonly initializePromise: Promise<void>;
   private nextId = 1;
   private disposed = false;
+  private initialized = false;
 
   constructor() {
     this.worker.onmessage = (event: MessageEvent<VadWorkerResponse>) => {
@@ -80,7 +81,9 @@ class BrowserVadWorkerClient implements VadWorkerClient {
         wasmBaseUrl: getVadOrtWasmBaseUrl(),
       },
       VAD_INIT_TIMEOUT_MS,
-    ).then(() => undefined);
+    ).then(() => {
+      this.initialized = true;
+    });
   }
 
   ready(): Promise<void> {
@@ -91,7 +94,7 @@ class BrowserVadWorkerClient implements VadWorkerClient {
     frame: Float32Array,
     frameIndex: number,
   ): Promise<VadWorkerProcessResult> {
-    await this.ready();
+    await this.ensureReady();
     const result = await this.request(
       { type: "process", frameIndex, frame },
       VAD_MIN_TIMEOUT_MS,
@@ -101,7 +104,7 @@ class BrowserVadWorkerClient implements VadWorkerClient {
   }
 
   async finish(frameIndex: number): Promise<VadWorkerEvent[]> {
-    await this.ready();
+    await this.ensureReady();
     const result = await this.request(
       { type: "finish", frameIndex },
       VAD_MIN_TIMEOUT_MS,
@@ -114,7 +117,7 @@ class BrowserVadWorkerClient implements VadWorkerClient {
     sampleRateHz: number,
     timeoutMs: number,
   ): Promise<VadWorkerSegment[]> {
-    await this.ready();
+    await this.ensureReady();
     const buffer = audio.buffer as ArrayBuffer;
     const result = await this.request(
       { type: "run", audio: buffer, sampleRateHz },
@@ -150,6 +153,10 @@ class BrowserVadWorkerClient implements VadWorkerClient {
       this.pending.set(id, { resolve, reject, timeout });
       this.worker.postMessage({ ...request, id } as VadWorkerRequest, transfer);
     });
+  }
+
+  private async ensureReady(): Promise<void> {
+    if (!this.initialized) await this.initializePromise;
   }
 
   private failAll(error: Error): void {

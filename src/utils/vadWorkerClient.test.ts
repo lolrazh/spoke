@@ -88,6 +88,31 @@ describe("vadWorkerClient", () => {
     expect(worker.terminate).toHaveBeenCalledTimes(1);
   });
 
+  it("waits for initialization when processing starts immediately", async () => {
+    const client = createVadWorkerClient();
+    const worker = FakeWorker.instances[0];
+    const init = worker.messages[0].request;
+    const frame = new Float32Array(1536);
+    const processing = client.processFrame(frame, 2);
+
+    expect(worker.messages).toHaveLength(1);
+
+    worker.respond({ id: init.id, type: "result", result: undefined });
+    await vi.waitFor(() => expect(worker.messages).toHaveLength(2));
+    const processMessage = worker.messages[1];
+    if (processMessage.request.type !== "process") {
+      throw new Error("Expected a process request");
+    }
+    worker.respond({
+      id: processMessage.request.id,
+      type: "result",
+      result: { events: [], frame },
+    });
+
+    await expect(processing).resolves.toMatchObject({ events: [], frame });
+    client.dispose();
+  });
+
   it("rejects pending initialization when the session is disposed", async () => {
     const client = createVadWorkerClient();
     const worker = FakeWorker.instances[0];
