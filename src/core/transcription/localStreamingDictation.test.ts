@@ -74,6 +74,58 @@ describe("LocalStreamingDictation", () => {
     expect(window.stt.finishLocalStream).toHaveBeenCalledWith("stream-1");
   });
 
+  it("reuses a completed full batch buffer after its send resolves", async () => {
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstPush = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondPush = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const pushedBuffers: ArrayBuffer[] = [];
+    let pushCount = 0;
+    window.stt.pushLocalStream = vi.fn((_sessionId, buffer) => {
+      pushedBuffers.push(buffer);
+      pushCount += 1;
+      return pushCount === 1
+        ? firstPush
+        : pushCount === 2
+          ? secondPush
+          : Promise.resolve();
+    });
+
+    const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
+      sampleRateHz: 100,
+      batchMs: 320,
+      maxDurationMs: 5_000,
+      onPartial: vi.fn(),
+      onLimitReached: vi.fn(),
+    });
+    await stream.start();
+    stream.pushFrame(new Int16Array(32));
+    expect(pushedBuffers).toHaveLength(1);
+
+    stream.pushFrame(new Int16Array(32));
+    expect(pushedBuffers).toHaveLength(1);
+
+    releaseFirst();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pushedBuffers).toHaveLength(2);
+    expect(pushedBuffers[1]).not.toBe(pushedBuffers[0]);
+
+    releaseSecond();
+    await Promise.resolve();
+    await Promise.resolve();
+    stream.pushFrame(new Int16Array(32));
+    await stream.finish();
+
+    expect(pushedBuffers).toHaveLength(3);
+    expect(pushedBuffers[2]).toBe(pushedBuffers[1]);
+  });
+
   it("forwards only partials for its session", async () => {
     const onPartial = vi.fn();
     const stream = new LocalStreamingDictation({
