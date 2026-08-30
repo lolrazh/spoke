@@ -31,29 +31,11 @@ describe("useModelStatus", () => {
     });
   });
 
-  it("subscribes to model progress events on mount", () => {
-    renderHook(() => useModelStatus());
-
-    expect(window.stt.onModelProgress).toHaveBeenCalled();
-  });
-
-  it("can skip byte-level progress updates for readiness-only consumers", async () => {
-    const { result } = renderHook(() => useModelStatus({ trackProgress: false }));
-
-    await waitFor(() => {
-      expect(result.current.loaded).toBe(true);
-      expect(result.current.status.modelId).toBe(
-        "spokedotso/whisper-large-v3-turbo-4bit",
-      );
-    });
-    expect(window.stt.onModelProgress).not.toHaveBeenCalled();
-  });
-
   it("does not re-render when a refresh returns the same status", async () => {
     let renderCount = 0;
     const { result } = renderHook(() => {
       renderCount += 1;
-      return useModelStatus({ trackProgress: false });
+      return useModelStatus();
     });
 
     await waitFor(() => {
