@@ -5,11 +5,11 @@ import "./index.css";
 
 window.electron?.bootMark?.("module-loaded");
 
-// Lazy-load the full DOM feature set (domMax, not domAnimation: the Pill uses
-// `layout` animations). Components render with the lightweight `m` primitives
-// and this bundle is code-split so it loads once, off the critical path.
+// Load only animation and gesture features. Components render with the
+// lightweight `m` primitives, and the app does not use Motion's layout or drag
+// props, so the larger domMax bundle would be unused code.
 const loadMotionFeatures = () =>
-  import("framer-motion").then((mod) => mod.domMax);
+  import("./motionFeatures").then((mod) => mod.domAnimation);
 
 const App = lazy(() => {
   window.electron?.bootMark?.("route:app-import:start");
