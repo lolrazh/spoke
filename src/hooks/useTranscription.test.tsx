@@ -207,7 +207,6 @@ describe("useTranscription", () => {
 
     expect(result.current.recording).toBe(false);
     expect(result.current.processing).toBe(false);
-    expect(result.current.liveText).toBe("");
     expect(result.current.text).toBe("");
     expect(result.current.error).toBe(null);
   });
@@ -252,7 +251,6 @@ describe("useTranscription", () => {
       expect(result.current.text).toBe("Local transcription");
     });
 
-    expect(result.current.liveText).toBe("");
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
     expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
     expect(window.stt.extractOcr).not.toHaveBeenCalled();
@@ -822,7 +820,6 @@ describe("useTranscription", () => {
     await act(async () => {
       stream.emitPartial("hello");
     });
-    expect(result.current.liveText).toBe("hello");
     expect(result.current.text).toBe("");
     expect(addTranscription).not.toHaveBeenCalled();
     expect(window.clipboard.insertText).not.toHaveBeenCalled();
@@ -831,7 +828,6 @@ describe("useTranscription", () => {
     await waitFor(() => expect(result.current.processing).toBe(false));
     expect(window.stt.finishLocalStream).toHaveBeenCalledWith("stream-1");
     expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
-    expect(result.current.liveText).toBe("hello world");
     expect(result.current.text).toBe("hello world");
     expect(addTranscription).toHaveBeenCalledOnce();
     expect(addTranscription).toHaveBeenCalledWith("hello world", "dictation");
@@ -901,14 +897,11 @@ describe("useTranscription", () => {
     await act(async () => result.current.start());
 
     await act(async () => stream.emitPartial("cancel me"));
-    expect(result.current.liveText).toBe("cancel me");
 
     act(() => result.current.cancel());
-    expect(result.current.liveText).toBe("");
     expect(result.current.text).toBe("");
 
     await act(async () => stream.emitPartial("stale words"));
-    expect(result.current.liveText).toBe("");
     expect(addTranscription).not.toHaveBeenCalled();
     expect(window.clipboard.insertText).not.toHaveBeenCalled();
   });

@@ -37,10 +37,7 @@ import { playToggleOff } from "../utils/audioFeedback";
 import { invokedBloodyMary } from "../utils/easterEggs";
 import { addTranscription } from "../state/transcriptionHistory";
 import { setAudioLevel } from "../state/audioLevel";
-import {
-  getLiveTranscript,
-  setLiveTranscript,
-} from "../state/liveTranscript";
+import { setLiveTranscript } from "../state/liveTranscript";
 import {
   POST_ROLL_MS,
   LOCAL_DICTATION_MAX_DURATION_MS,
@@ -78,8 +75,6 @@ export interface UseTranscriptionReturn {
   recording: boolean;
   processing: boolean;
   ready: boolean;
-  /** Current live model output for transient in-pill feedback only. */
-  liveText: string;
   /** Final text that is eligible for history and native insertion. */
   text: string;
   error: string | null;
@@ -1053,9 +1048,6 @@ export function useTranscription(
     recording,
     processing,
     ready,
-    get liveText() {
-      return getLiveTranscript();
-    },
     text,
     error,
     errorId,
