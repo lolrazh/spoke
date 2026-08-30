@@ -18,13 +18,6 @@ import { MicBars } from "./MicBars";
 import { m, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import Spinner from "./ui/Spinner";
-import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from "./ui/select";
 import SfIcon from "./icons/SfIcon";
 import {
   usePermissions,
@@ -49,9 +42,14 @@ import {
 import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
 
 const ModelsList = lazy(() => import("./ModelsList"));
+const OnboardingMicSelector = lazy(() => import("./OnboardingMicSelector"));
 
 const ModelsLoadingFallback: React.FC = () => (
   <div className="py-8 text-sm text-muted-foreground">Loading models…</div>
+);
+
+const MicSelectorLoadingFallback: React.FC = () => (
+  <div className="h-10 w-full rounded-lg bg-white/5" aria-hidden />
 );
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
@@ -1173,25 +1171,13 @@ const Onboarding: React.FC = () => {
                       className="mx-auto w-full max-w-xl"
                       variants={panelCascadeItem}
                     >
-                      <Select
-                        value={selectedMicId}
-                        onValueChange={(v) => setSelectedMicId(v)}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select microphone" />
-                        </SelectTrigger>
-                        <SelectContent inPlace>
-                          {micDevices.map((d) => (
-                            <SelectItem
-                              key={d.id}
-                              value={d.id}
-                              className="text-sm"
-                            >
-                              {d.label || "Microphone"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Suspense fallback={<MicSelectorLoadingFallback />}>
+                        <OnboardingMicSelector
+                          devices={micDevices}
+                          selectedId={selectedMicId}
+                          onChange={setSelectedMicId}
+                        />
+                      </Suspense>
                     </m.div>
 
                     <m.div
