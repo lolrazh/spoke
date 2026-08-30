@@ -44,6 +44,11 @@ const MAX_PENDING_VAD_WINDOWS = 64;
 
 type SessionStatus = "pending" | "ready" | "failed";
 
+type PendingVadWindow = {
+  frame: Float32Array;
+  frameIndex: number;
+};
+
 export interface StreamingVadSessionHandle {
   /** False once the model has failed to load; callers should use the
    * post-hoc fallback (fixed post-roll + trimCapturedAudioWithVad) instead. */
@@ -103,7 +108,7 @@ const UNAVAILABLE_STREAMING_VAD_SESSION: StreamingVadSessionHandle = {
 class StreamingVadSession implements StreamingVadSessionHandle {
   private status: SessionStatus = "pending";
   private readonly worker = createVadWorkerClient();
-  private processingQueue: Promise<void> = Promise.resolve();
+  private processingPumpPromise: Promise<void> | null = null;
   private disposed = false;
   private workerReleased = false;
 
@@ -112,7 +117,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   // allocated once and reused rather than re-sliced every 30ms frame.
   private readonly carryBuf = new Float32Array(MODEL_FRAME_SAMPLES);
   private carryLen = 0;
-  private pendingWindows: Float32Array[] = [];
+  private readonly pendingWindows: PendingVadWindow[] = [];
+  private pendingWindowStart = 0;
   private queueDepth = 0;
 
   private segments: VadSpeechSegment[] = [];
@@ -149,7 +155,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     try {
       await this.worker.ready();
       if (this.cancelled || this.status === "failed") {
-        this.pendingWindows = [];
+        this.clearPendingWindows();
         this.queueDepth = 0;
         return;
       }
@@ -157,7 +163,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       this.drainPendingWindows();
     } catch (error) {
       this.status = "failed";
-      this.pendingWindows = [];
+      this.clearPendingWindows();
       this.queueDepth = 0;
       this.disposeWorker();
       log.warn("Model init failed, streaming VAD unavailable:", error);
@@ -211,7 +217,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private enqueueWindow(window: Float32Array): void {
     if (this.queueDepth >= MAX_PENDING_VAD_WINDOWS) {
       this.status = "failed";
-      this.pendingWindows = [];
+      this.clearPendingWindows();
+      this.queueDepth = 0;
       this.disposeWorker();
       log.warn(
         "Streaming VAD fell behind; falling back to post-hoc VAD:",
@@ -220,39 +227,68 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       return;
     }
     this.queueDepth++;
-    if (this.status === "ready") {
-      this.submitWindow(window);
-    } else {
-      this.pendingWindows.push(window);
-    }
+    this.pendingWindows.push({
+      frame: window,
+      frameIndex: this.frameIndex++,
+    });
+    if (this.status === "ready") this.startProcessingPump();
   }
 
   private drainPendingWindows(): void {
-    const pending = this.pendingWindows;
-    this.pendingWindows = [];
-    for (const window of pending) {
-      this.submitWindow(window);
-    }
+    this.startProcessingPump();
   }
 
-  private submitWindow(window: Float32Array): void {
-    const indexForWindow = this.frameIndex;
-    this.frameIndex += 1;
-    const processWindow = async () => {
+  private startProcessingPump(): void {
+    if (
+      this.processingPumpPromise ||
+      this.pendingWindowStart >= this.pendingWindows.length
+    ) {
+      return;
+    }
+
+    this.processingPumpPromise = this.processPendingWindows().finally(() => {
+      this.processingPumpPromise = null;
+      if (!this.cancelled && this.status === "ready") {
+        this.startProcessingPump();
+      }
+    });
+  }
+
+  private async processPendingWindows(): Promise<void> {
+    while (
+      this.pendingWindowStart < this.pendingWindows.length &&
+      !this.cancelled &&
+      this.status === "ready"
+    ) {
+      const pending = this.pendingWindows[this.pendingWindowStart];
+      this.pendingWindowStart += 1;
       try {
-        const events = await this.worker.processFrame(window, indexForWindow);
+        const events = await this.worker.processFrame(
+          pending.frame,
+          pending.frameIndex,
+        );
+        if (this.cancelled || this.status !== "ready") return;
         for (const event of events) this.handleEvent(event);
       } catch (error) {
         if (!this.cancelled) {
           this.status = "failed";
+          this.clearPendingWindows();
+          this.queueDepth = 0;
           this.disposeWorker();
           log.warn("Streaming VAD frame processing failed:", error);
         }
+        return;
       } finally {
         this.queueDepth = Math.max(0, this.queueDepth - 1);
       }
-    };
-    this.processingQueue = this.processingQueue.then(processWindow, processWindow);
+    }
+
+    this.clearPendingWindows();
+  }
+
+  private clearPendingWindows(): void {
+    this.pendingWindows.length = 0;
+    this.pendingWindowStart = 0;
   }
 
   private handleEvent(event: VadWorkerEvent): void {
@@ -327,7 +363,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
 
       this.drainPendingWindows();
       const finalFrameIndex = this.frameIndex;
-      await this.processingQueue;
+      await this.processingPumpPromise;
       if (this.cancelled || this.status !== "ready") return null;
       const events = await this.worker.finish(Math.max(0, finalFrameIndex - 1));
       if (this.cancelled) return null;
@@ -360,7 +396,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     if (this.cancelled || this.workerReleased) return;
     this.disposed = true;
     this.cancelled = true;
-    this.pendingWindows = [];
+    this.clearPendingWindows();
     this.queueDepth = 0;
     this.disposeWorker();
   }
