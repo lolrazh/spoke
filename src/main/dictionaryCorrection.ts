@@ -169,24 +169,31 @@ function similarity(a: string, b: string): number {
 type Scored = { word: string; sim: number };
 
 function bestFrom(
-  candidates: string[],
+  candidates: readonly string[],
   lower: string,
   threshold: number,
 ): Scored[] {
   const minLength = Math.ceil(lower.length * threshold);
   const maxLength = Math.floor(lower.length / threshold);
   const seen = new Set<string>();
-  const scored: Scored[] = [];
+  let best: Scored | null = null;
+  let secondBest: Scored | null = null;
   for (const word of candidates) {
     if (word.length < minLength || word.length > maxLength) continue;
     const key = word.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     const sim = similarity(lower, key);
-    if (sim >= threshold) scored.push({ word, sim });
+    if (sim < threshold) continue;
+    const scored = { word, sim };
+    if (!best || sim > best.sim) {
+      secondBest = best;
+      best = scored;
+    } else if (!secondBest || sim > secondBest.sim) {
+      secondBest = scored;
+    }
   }
-  scored.sort((a, b) => b.sim - a.sim);
-  return scored;
+  return best ? (secondBest ? [best, secondBest] : [best]) : [];
 }
 
 function bestFromUnique(
@@ -196,14 +203,21 @@ function bestFromUnique(
 ): Scored[] {
   const minLength = Math.ceil(lower.length * threshold);
   const maxLength = Math.floor(lower.length / threshold);
-  const scored: Scored[] = [];
+  let best: Scored | null = null;
+  let secondBest: Scored | null = null;
   for (const [key, word] of candidates) {
     if (key.length < minLength || key.length > maxLength) continue;
     const sim = similarity(lower, key);
-    if (sim >= threshold) scored.push({ word, sim });
+    if (sim < threshold) continue;
+    const scored = { word, sim };
+    if (!best || sim > best.sim) {
+      secondBest = best;
+      best = scored;
+    } else if (!secondBest || sim > secondBest.sim) {
+      secondBest = scored;
+    }
   }
-  scored.sort((a, b) => b.sim - a.sim);
-  return scored;
+  return best ? (secondBest ? [best, secondBest] : [best]) : [];
 }
 
 // An entry with intentional casing (Sandheep, iPhone) always wins. An
