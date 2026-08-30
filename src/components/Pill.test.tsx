@@ -33,6 +33,16 @@ const commonProps = {
 };
 
 describe("Pill live transcript", () => {
+  it("renders fixed dots for the hover preview", () => {
+    const { container } = render(
+      <Pill {...commonProps} pillState="HOVER_PREVIEW" />,
+    );
+
+    expect(
+      container.querySelectorAll(".frequency-element.as-dot"),
+    ).toHaveLength(18);
+  });
+
   it("shows partial text only while dictation is active", () => {
     const { container, getByRole, rerender } = render(
       <Pill

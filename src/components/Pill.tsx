@@ -10,7 +10,8 @@ import React, {
 import { m, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import SfIcon from "./icons/SfIcon";
-import FrequencyBars, {
+import {
+  HoverFrequencyBars,
   ListeningFrequencyBars,
   ProcessingFrequencyBars,
 } from "./FrequencyBars";
@@ -461,11 +462,7 @@ const Pill: React.FC<PillProps> = ({
                 ) : pillState === "PROCESSING" ? (
                   <ProcessingFrequencyBars />
                 ) : pillState === "HOVER_PREVIEW" ? (
-                  <FrequencyBars
-                    audioLevel={0}
-                    isListening={false}
-                    isHovered={true}
-                  />
+                  <HoverFrequencyBars />
                 ) : pillState === "IDLE" ? (
                   <div className="resting-indicator" />
                 ) : null}
