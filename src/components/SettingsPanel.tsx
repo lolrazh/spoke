@@ -19,8 +19,6 @@ import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
 import ProgressRing from "./ui/ProgressRing";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
-import TranscriptionHistoryView from "./TranscriptionHistoryView";
-import DictionaryView from "./DictionaryView";
 import { SectionSeparator } from "./SectionSeparator";
 import DownloadGlyph from "./DownloadGlyph";
 import {
@@ -39,6 +37,8 @@ type SettingsPanelInitialTab = Extract<
 >;
 
 const ModelsList = lazy(() => import("./ModelsList"));
+const DictionaryView = lazy(() => import("./DictionaryView"));
+const TranscriptionHistoryView = lazy(() => import("./TranscriptionHistoryView"));
 
 const DEFAULT_MIC_DEVICE = DEFAULT_MICROPHONE;
 
@@ -1049,9 +1049,13 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                   </m.section>
                 </m.div>
               ) : activeTab === "dictionary" ? (
-                <DictionaryView />
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <DictionaryView />
+                </Suspense>
               ) : (
-                <TranscriptionHistoryView />
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <TranscriptionHistoryView />
+                </Suspense>
               )}
             </div>
           </div>
