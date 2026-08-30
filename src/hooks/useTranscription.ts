@@ -6,6 +6,7 @@
  */
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import type { TranscriptionSessionOrchestrator } from "../core/transcription/sessionOrchestrator";
 import type {
   PrepareTranscriptionResult,
   TranscriptionContext,
@@ -14,13 +15,11 @@ import type {
   TranscriptionResult,
 } from "../core/transcription/sessionTypes";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
-import {
-  defaultTranscriptionSessionOrchestrator,
-  resolvePreferredTranscriptionProviderId,
-  LOCAL_STT_PROVIDER_ID,
-} from "../core/transcription/defaultSessionOrchestrator";
 import { isTranscriptionSessionError } from "../core/transcription/sessionErrors";
-import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
+import {
+  LOCAL_STT_PROVIDER_ID,
+  type PreferredTranscriptionProviderId,
+} from "../core/transcription/providerPreferences";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
 import type { VadAudioResult } from "../utils/vadTrimmer";
@@ -69,6 +68,13 @@ async function loadStreamingVadSession(
 ): Promise<StreamingVadSessionHandle> {
   const { createStreamingVadSession } = await import("../utils/streamingVad");
   return createStreamingVadSession(options);
+}
+
+async function loadDefaultTranscriptionSessionOrchestrator(): Promise<TranscriptionSessionOrchestrator> {
+  const { defaultTranscriptionSessionOrchestrator } = await import(
+    "../core/transcription/defaultSessionOrchestrator"
+  );
+  return defaultTranscriptionSessionOrchestrator;
 }
 
 async function createLocalChunkedDictation(
@@ -222,7 +228,7 @@ export function useTranscription(
     window.electron?.bootMark?.("transcription-hook:get-provider:start");
     window.stt?.getPreferredProvider?.().then((providerId) => {
       preferredProviderIdRef.current =
-        resolvePreferredTranscriptionProviderId(providerId);
+        providerId ?? LOCAL_STT_PROVIDER_ID;
       window.electron?.bootMark?.("transcription-hook:get-provider:done");
     });
 
@@ -260,9 +266,8 @@ export function useTranscription(
 
   const resolveActiveProviderId = useCallback(async () => {
     const storedProviderId = await window.stt?.getPreferredProvider?.();
-    const resolvedProviderId = resolvePreferredTranscriptionProviderId(
-      storedProviderId ?? preferredProviderIdRef.current,
-    );
+    const resolvedProviderId =
+      storedProviderId ?? preferredProviderIdRef.current;
     preferredProviderIdRef.current = resolvedProviderId;
     return resolvedProviderId;
   }, []);
@@ -333,13 +338,13 @@ export function useTranscription(
     try {
       const providerId = await resolveActiveProviderId();
       if (!isCurrentStart()) return;
-      const provider =
-        defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+      const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
+      if (!isCurrentStart()) return;
+      const provider = orchestrator.resolveProvider(providerId);
 
-      const prepareResult = await defaultTranscriptionSessionOrchestrator.prepare(
-        providerId,
-        { context: buildTranscriptionContext() },
-      );
+      const prepareResult = await orchestrator.prepare(providerId, {
+        context: buildTranscriptionContext(),
+      });
       if (!isCurrentStart()) return;
       prepareResultRef.current = prepareResult;
 
@@ -384,14 +389,11 @@ export function useTranscription(
             // short-recording fallback intact. Once a bounded request is
             // safely sealed, release its duplicate capture copy.
             recorderRef.current?.discardBufferedPcm();
-            return defaultTranscriptionSessionOrchestrator.transcribe(
-              providerId,
-              {
-                audio,
-                context: buildTranscriptionContext(),
-                prepareResult,
-              },
-            );
+            return orchestrator.transcribe(providerId, {
+              audio,
+              context: buildTranscriptionContext(),
+              prepareResult,
+            });
           },
           onLimitReached: () => {
             window.notifications?.send(
@@ -638,8 +640,9 @@ export function useTranscription(
       activeProviderIdRef.current ?? (await resolveActiveProviderId());
     // cancel() already reset all state if it fired during the await above
     if (isCancelled()) return;
-    const provider =
-      defaultTranscriptionSessionOrchestrator.resolveProvider(providerId);
+    const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
+    if (isCancelled()) return;
+    const provider = orchestrator.resolveProvider(providerId);
     const prepareResult = prepareResultRef.current;
 
     const timing = {
@@ -934,14 +937,11 @@ export function useTranscription(
 
       timing.sttStartedAt = performance.now();
       log.info(`Starting ${providerKind} transcription`);
-      const result = await defaultTranscriptionSessionOrchestrator.transcribe(
-        providerId,
-        {
-          audio,
-          context,
-          prepareResult,
-        },
-      );
+      const result = await orchestrator.transcribe(providerId, {
+        audio,
+        context,
+        prepareResult,
+      });
       timing.sttDoneAt = performance.now();
       if (isCancelled()) return;
       log.info(
