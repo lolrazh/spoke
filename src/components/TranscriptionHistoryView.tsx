@@ -95,7 +95,6 @@ const toHistoryItem = (item: TranscriptionItem): HistoryItemData => ({
   id: item.id,
   text: item.text,
   timestamp: item.timestamp,
-  mode: item.mode,
 });
 
 const TranscriptionHistoryView: React.FC = () => {

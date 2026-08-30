@@ -8,7 +8,6 @@ export interface HistoryItemData {
   id: string;
   text: string;
   timestamp: number; // Unix timestamp in ms
-  mode?: "dictation" | "edit";
 }
 
 interface HistoryItemProps {
