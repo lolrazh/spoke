@@ -14,7 +14,6 @@ export type PillEvent =
   | { type: "PTT_STOP" }
   | { type: "CANCEL" }
   | { type: "NOTIFY"; msg: string; actionId?: string | null }
-  | { type: "ANIM_DONE" }
   | { type: "DISMISS_NOTIFICATION" }
   | { type: "HOVER_ENTER" }
   | { type: "HOVER_LEAVE" }
