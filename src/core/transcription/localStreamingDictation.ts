@@ -35,8 +35,6 @@ export class LocalStreamingDictation {
   private cancelRequested = false;
   private limitReported = false;
   private sendPumpPromise: Promise<void> | null = null;
-  private sendIdlePromise: Promise<void> = Promise.resolve();
-  private resolveSendIdle: (() => void) | null = null;
 
   constructor(private readonly options: LocalStreamingDictationOptions) {
     const batchMs = options.batchMs ?? 320;
@@ -124,7 +122,7 @@ export class LocalStreamingDictation {
     if (this.pendingSamples > 0) this.sealPending(this.pendingSamples);
     await this.startPromise;
     this.drainQueuedBatches();
-    await this.sendIdlePromise;
+    await this.sendPumpPromise;
     try {
       if (this.failure) throw this.failure;
       if (!this.sessionId) throw new Error("Local streaming session did not start.");
@@ -199,15 +197,7 @@ export class LocalStreamingDictation {
     if (this.sendPumpPromise) return;
     if (this.queuedBatchStart >= this.queuedBatches.length) return;
 
-    this.sendIdlePromise = new Promise<void>((resolve) => {
-      this.resolveSendIdle = resolve;
-    });
-    this.sendPumpPromise = this.pumpQueuedBatches(sessionId).finally(() => {
-      this.sendPumpPromise = null;
-      const resolveSendIdle = this.resolveSendIdle;
-      this.resolveSendIdle = null;
-      resolveSendIdle?.();
-    });
+    this.sendPumpPromise = this.pumpQueuedBatches(sessionId);
   }
 
   private async pumpQueuedBatches(sessionId: string): Promise<void> {
@@ -225,9 +215,13 @@ export class LocalStreamingDictation {
       }
     }
 
-    // Release sent or abandoned buffers as soon as the pump becomes idle.
-    this.queuedBatches.length = 0;
-    this.queuedBatchStart = 0;
+    try {
+      // Release sent or abandoned buffers as soon as the pump becomes idle.
+      this.queuedBatches.length = 0;
+      this.queuedBatchStart = 0;
+    } finally {
+      this.sendPumpPromise = null;
+    }
   }
 
   private cleanupListener(): void {
