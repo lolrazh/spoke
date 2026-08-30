@@ -198,12 +198,10 @@ describe("useTranscription", () => {
     vi.clearAllTimers();
   });
 
-  it("should initialize in ready state", async () => {
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
+  it("starts idle", () => {
+    const { result } = renderHook(() =>
+      useTranscription({ autoInitStream: false }),
+    );
 
     expect(result.current.recording).toBe(false);
     expect(result.current.processing).toBe(false);
@@ -215,10 +213,6 @@ describe("useTranscription", () => {
     const { result, rerender } = renderHook(() =>
       useTranscription({ autoInitStream: false }),
     );
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     const firstResult = result.current;
     rerender();
@@ -239,10 +233,6 @@ describe("useTranscription", () => {
     );
 
     const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await waitFor(() => {
       expect(window.stt.getPreferredProvider).toHaveBeenCalled();
@@ -280,10 +270,6 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
       await emitPcmFrame([1, 2, 3, 4]);
@@ -309,10 +295,6 @@ describe("useTranscription", () => {
     const { result } = renderHook(() =>
       useTranscription({ autoInitStream: false }),
     );
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -353,10 +335,6 @@ describe("useTranscription", () => {
     const { result } = renderHook(() =>
       useTranscription({ autoInitStream: false }),
     );
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -412,10 +390,6 @@ describe("useTranscription", () => {
         useTranscription({ autoInitStream: false }),
       );
 
-      await waitFor(() => {
-        expect(result.current.ready).toBe(true);
-      });
-
       await act(async () => {
         void result.current.start();
       });
@@ -453,10 +427,6 @@ describe("useTranscription", () => {
   it("should cancel recording", async () => {
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
       await emitPcmFrame([9, 10, 11, 12]);
@@ -484,10 +454,6 @@ describe("useTranscription", () => {
     );
 
     const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -528,10 +494,6 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
       await emitPcmFrame([0, 0, 0, 0]);
@@ -553,10 +515,6 @@ describe("useTranscription", () => {
     });
 
     const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -589,10 +547,6 @@ describe("useTranscription", () => {
     });
 
     const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -638,10 +592,6 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
       await emitPcmFrame([1, 2, 3, 4]);
@@ -671,10 +621,6 @@ describe("useTranscription", () => {
     });
 
     const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -707,8 +653,6 @@ describe("useTranscription", () => {
     });
 
     const { result } = renderHook(() => useTranscription());
-    await waitFor(() => expect(result.current.ready).toBe(true));
-
     await act(async () => {
       result.current.start();
       await emitPcmFrame([1, 2, 3, 4]);
@@ -740,10 +684,6 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
       await emitPcmFrame([1, 2, 3, 4]);
@@ -770,10 +710,6 @@ describe("useTranscription", () => {
     mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
 
     const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -806,7 +742,6 @@ describe("useTranscription", () => {
     const stream = configureStreamingModel("hello world");
 
     const { result } = renderHook(() => useTranscription());
-    await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
     expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
     await emitPcmFrame(new Array(10_240).fill(1));
@@ -841,7 +776,6 @@ describe("useTranscription", () => {
     configureStreamingModel("Recovered live stream");
 
     const { result } = renderHook(() => useTranscription());
-    await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
     expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
 
@@ -876,7 +810,6 @@ describe("useTranscription", () => {
 
     try {
       const { result } = renderHook(() => useTranscription());
-      await waitFor(() => expect(result.current.ready).toBe(true));
       await act(async () => result.current.start());
       expect(result.current.recording).toBe(true);
 
@@ -893,7 +826,6 @@ describe("useTranscription", () => {
   it("clears a live hypothesis on cancel and ignores stale partials", async () => {
     const stream = configureStreamingModel("should not publish");
     const { result } = renderHook(() => useTranscription());
-    await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
 
     await act(async () => stream.emitPartial("cancel me"));
@@ -943,8 +875,6 @@ describe("useTranscription", () => {
     const { result } = renderHook(() =>
       useTranscription({ autoInitStream: false }),
     );
-    await waitFor(() => expect(result.current.ready).toBe(true));
-
     await act(async () => {
       await result.current.start();
       await waitFor(() =>

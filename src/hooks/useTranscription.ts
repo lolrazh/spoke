@@ -128,7 +128,6 @@ async function createCaptureSession(
 export interface UseTranscriptionReturn {
   recording: boolean;
   processing: boolean;
-  ready: boolean;
   /** Final text that is eligible for history and native insertion. */
   text: string;
   error: string | null;
@@ -148,9 +147,6 @@ export function useTranscription(
 ): UseTranscriptionReturn {
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [ready, setReady] = useState(
-    () => options.autoInitStream === false,
-  );
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
@@ -198,7 +194,6 @@ export function useTranscription(
         const nativeAvailable = await window.audioCapture.isAvailable();
         nativeCaptureAvailableRef.current = nativeAvailable;
         if (nativeAvailable) {
-          setReady(true);
           return null;
         }
       }
@@ -212,12 +207,10 @@ export function useTranscription(
         },
       });
       streamRef.current = stream;
-      setReady(true);
       return stream;
     } catch (err) {
       log.error("Failed to get microphone:", err);
       reportTranscriptionError("Failed to access microphone");
-      setReady(false);
       throw err;
     }
   }, [reportTranscriptionError]);
@@ -1095,7 +1088,6 @@ export function useTranscription(
     () => ({
       recording,
       processing,
-      ready,
       text,
       error,
       errorId,
@@ -1104,7 +1096,7 @@ export function useTranscription(
       stop,
       cancel,
     }),
-    [recording, processing, ready, text, error, errorId, start, stop, cancel],
+    [recording, processing, text, error, errorId, start, stop, cancel],
   );
 }
 
