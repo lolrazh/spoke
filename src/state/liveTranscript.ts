@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { boundLiveTranscriptText } from "../utils/liveTranscriptText";
+
 const listeners = new Set<() => void>();
 const activeListeners = new Set<() => void>();
 let liveTranscript = "";
@@ -55,10 +57,12 @@ function emitActive(): void {
 /** Update the transient live hypothesis without re-rendering the app tree. */
 export function setLiveTranscript(next: string): void {
   if (next === liveTranscript) return;
+  const boundedNext = boundLiveTranscriptText(next);
+  if (boundedNext === liveTranscript) return;
   const wasActive = liveTranscript.length > 0;
-  liveTranscript = next;
+  liveTranscript = boundedNext;
   if (listeners.size > 0) scheduleEmit();
-  if (wasActive !== (next.length > 0)) emitActive();
+  if (wasActive !== (boundedNext.length > 0)) emitActive();
 }
 
 /** Read the current transient live hypothesis synchronously. */

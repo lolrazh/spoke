@@ -1,33 +1,16 @@
+export {
+  boundLiveTranscriptText,
+  MAX_LIVE_TRANSCRIPT_DOM_CHARS,
+} from "../utils/liveTranscriptText";
+
 let wordSegmenter: Intl.Segmenter | null = null;
 const SIMPLE_ASCII_LIVE_TEXT_RE = /^[\t\n\r\x20-\x26\x28-\x2c\x2e-\x2f\x3a-\x7f]*$/;
 const MAX_SEGMENTER_SUFFIX_LENGTH = 512;
-export const MAX_LIVE_TRANSCRIPT_DOM_CHARS = 2048;
 
 export type LiveTranscriptText = {
   committed: string;
   tentative: string;
 };
-
-/**
- * The live viewport shows only the newest ten lines. Keep its DOM and layout
- * measurement bounded while the full hypothesis remains in the transcription
- * pipeline for final insertion and history.
- */
-export function boundLiveTranscriptText(text: string): string {
-  if (text.length <= MAX_LIVE_TRANSCRIPT_DOM_CHARS) return text;
-
-  let start = text.length - MAX_LIVE_TRANSCRIPT_DOM_CHARS;
-  if (isLowSurrogate(text.charCodeAt(start))) start += 1;
-
-  while (start < text.length && !isLiveWhitespace(text.charCodeAt(start))) {
-    start += 1;
-  }
-  while (start < text.length && isLiveWhitespace(text.charCodeAt(start))) {
-    start += 1;
-  }
-
-  return text.slice(start);
-}
 
 /**
  * Keep completed words in a stable text run and isolate only the word that is
@@ -121,22 +104,4 @@ function isAsciiLetter(code: number): boolean {
 
 function isAsciiWhitespace(code: number): boolean {
   return code === 0x09 || code === 0x0a || code === 0x0d || code === 0x20;
-}
-
-function isLiveWhitespace(code: number): boolean {
-  return (
-    isAsciiWhitespace(code) ||
-    code === 0x85 ||
-    code === 0xa0 ||
-    (code >= 0x2000 && code <= 0x200a) ||
-    code === 0x2028 ||
-    code === 0x2029 ||
-    code === 0x202f ||
-    code === 0x205f ||
-    code === 0x3000
-  );
-}
-
-function isLowSurrogate(code: number): boolean {
-  return code >= 0xdc00 && code <= 0xdfff;
 }
