@@ -81,6 +81,7 @@ const AppInner: React.FC = () => {
   );
   const autoPermissionsRef = useRef(false);
   const lastMissingCountRef = useRef<number>(missingPermissions.length);
+  const wasProcessingRef = useRef(false);
 
   // Permission notification logic extracted into hook for cleaner callback dependencies
   const {
@@ -282,14 +283,17 @@ const AppInner: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (!trans.recording && !trans.processing) {
-      pushTrace(
-        trans.text
-          ? `Transcription complete: "${trans.text}"`
-          : `Transcription finished (no text or failed fast)`,
-      );
-      pillDispatch({ type: "PROCESSING_COMPLETE" });
-    }
+    const completed =
+      wasProcessingRef.current && !trans.recording && !trans.processing;
+    wasProcessingRef.current = trans.processing;
+    if (!completed) return;
+
+    pushTrace(
+      trans.text
+        ? `Transcription complete: "${trans.text}"`
+        : `Transcription finished (no text or failed fast)`,
+    );
+    pillDispatch({ type: "PROCESSING_COMPLETE" });
   }, [pillDispatch, pushTrace, trans.processing, trans.recording, trans.text]);
 
   useEffect(() => {
