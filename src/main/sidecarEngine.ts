@@ -562,6 +562,18 @@ async function runLocalStream(
   let writeIdlePromise = Promise.resolve();
   let resolveWriteIdle: (() => void) | null = null;
 
+  const clearPendingWrites = (error: Error): void => {
+    for (let index = pendingWriteStart; index < pendingWrites.length; index++) {
+      pendingWrites[index].payload = EMPTY_PCM_BUFFER;
+      pendingWrites[index].reject(error);
+    }
+    pendingWrites.length = 0;
+    pendingWriteStart = 0;
+    const resolve = resolveWriteIdle;
+    resolveWriteIdle = null;
+    resolve?.();
+  };
+
   const cleanup = () => {
     if (finalTimeout) clearTimeout(finalTimeout);
     proc.stdout?.removeListener("data", onData);
@@ -570,6 +582,7 @@ async function runLocalStream(
   const fail = (error: Error) => {
     if (settled) return;
     settled = true;
+    clearPendingWrites(error);
     cleanup();
     rejectResult(error);
   };
@@ -788,6 +801,7 @@ async function runLocalStream(
       if (!finishing && !settled) {
         finishing = true;
         await writeIdlePromise;
+        if (settled) return result;
         await writeFrame(Buffer.alloc(0));
         finalTimeout = setTimeout(() => {
           fail(new Error("Live transcription finalization timed out"));
@@ -797,6 +811,7 @@ async function runLocalStream(
       return result;
     },
     cancel() {
+      clearPendingWrites(new Error("Local streaming session was cancelled"));
       abortLocalTranscription();
     },
   };

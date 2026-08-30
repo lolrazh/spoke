@@ -460,6 +460,28 @@ describe("sidecarEngine", () => {
       ]);
     });
 
+    it("releases queued PCM when a backpressured stream is cancelled", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const session = await engine.startLocalStream(vi.fn());
+      const firstPayload = Buffer.from([1, 0]);
+      const secondPayload = Buffer.from([2, 0]);
+      let blockFirstPayload = true;
+      proc.stdin.write.mockImplementation((chunk: Buffer) => {
+        if (blockFirstPayload && chunk.equals(firstPayload)) return false;
+        return true;
+      });
+
+      const first = session.push(firstPayload);
+      const second = session.push(secondPayload);
+      session.cancel();
+      proc.emit("exit", 1);
+
+      await expect(second).rejects.toThrow("cancelled");
+      blockFirstPayload = false;
+      proc.stdin.emit("drain");
+      await expect(first).resolves.toBeUndefined();
+    });
+
     it("preserves a multibyte transcript split across stdout chunks", async () => {
       const { proc, engine } = await startReadySidecar();
       const session = await engine.startLocalStream(vi.fn());
