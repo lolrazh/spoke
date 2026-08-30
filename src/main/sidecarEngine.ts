@@ -349,22 +349,20 @@ export function transcribeLocal(
   // cannot be consumed by the wrong in-flight caller.
   const requestGeneration = sidecarGeneration;
   const requestProcess = sidecarProcess;
-  const queued = sidecarTranscribeQueue.then(
-    () =>
-      transcribeLocalOnce(
-        pcmBuffer,
-        requestProcess,
-        requestGeneration,
-        prompt,
-      ),
-    () =>
-      transcribeLocalOnce(
-        pcmBuffer,
-        requestProcess,
-        requestGeneration,
-        prompt,
-      ),
-  );
+  const request = { pcmBuffer, prompt };
+  const run = () => {
+    const bufferedPcm = request.pcmBuffer;
+    // The active request and the child stdin own the bytes now. Do not keep
+    // queued 25-second chunks alive through the shared promise chain.
+    request.pcmBuffer = EMPTY_PCM_BUFFER;
+    return transcribeLocalOnce(
+      bufferedPcm,
+      requestProcess,
+      requestGeneration,
+      request.prompt,
+    );
+  };
+  const queued = sidecarTranscribeQueue.then(run, run);
   sidecarTranscribeQueue = queued.then(
     (): undefined => undefined,
     (): undefined => undefined,
