@@ -41,6 +41,23 @@ let autoRestartEnabled = false;
 const processExitPromises = new WeakMap<object, Promise<void>>();
 const exitedProcesses = new WeakSet<object>();
 
+/** Consume complete newline-delimited records without allocating a line array. */
+function consumeLines(
+  buffer: string,
+  onLine: (line: string) => boolean,
+): string {
+  let lineStart = 0;
+  let lineEnd = buffer.indexOf("\n");
+  while (lineEnd >= 0) {
+    const line = buffer.slice(lineStart, lineEnd);
+    lineStart = lineEnd + 1;
+    if (line.trim() && !onLine(line)) break;
+    lineEnd = buffer.indexOf("\n", lineStart);
+  }
+
+  return lineStart === 0 ? buffer : buffer.slice(lineStart);
+}
+
 export const SIDECAR_STARTUP_TIMEOUT_MS = 120000;
 export const SIDECAR_SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -153,33 +170,33 @@ function spawnSidecarOnce(modelId: string): Promise<void> {
     let stdoutBuffer = "";
     const onData = (chunk: Buffer) => {
       stdoutBuffer += stdoutDecoder.write(chunk);
-      const lines = stdoutBuffer.split("\n");
-      stdoutBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      stdoutBuffer = consumeLines(stdoutBuffer, (line) => {
         try {
           const event = JSON.parse(line);
           if (event.type === "ready") {
             if (sidecarProcess !== proc) {
               settle(() => reject(new Error("Sidecar startup was superseded")));
-              return;
+              return false;
             }
             sidecarReady = true;
             console.log("[STT] Sidecar daemon ready");
             bootTimeline.mark("sidecar:ready");
             settle(resolve);
+            return false;
           } else if (event.type === "error") {
             const message =
               typeof event.message === "string"
                 ? event.message
                 : "Sidecar failed during startup";
             settle(() => reject(new Error(message)));
+            return false;
           }
+          return true;
         } catch {
           console.warn("[STT] Non-JSON stdout during init:", line);
+          return true;
         }
-      }
+      });
     };
 
     proc.stdout?.on("data", onData);
@@ -381,30 +398,28 @@ function transcribeLocalOnce(
 
     const onData = (chunk: Buffer) => {
       stdoutBuffer += stdoutDecoder.write(chunk);
-      const lines = stdoutBuffer.split("\n");
-      stdoutBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      stdoutBuffer = consumeLines(stdoutBuffer, (line) => {
         try {
           const event: SttEvent = JSON.parse(line);
           if (event.type === "done") {
             resolved = true;
             cleanup();
             resolve({ text: event.transcript, metrics: event.metrics });
-            return;
+            return false;
           }
           if (event.type === "error") {
             resolved = true;
             cleanup();
             reject(new Error(event.message));
-            return;
+            return false;
           }
           // partials are ignored for now (no streaming UI in local mode)
+          return true;
         } catch {
           console.warn("[STT] Non-JSON stdout:", line);
+          return true;
         }
-      }
+      });
     };
 
     const onExit = () => {
@@ -551,26 +566,27 @@ async function runLocalStream(
   };
   const onData = (chunk: Buffer) => {
     stdoutBuffer += stdoutDecoder.write(chunk);
-    const lines = stdoutBuffer.split("\n");
-    stdoutBuffer = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
+    stdoutBuffer = consumeLines(stdoutBuffer, (line) => {
       try {
         const event: SttEvent = JSON.parse(line);
         if (event.type === "partial") {
           onPartial(event.text);
         } else if (event.type === "done") {
-          if (settled) return;
+          if (settled) return false;
           settled = true;
           cleanup();
           resolveResult({ text: event.transcript, metrics: event.metrics });
+          return false;
         } else if (event.type === "error") {
           fail(new Error(event.message));
+          return false;
         }
+        return true;
       } catch {
         console.warn("[STT] Non-JSON stdout during stream:", line);
+        return true;
       }
-    }
+    });
   };
   const onExit = () =>
     fail(new Error("Sidecar exited during live transcription"));
