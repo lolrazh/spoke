@@ -21,6 +21,7 @@ import { bootTimeline } from "./bootTimeline";
 export const LOCAL_STT_MAX_REQUEST_BYTES = 30 * 16_000 * 2;
 export const LOCAL_STT_MAX_STREAM_FRAME_BYTES = 1 * 16_000 * 2;
 export const LOCAL_STT_MAX_STREAM_BYTES = 5 * 60 * 16_000 * 2;
+const EMPTY_PCM_BUFFER = Buffer.alloc(0);
 
 export interface LocalStreamingSession {
   push(pcmBuffer: Buffer): Promise<void>;
@@ -699,9 +700,13 @@ async function runLocalStream(
 
     while (pendingWriteStart < pendingWrites.length) {
       const pending = pendingWrites[pendingWriteStart++];
+      const payload = pending.payload;
+      // The local reference below keeps the write alive. Drop the queue's
+      // reference now so a slow pipe does not retain every sent PCM frame.
+      pending.payload = EMPTY_PCM_BUFFER;
       let writeResult: void | Promise<void>;
       try {
-        writeResult = writeFrame(pending.payload);
+        writeResult = writeFrame(payload);
       } catch (error) {
         pending.reject(error);
         continue;
