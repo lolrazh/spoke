@@ -126,7 +126,10 @@ const Onboarding: React.FC = () => {
   const {
     status: modelStatus,
     refresh: refreshModelStatus,
-  } = useModelStatus({ enabled: shouldLoadTranscriptionSetup });
+  } = useModelStatus({
+    enabled: shouldLoadTranscriptionSetup,
+    trackProgress: false,
+  });
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
     devFlags.mockPermissionStates

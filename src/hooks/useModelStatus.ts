@@ -3,10 +3,13 @@ import type { ModelStatus } from "../types/shared";
 
 type UseModelStatusOptions = {
   enabled?: boolean;
+  /** Subscribe to byte-level progress when the caller renders it. */
+  trackProgress?: boolean;
 };
 
 export function useModelStatus(options: UseModelStatusOptions = {}) {
   const enabled = options.enabled ?? true;
+  const trackProgress = options.trackProgress ?? true;
   const [status, setStatus] = useState<ModelStatus>({
     state: "not_installed",
     family: null,
@@ -40,17 +43,21 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
 
     refresh();
 
-    // Subscribe to download progress
-    const unsubProgress = window.stt?.onModelProgress?.((payload) => {
-      setLoaded(true);
-      setStatus((prev) => ({
-        ...prev,
-        state: "downloading",
-        downloadProgress: payload.progress,
-        downloadedBytes: payload.downloadedBytes,
-        totalBytes: payload.totalBytes,
-      }));
-    });
+    // Subscribe to download progress only when the caller renders it. A
+    // readiness-only consumer can rely on its refresh cadence and avoid
+    // re-rendering its whole tree for every download chunk.
+    const unsubProgress = trackProgress
+      ? window.stt?.onModelProgress?.((payload) => {
+          setLoaded(true);
+          setStatus((prev) => ({
+            ...prev,
+            state: "downloading",
+            downloadProgress: payload.progress,
+            downloadedBytes: payload.downloadedBytes,
+            totalBytes: payload.totalBytes,
+          }));
+        })
+      : undefined;
 
     // Poll on window focus to catch state changes
     const onFocus = () => refresh();
@@ -60,7 +67,7 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
       unsubProgress?.();
       window.removeEventListener("focus", onFocus);
     };
-  }, [enabled, refresh]);
+  }, [enabled, refresh, trackProgress]);
 
   const install = useCallback(async () => {
     try {

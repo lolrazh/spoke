@@ -37,6 +37,13 @@ describe("useModelStatus", () => {
     expect(window.stt.onModelProgress).toHaveBeenCalled();
   });
 
+  it("can skip byte-level progress updates for readiness-only consumers", async () => {
+    const { result } = renderHook(() => useModelStatus({ trackProgress: false }));
+
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(window.stt.onModelProgress).not.toHaveBeenCalled();
+  });
+
   it("calls installModel on the bridge when install is invoked", async () => {
     const { result } = renderHook(() => useModelStatus());
 
