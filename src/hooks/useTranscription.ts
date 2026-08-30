@@ -431,9 +431,9 @@ export function useTranscription(
               localStreamingDictation?.pushFrame(frame);
             },
             retainPcm: !localStreamingDictation && !localChunkedDictation,
-            recyclePcmFrames: Boolean(
-              localStreamingDictation || localChunkedDictation,
-            ),
+            // The browser accumulator copies each frame before returning it;
+            // recycle the transferred worklet buffer for every browser mode.
+            recyclePcmFrames: !nativeCaptureAvailableRef.current,
           },
         );
         await recorder.start(stream ?? undefined);

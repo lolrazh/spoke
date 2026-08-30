@@ -65,8 +65,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
     this.onError = options.onError;
     this.onPcmFrame = options.onPcmFrame;
     this.retainPcm = options.retainPcm ?? true;
-    this.recyclePcmFrames =
-      (options.recyclePcmFrames ?? false) && !this.retainPcm;
+    this.recyclePcmFrames = options.recyclePcmFrames ?? false;
   }
 
   async start(stream?: MediaStream): Promise<void> {

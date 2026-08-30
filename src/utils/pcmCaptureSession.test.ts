@@ -34,7 +34,7 @@ describe("PcmCaptureSession", () => {
     );
   });
 
-  it("does not return retained frames to the worklet", () => {
+  it("returns retained frames after copying them into the recording", () => {
     const postMessage = vi.fn();
     const session = new PcmCaptureSession({
       retainPcm: true,
@@ -42,14 +42,23 @@ describe("PcmCaptureSession", () => {
     });
     const testSession = session as unknown as TestSession;
     testSession.workletNode = { port: { postMessage } };
+    const samples = new Int16Array([1, -2, 3]);
 
     testSession.handleWorkletMessage({
       type: "audio",
-      samples: new Int16Array([1]),
+      samples,
       rate: 16_000,
       seq: 0,
     });
 
-    expect(postMessage).not.toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: "recycle", samples: samples.buffer },
+      [samples.buffer],
+    );
+
+    const retainedPcm = (
+      session as unknown as { retainedPcm: { take: () => Int16Array } }
+    ).retainedPcm;
+    expect(Array.from(retainedPcm.take())).toEqual([1, -2, 3]);
   });
 });
