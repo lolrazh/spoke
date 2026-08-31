@@ -9,11 +9,12 @@ import {
 import {
   subscribeTranscriptionHistory,
   getTranscriptionHistory,
+  hasMoreTranscriptionHistory,
+  loadMoreTranscriptionHistory,
 } from "../state/transcriptionHistory";
 import type { TranscriptionItem } from "../types/shared";
 
-/** Number of items to load per batch */
-const PAGE_SIZE = 50;
+const INITIAL_PAGE_SIZE = 50;
 const MONTH_LABELS = [
   "JAN",
   "FEB",
@@ -96,7 +97,6 @@ const TranscriptionHistoryView: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<TranscriptionItem[]>(() =>
     getTranscriptionHistory(),
   );
-  const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Track which items were in the initial batch (for animation skipping)
@@ -106,7 +106,7 @@ const TranscriptionHistoryView: React.FC = () => {
   useEffect(() => {
     if (initialBatchIdsRef.current.size === 0 && historyItems.length > 0) {
       const initialIds = historyItems
-        .slice(0, PAGE_SIZE)
+        .slice(0, INITIAL_PAGE_SIZE)
         .map((item) => item.id);
       initialBatchIdsRef.current = new Set(initialIds);
     }
@@ -120,25 +120,18 @@ const TranscriptionHistoryView: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  // Keep the original item objects for the visible slice. TranscriptionItem
-  // already contains every field HistoryItem needs, so mapping here would
-  // allocate one new object per visible row on every list update.
-  const visibleItems = React.useMemo(
-    () => historyItems.slice(0, displayedCount),
-    [historyItems, displayedCount],
-  );
-
-  // Memoize grouping since it does real work (Map creation, sorting)
+  // Memoize grouping since it does real work (Map creation, sorting). The
+  // store already pages the list, so every item here is intended for display.
   const groupedItems = React.useMemo(() => {
-    return groupItemsByDate(visibleItems);
-  }, [visibleItems]);
+    return groupItemsByDate(historyItems);
+  }, [historyItems]);
 
   // Load more items when scrolling to bottom
   const loadMore = useCallback(() => {
-    setDisplayedCount((prev) =>
-      Math.min(prev + PAGE_SIZE, historyItems.length),
-    );
-  }, [historyItems.length]);
+    return loadMoreTranscriptionHistory();
+  }, []);
+
+  const hasMore = hasMoreTranscriptionHistory();
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -147,8 +140,8 @@ const TranscriptionHistoryView: React.FC = () => {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && displayedCount < historyItems.length) {
-          loadMore();
+        if (entries[0]?.isIntersecting && hasMore) {
+          void loadMore();
         }
       },
       { rootMargin: "100px" }, // Start loading 100px before reaching the bottom
@@ -156,9 +149,7 @@ const TranscriptionHistoryView: React.FC = () => {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [displayedCount, historyItems.length, loadMore]);
-
-  const hasMore = displayedCount < historyItems.length;
+  }, [hasMore, historyItems.length, loadMore]);
 
   const handleCopy = useCallback(async (item: HistoryItemData) => {
     try {

@@ -21,10 +21,13 @@ const singleItem: TranscriptionItem[] = [
 
 const mockState = vi.hoisted(() => ({
   items: [] as unknown[],
+  hasMore: false,
 }));
 
 vi.mock("../state/transcriptionHistory", () => ({
   getTranscriptionHistory: () => mockState.items,
+  hasMoreTranscriptionHistory: () => mockState.hasMore,
+  loadMoreTranscriptionHistory: vi.fn(async () => undefined),
   subscribeTranscriptionHistory: (
     listener: (items: TranscriptionItem[]) => void,
   ) => {
@@ -41,6 +44,7 @@ describe("TranscriptionHistoryView", () => {
 
   beforeEach(() => {
     mockState.items = singleItem;
+    mockState.hasMore = false;
     vi.spyOn(console, "warn").mockImplementation(() => {});
     (window as any).clipboard = {
       writeText: vi.fn(async () => ({ ok: true })),
@@ -93,17 +97,18 @@ describe("TranscriptionHistoryView", () => {
 
   it("renders only the first page and offers to load more when the list is large", () => {
     const now = Date.now();
-    mockState.items = Array.from({ length: 120 }, (_, i) => ({
+    mockState.items = Array.from({ length: 50 }, (_, i) => ({
       id: `bulk-${i}`,
       text: `Bulk transcript ${i}`,
       timestamp: now - i * 60_000,
       mode: "dictation" as const,
     }));
+    mockState.hasMore = true;
 
     render(<TranscriptionHistoryView />);
 
-    // Only the first page (PAGE_SIZE = 50) of items is rendered, not all 120,
-    // so the view maps and groups just the visible window.
+    // The renderer receives one bounded page at a time, so it maps only the
+    // loaded 50 items and offers the next page through the sentinel.
     expect(
       screen.getAllByRole("button", { name: "Copy to clipboard" }),
     ).toHaveLength(50);
