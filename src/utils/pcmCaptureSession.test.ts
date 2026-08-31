@@ -72,14 +72,19 @@ describe("PcmCaptureSession", () => {
     });
     const testSession = session as unknown as TestSession;
     testSession.workletNode = { port: { postMessage } };
+    (session as unknown as { ignoreWorkletAudio: boolean }).ignoreWorkletAudio =
+      true;
 
-    session.cancel();
     testSession.handleWorkletMessage({
       type: "audio",
-      samples: new Int16Array([1, 2, 3]),
+      samples: new Int16Array([1, 2, 3, 4]),
     });
 
     expect(onPcmFrame).not.toHaveBeenCalled();
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: "recycle", samples: expect.any(ArrayBuffer) },
+      [expect.any(ArrayBuffer)],
+    );
     const retainedPcm = (
       session as unknown as { retainedPcm: { take: () => Int16Array } }
     ).retainedPcm;

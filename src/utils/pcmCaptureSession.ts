@@ -130,7 +130,10 @@ export class PcmCaptureSession implements AudioCaptureSession {
   private handleWorkletMessage(message: WorkletMessage): void {
     if (message.type === "audio") {
       const frame = message.samples;
-      if (this.ignoreWorkletAudio) return;
+      if (this.ignoreWorkletAudio) {
+        this.recycleWorkletFrame(frame);
+        return;
+      }
       if (this.retainPcm) this.retainedPcm.append(frame);
       try {
         this.onAudioLevel?.(calculatePcm16Level(frame));
