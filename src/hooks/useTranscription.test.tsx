@@ -9,6 +9,7 @@ import { trimCapturedAudioWithVad } from "../utils/vadTrimmer";
 import { addTranscription } from "../state/transcriptionHistory";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import type { VadAudioResult } from "../utils/vadTrimmer";
+import type { StreamingVadSessionOptions } from "../utils/streamingVad";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -26,10 +27,12 @@ vi.mock("../utils/vadTrimmer", () => ({
 // By default the streaming VAD session reports itself as unusable, so batch
 // tests exercise the fixed-post-roll + trimCapturedAudioWithVad fallback path.
 // Live streaming models intentionally skip this duplicate VAD worker.
-const mockCreateStreamingVadSession = vi.fn(() => createUnusableStreamingVadSessionFake());
+const mockCreateStreamingVadSession = vi.fn(
+  (_options: StreamingVadSessionOptions) => createUnusableStreamingVadSessionFake(),
+);
 vi.mock("../utils/streamingVad", () => ({
-  createStreamingVadSession: (...args: unknown[]) =>
-    mockCreateStreamingVadSession(...(args as [])),
+  createStreamingVadSession: (options: StreamingVadSessionOptions) =>
+    mockCreateStreamingVadSession(options),
 }));
 
 function createUnusableStreamingVadSessionFake() {
@@ -363,6 +366,62 @@ describe("useTranscription", () => {
       act(() => result.current.cancel());
     } finally {
       resolveProviderSpy.mockRestore();
+    }
+  });
+
+  it("discards pending chunk audio when provider resolution rejects during stop", async () => {
+    vi.useFakeTimers();
+    const { defaultTranscriptionSessionOrchestrator } = await import(
+      "../core/transcription/defaultSessionOrchestrator"
+    );
+    const originalResolveProvider =
+      defaultTranscriptionSessionOrchestrator.resolveProvider;
+    const resolveProviderSpy = vi
+      .spyOn(defaultTranscriptionSessionOrchestrator, "resolveProvider")
+      .mockImplementationOnce(originalResolveProvider)
+      .mockImplementationOnce(() => {
+        throw new Error("Provider resolution failed");
+      });
+    let notifySpeechEnd: (() => void) | undefined;
+    mockCreateStreamingVadSession.mockImplementationOnce((options) => {
+      notifySpeechEnd = options.onSpeechEnd;
+      return createUnusableStreamingVadSessionFake();
+    });
+
+    try {
+      const { result } = renderHook(() =>
+        useTranscription({ autoInitStream: false }),
+      );
+
+      await act(async () => {
+        await result.current.start();
+      });
+
+      const worklet = (globalThis as any)
+        .__lastWorklet as FakeAudioWorkletNode | null;
+      expect(worklet).toBeTruthy();
+
+      // Cross the forced chunk boundary, then leave enough fresh audio for a
+      // delayed natural-boundary timer to dispatch if cleanup misses it.
+      worklet?.emitAudio(new Int16Array(400_000));
+      expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+      (window.stt.transcribeLocal as any).mockClear();
+      worklet?.emitAudio(new Int16Array(128_000));
+      expect(notifySpeechEnd).toBeTypeOf("function");
+      notifySpeechEnd?.();
+
+      await act(async () => {
+        await result.current.stop();
+      });
+
+      expect(result.current.error).toBe("Provider resolution failed");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_200);
+      });
+      expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
+    } finally {
+      resolveProviderSpy.mockRestore();
+      vi.useRealTimers();
     }
   });
 

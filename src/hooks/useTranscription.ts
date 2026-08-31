@@ -1025,6 +1025,7 @@ export function useTranscription(
         setProcessing(false);
         ocrWordsRef.current = [];
         ocrPromiseRef.current = null;
+        localChunkedDictationRef.current?.discardPendingAudio();
         localChunkedDictationRef.current = null;
         localStreamingDictationRef.current = null;
       }
