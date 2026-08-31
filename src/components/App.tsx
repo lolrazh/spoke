@@ -227,6 +227,8 @@ const AppInner: React.FC = () => {
     context: pillContext,
     dispatch: pillDispatch,
   } = usePillMachine();
+  const pillStateRef = useRef(pillState);
+  pillStateRef.current = pillState;
 
   useEffect(() => {
     missingCountRef.current = missingPermissions.length;
@@ -317,7 +319,10 @@ const AppInner: React.FC = () => {
   useEffect(() => {
     const handleWindowShow = () => {
       // When window is shown (e.g., from tray menu), ensure pill is in clean state
-      if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
+      if (
+        pillStateRef.current !== "LISTENING" &&
+        pillStateRef.current !== "PROCESSING"
+      ) {
         // Clear any pending hide state and reset to IDLE
         setPendingHideAfterCollapse({ active: false, message: "" });
         pillDispatch({ type: "DISMISS_NOTIFICATION" });
@@ -327,7 +332,7 @@ const AppInner: React.FC = () => {
     // Listen for window focus events as a proxy for window being shown
     window.addEventListener("focus", handleWindowShow);
     return () => window.removeEventListener("focus", handleWindowShow);
-  }, [pillState]);
+  }, [pillDispatch]);
 
   // Listen for expand pill requests from main process
   useEffect(() => {
@@ -413,7 +418,7 @@ const AppInner: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pillDispatch, pushTrace, trans]);
+  }, [pillDispatch, pushTrace, trans.cancel]);
 
   // Notification duration for NOTIFICATION, and optional post-notification hide
   useEffect(() => {
