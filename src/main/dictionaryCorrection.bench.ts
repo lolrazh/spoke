@@ -1,5 +1,5 @@
 import { bench, describe } from "vitest";
-import { correctTranscript, isCommonWord } from "./dictionaryCorrection";
+import { correctTranscript } from "./dictionaryCorrection";
 
 // correctTranscript logs every correction via console; under a benchmark that
 // fires thousands of iterations the I/O would dominate and drown the results,
@@ -45,7 +45,7 @@ function genTokens(count: number, seed: number, min: number, max: number): strin
   while (tokens.length < count) {
     const len = min + Math.floor(rng() * (max - min + 1));
     const w = pronounceable(rng, len);
-    if (w.length >= 4 && !isCommonWord(w)) tokens.push(w);
+    if (w.length >= 4) tokens.push(w);
   }
   return tokens;
 }

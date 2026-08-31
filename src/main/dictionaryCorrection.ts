@@ -25,10 +25,6 @@ const COMMON_WORDS = new Set(
 // frequency table so all entry objects can be reclaimed after initialization.
 subtlexWords.length = 0;
 
-export function isCommonWord(word: string): boolean {
-  return COMMON_WORDS.has(word.toLowerCase());
-}
-
 const WORD_SPAN = /[\p{L}\p{N}']+/gu;
 const PHRASE_GAP = /^[\p{Zs}\t&+/-]*$/u;
 
