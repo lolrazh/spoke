@@ -66,7 +66,7 @@ export class LocalChunkedDictation {
     const acceptedFrame =
       frame.length <= remainingSamples
         ? frame
-        : frame.slice(0, remainingSamples);
+        : frame.subarray(0, remainingSamples);
     this.pendingPcm.append(acceptedFrame);
     this.pendingSamples += acceptedFrame.length;
     this.freshSamples += acceptedFrame.length;
