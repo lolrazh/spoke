@@ -39,6 +39,7 @@ export function registerPermissionHandlers(deps: PermissionHandlerDeps): void {
         });
 
         helper.on("close", () => {
+          clearTimeout(timeoutId);
           const hasAXPermission = output.includes("ax-granted");
           const hasIMPermission = output.includes("im-granted");
           resolve({
@@ -48,7 +49,7 @@ export function registerPermissionHandlers(deps: PermissionHandlerDeps): void {
           });
         });
 
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           helper.kill();
           resolve({ needAX, needIM: true, isDev });
         }, 5000);
