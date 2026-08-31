@@ -201,6 +201,13 @@
     contain: paint;
   }
 
+  /* Keep long history lists cheap to lay out and paint outside the scrollport.
+     The intrinsic size keeps the scroll range stable before a row is visited. */
+  .history-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 72px;
+  }
+
   /* Show hand cursor when pill is clickable (non-expanded) */
   .pill-core:not(.expanded) {
     cursor: pointer;

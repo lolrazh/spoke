@@ -103,7 +103,7 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
   );
 
   const className =
-    "group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default";
+    "history-row group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default";
 
   if (skipAnimation) {
     return <div className={className}>{content}</div>;
