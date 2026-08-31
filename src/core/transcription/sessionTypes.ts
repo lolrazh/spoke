@@ -8,9 +8,6 @@ export type TranscriptionProviderKind = "local" | "cloud";
 export interface TranscriptionContext {
   mode: TranscriptionMode;
   language?: string;
-  identityName?: string;
-  selectionText?: string;
-  ocrWords?: string[];
   /**
    * Optional vocabulary/decoding-hint prompt (built via
    * `shared/sttPrompt.ts#buildSTTPrompt`) passed through to the local STT
@@ -21,12 +18,10 @@ export interface TranscriptionContext {
 }
 
 export interface PrepareTranscriptionInput {
-  screenshotBase64?: string;
   context: TranscriptionContext;
 }
 
 export interface PrepareTranscriptionResult {
-  ocrWords?: string[];
   localModel?: LocalModelTarget;
 }
 
@@ -38,6 +33,5 @@ export interface TranscribeAudioInput {
 
 export interface TranscriptionResult {
   text: string;
-  wordCount?: number;
   metrics?: Record<string, unknown>;
 }
