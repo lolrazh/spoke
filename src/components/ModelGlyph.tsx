@@ -5,7 +5,7 @@ import React from "react";
 // design system — no brand color anywhere.
 
 // OpenAI logomark — Whisper is an OpenAI model.
-export const OpenAiGlyph: React.FC = () => (
+const OpenAiGlyph: React.FC = () => (
   <svg
     viewBox="0 0 24 24"
     width={15}
@@ -22,7 +22,7 @@ export const OpenAiGlyph: React.FC = () => (
 // Official Cohere brand logomark. Path data: lobe-icons monochrome SVG
 // (https://github.com/lobehub/lobe-icons — packages/static-svg/icons/cohere.svg),
 // rendered with currentColor so it stays monochrome.
-export const CohereGlyph: React.FC = () => (
+const CohereGlyph: React.FC = () => (
   <svg
     viewBox="0 0 24 24"
     width={15}
@@ -49,7 +49,7 @@ export const CohereGlyph: React.FC = () => (
 // lobe-icons monochrome SVG (https://github.com/lobehub/lobe-icons —
 // packages/static-svg/icons/nvidia.svg), rendered with currentColor so it
 // stays monochrome.
-export const NvidiaGlyph: React.FC = () => (
+const NvidiaGlyph: React.FC = () => (
   <svg
     viewBox="0 0 24 24"
     width={15}

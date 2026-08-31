@@ -9,7 +9,7 @@ export const POST_ROLL_MS = 240;
 
 // Canonical local capture format. 96 ms is one complete Silero VAD window.
 export const TARGET_SAMPLE_RATE_HZ = 16000;
-export const PCM_CAPTURE_FRAME_MS = 96;
+const PCM_CAPTURE_FRAME_MS = 96;
 export const PCM_CAPTURE_FRAME_SAMPLES =
   (TARGET_SAMPLE_RATE_HZ * PCM_CAPTURE_FRAME_MS) / 1000;
 

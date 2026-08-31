@@ -1,8 +1,8 @@
-export const CAPTURED_AUDIO_FORMAT = "pcm16" as const;
+const CAPTURED_AUDIO_FORMAT = "pcm16" as const;
 export const CAPTURED_AUDIO_SAMPLE_RATE_HZ = 16_000;
 export const CAPTURED_AUDIO_CHANNEL_COUNT = 1;
-export const PCM16_BYTES_PER_SAMPLE = 2;
-export const PCM16_BITS_PER_SAMPLE = 16;
+const PCM16_BYTES_PER_SAMPLE = 2;
+const PCM16_BITS_PER_SAMPLE = 16;
 const PCM16_TO_FLOAT_GAIN = 1 / 32768;
 
 export type CapturedAudioFormat = typeof CAPTURED_AUDIO_FORMAT;

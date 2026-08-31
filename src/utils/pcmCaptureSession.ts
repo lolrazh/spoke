@@ -250,7 +250,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
   }
 }
 
-export function calculatePcm16Level(frame: Int16Array): number {
+function calculatePcm16Level(frame: Int16Array): number {
   if (frame.length === 0) {
     return 0;
   }

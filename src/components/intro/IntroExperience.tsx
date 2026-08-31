@@ -30,7 +30,7 @@ const GridBackground: React.FC<{ holeActive: boolean }> = ({ holeActive }) => {
   );
 };
 
-export const IntroExperience: React.FC<IntroExperienceProps> = ({
+const IntroExperience: React.FC<IntroExperienceProps> = ({
   logoSrc,
   onFinish,
   onExitStart,
