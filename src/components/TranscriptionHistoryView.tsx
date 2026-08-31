@@ -203,16 +203,13 @@ const TranscriptionHistoryView: React.FC = () => {
     >
       {groupedItems.map((group) => (
         <DateGroup key={group.label} label={group.label}>
-          {group.items.map((item, index) => (
-            <div key={item.id}>
-              <HistoryItem
-                item={item}
-                onCopy={handleCopy}
-                skipAnimation={shouldSkipAnimation(item.id)}
-              />
-              {/* Don't show border after last item */}
-              {index === group.items.length - 1 && <div className="h-0" />}
-            </div>
+          {group.items.map((item) => (
+            <HistoryItem
+              key={item.id}
+              item={item}
+              onCopy={handleCopy}
+              skipAnimation={shouldSkipAnimation(item.id)}
+            />
           ))}
         </DateGroup>
       ))}
