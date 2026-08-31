@@ -520,12 +520,6 @@ static bool request_input_monitoring(void) {
     return ok;
 }
 
-// Function to register the app in Input Monitoring settings
-bool register_input_monitoring() {
-    // Use the new proper request function
-    return request_input_monitoring();
-}
-
 // Pre-flight check for permissions using modern APIs
 bool check_permissions() {
     if (!check_input_monitoring_permission()) {
@@ -748,20 +742,6 @@ int main(int argc, char *argv[]) {
             return 0;
         } else {
             puts("im-denied");
-            fflush(stdout);
-            return 1;
-        }
-    }
-    
-    // Add support for registering Input Monitoring permission
-    if (argc > 1 && strcmp(argv[1], "--register-input-monitoring") == 0) {
-        bool registered = register_input_monitoring();
-        if (registered) {
-            puts("registered-granted");
-            fflush(stdout);
-            return 0;
-        } else {
-            puts("registered-denied");
             fflush(stdout);
             return 1;
         }
