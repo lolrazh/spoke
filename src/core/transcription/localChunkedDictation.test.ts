@@ -96,13 +96,16 @@ describe("LocalChunkedDictation", () => {
 
   it("forces a bounded request and carries only the configured overlap", async () => {
     const { chunker, transcribe } = createChunker();
-    chunker.pushFrame(new Int16Array(250)); // 2.5 seconds
-    chunker.pushFrame(new Int16Array(250)); // next forced chunk includes 100ms overlap
+    chunker.pushFrame(Int16Array.from({ length: 250 }, (_, index) => index));
+    chunker.pushFrame(Int16Array.from({ length: 250 }, (_, index) => 250 + index));
     await chunker.finish();
 
     expect(transcribe).toHaveBeenCalledTimes(2);
     expect(transcribe.mock.calls[0][0].durationMs).toBe(2500);
     expect(transcribe.mock.calls[1][0].durationMs).toBe(2600);
+    expect(Array.from(transcribe.mock.calls[1][0].pcm16.slice(0, 10))).toEqual(
+      Array.from({ length: 10 }, (_, index) => 240 + index),
+    );
     expect(chunker.hasDispatchedChunks).toBe(true);
   });
 

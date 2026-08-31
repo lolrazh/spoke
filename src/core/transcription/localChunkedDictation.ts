@@ -190,7 +190,11 @@ export class LocalChunkedDictation {
       pcm16.length,
       Math.round((this.options.overlapMs * this.options.sampleRateHz) / 1000),
     );
-    const overlap = overlapSamples > 0 ? pcm16.slice(-overlapSamples) : null;
+    // Keep the overlap as a view. The next accumulator copies it into its own
+    // storage, so allocating a separate sliced buffer here only adds one
+    // temporary allocation and copy per sealed chunk.
+    const overlap =
+      overlapSamples > 0 ? pcm16.subarray(-overlapSamples) : null;
     if (overlap && overlap.length > 0) this.pendingPcm.append(overlap);
     this.pendingSamples = overlap?.length ?? 0;
     this.freshSamples = 0;
