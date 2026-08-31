@@ -324,6 +324,18 @@ describe("localSttLifecycle", () => {
     expect(mocks.setAutoRestart).toHaveBeenCalledWith(true);
   });
 
+  it("does not enqueue work when the active sidecar is already warm", async () => {
+    mocks.isSidecarRunning.mockReturnValue(true);
+    const { prewarmLocalSidecar } = await importLifecycle();
+
+    prewarmLocalSidecar("ptt-down");
+    await flushLifecycle();
+
+    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    expect(mocks.killSidecar).not.toHaveBeenCalled();
+    expect(mocks.setAutoRestart).not.toHaveBeenCalled();
+  });
+
   it("does not prewarm when provider is not local", async () => {
     mocks.isPreferredProviderLocal.mockReturnValue(false);
     const { prewarmLocalSidecar } = await importLifecycle();

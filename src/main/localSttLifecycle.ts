@@ -235,6 +235,19 @@ function queueLocalSidecarPrewarm(
 }
 
 export function prewarmLocalSidecar(reason: string): void {
+  if (isPreferredProviderLocal()) {
+    const modelId = getActiveModelId();
+    if (
+      isSidecarRunning() &&
+      getSidecarModelId() === modelId &&
+      getModelInstallState(modelId) === "ready"
+    ) {
+      // A warm sidecar needs no lifecycle queue work. PTT calls this on every
+      // key-down, so only refresh the idle watchdog in the common case.
+      armIdleTimer();
+      return;
+    }
+  }
   queueLocalSidecarPrewarm(reason, prewarmGeneration, Promise.resolve());
 }
 
