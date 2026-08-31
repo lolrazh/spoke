@@ -127,6 +127,7 @@ if (!globalThis.window.stt) {
     installModel: vi.fn(async () => {}),
     removeModel: vi.fn(async () => {}),
     onModelProgress: vi.fn(() => () => {}),
+    onModelStatusChanged: vi.fn(() => () => {}),
     enhance: vi.fn(async (payload: any) => ({
       text: payload.text,
       bypassed: true,

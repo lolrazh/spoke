@@ -251,6 +251,9 @@ declare global {
           totalBytes: number;
         }) => void,
       ) => () => void;
+      onModelStatusChanged: (
+        cb: (status: import("./shared").ModelStatus) => void,
+      ) => () => void;
       enhance: (payload: {
         text: string;
         vocabulary?: string[];

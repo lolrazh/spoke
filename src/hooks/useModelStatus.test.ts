@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useModelStatus } from "./useModelStatus";
+import type { ModelStatus } from "../types/shared";
 
 describe("useModelStatus", () => {
   beforeEach(() => {
@@ -27,6 +28,37 @@ describe("useModelStatus", () => {
     await waitFor(() => {
       expect(window.stt.getModelStatus).toHaveBeenCalled();
     });
+  });
+
+  it("updates from model status events without polling", async () => {
+    let listener: ((status: ModelStatus) => void) | undefined;
+    vi.mocked(window.stt.onModelStatusChanged).mockImplementation((cb) => {
+      listener = cb;
+      return () => {
+        listener = undefined;
+      };
+    });
+
+    const { result } = renderHook(() => useModelStatus());
+    await waitFor(() => {
+      expect(result.current.status.modelId).toBe(
+        "spokedotso/whisper-large-v3-turbo-4bit",
+      );
+    });
+    vi.mocked(window.stt.getModelStatus).mockClear();
+
+    act(() => {
+      listener?.({
+        ...result.current.status,
+        state: "ready",
+        downloadProgress: 1,
+        downloadedBytes: 1,
+        totalBytes: 1,
+      });
+    });
+
+    expect(result.current.status.state).toBe("ready");
+    expect(window.stt.getModelStatus).not.toHaveBeenCalled();
   });
 
   it("does not re-render when a refresh returns the same status", async () => {

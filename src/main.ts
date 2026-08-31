@@ -137,6 +137,9 @@ app.whenReady().then(async () => {
     const PROGRESS_EMIT_INTERVAL_MS = 30;
 
     initModelManager({
+      onStatusChange: (status) => {
+        broadcastToAllWindows("stt:model-status-changed", status);
+      },
       onDownloadProgress: (progress) => {
         const now = Date.now();
         const isEndpoint = progress.progress <= 0 || progress.progress >= 1;

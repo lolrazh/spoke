@@ -124,7 +124,6 @@ const Onboarding: React.FC = () => {
   // state (install/activate) so this status stays in sync with the active row.
   const {
     status: modelStatus,
-    refresh: refreshModelStatus,
   } = useModelStatus({
     enabled: shouldLoadTranscriptionSetup,
   });
@@ -270,18 +269,6 @@ const Onboarding: React.FC = () => {
   // "ready" this flips true. Nothing installed → not ready → Next stays
   // disabled (the deleted-models case).
   const transcriptionSetupReady = modelStatus.state === "ready";
-
-  // The model cards (ModelsList) own their own install/activate state, so the
-  // active-model status this step reads doesn't auto-update when a card
-  // installs a model or switches the active one. Poll while the step is visible
-  // so `transcriptionSetupReady` (Next-gating) and prewarm track the active row.
-  useEffect(() => {
-    if (currentStep !== "transcription-setup") return;
-    const interval = setInterval(() => {
-      void refreshModelStatus();
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [currentStep, refreshModelStatus]);
 
   useEffect(() => {
     if (currentStep !== "transcription-setup") return;

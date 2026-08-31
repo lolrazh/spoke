@@ -57,6 +57,7 @@ type PersistedState = {
 // ── Callbacks ─────────────────────────────────────────────────────────
 
 export interface ModelManagerCallbacks {
+  onStatusChange: (status: ModelStatus) => void;
   onDownloadProgress: (progress: {
     modelId: string;
     progress: number;
@@ -77,6 +78,7 @@ const installAborts = new Map<string, AbortController>();
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
 let callbacks: ModelManagerCallbacks = {
+  onStatusChange: noop,
   onDownloadProgress: noop,
 };
 
@@ -138,6 +140,12 @@ function setStatus(modelId: string, partial: Partial<ModelStatus>): void {
   const current = statuses.get(modelId) ?? defaultStatus(modelId);
   const next = { ...current, ...partial };
   statuses.set(modelId, next);
+  // Progress-only updates use the throttled download channel. Broadcast only
+  // state transitions so renderers can update without polling.
+  if (next.state === current.state) return;
+  try {
+    callbacks.onStatusChange(next);
+  } catch {}
 }
 
 function persistState(): void {
@@ -486,6 +494,9 @@ export function initModelManager(cbs: ModelManagerCallbacks): void {
 
   persistState();
 
+  for (const status of statuses.values()) {
+    callbacks.onStatusChange(status);
+  }
   console.log(
     "[ModelManager] Initialized. Active:",
     activeModelId,
@@ -526,6 +537,8 @@ export function setActiveModelId(modelId: string): void {
   if (modelId === activeModelId) return;
   activeModelId = modelId;
   persistState();
+  // Re-emit so listeners can recompute which model is active.
+  callbacks.onStatusChange(getModelStatus(modelId));
 }
 
 // ── Install ───────────────────────────────────────────────────────────
@@ -641,6 +654,9 @@ export async function installModel(modelId?: string): Promise<void> {
       console.log(`[ModelManager] Install cancelled for ${id}`);
       installedFiles.set(id, []);
       statuses.set(id, defaultStatus(id));
+      try {
+        callbacks.onStatusChange(getModelStatus(id));
+      } catch {}
       persistState();
       cleanupTmp(family);
       return;
@@ -724,6 +740,11 @@ export async function removeModel(modelId?: string): Promise<void> {
   }
 
   persistState();
+  callbacks.onStatusChange(getModelStatus(id));
+  // Re-emit the (possibly newly promoted) active model so listeners recompute.
+  if (activeModelId !== id) {
+    callbacks.onStatusChange(getModelStatus(activeModelId));
+  }
   console.log(
     `[ModelManager] ${id} removed, reset to not_installed. Active: ${activeModelId}`,
   );

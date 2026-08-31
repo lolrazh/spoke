@@ -67,11 +67,25 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
 
     refresh();
 
-    // Poll on window focus to catch state changes
+    const onStatusChanged = (next: ModelStatus) => {
+      // The event includes every installed model. Update directly when it is
+      // the active row; re-read the active row when selection changes.
+      if (next.modelId === statusRef.current.modelId) {
+        updateStatus(next);
+      } else {
+        void refresh();
+      }
+    };
+    const unsubscribeStatus = window.stt?.onModelStatusChanged?.(
+      onStatusChanged,
+    );
+
+    // Refresh on window focus to catch changes made while the app was hidden.
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
 
     return () => {
+      unsubscribeStatus?.();
       window.removeEventListener("focus", onFocus);
     };
   }, [enabled, refresh]);

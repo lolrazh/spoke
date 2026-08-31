@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   ActiveDisplayPayload,
   MicDevice,
+  ModelStatus,
   TranscriptionHistoryPage,
   TranscriptionItem,
 } from "./types/shared";
@@ -231,6 +232,14 @@ contextBridge.exposeInMainWorld("stt", {
     ipcRenderer.on("stt:model-download-progress", handler);
     return () => {
       ipcRenderer.removeListener("stt:model-download-progress", handler);
+    };
+  },
+  onModelStatusChanged: (cb: (status: ModelStatus) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: ModelStatus) =>
+      cb(status);
+    ipcRenderer.on("stt:model-status-changed", handler);
+    return () => {
+      ipcRenderer.removeListener("stt:model-status-changed", handler);
     };
   },
   enhance: (payload: {
