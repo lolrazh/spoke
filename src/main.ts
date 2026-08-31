@@ -236,52 +236,58 @@ app.whenReady().then(async () => {
     console.error("[STT] Failed to sync sidecar on startup:", err);
   });
 
-  const isDev = !app.isPackaged;
+  const isPackaged = app.isPackaged;
+  const isDev = !isPackaged;
   console.log("[Main Process] Setting up renderer security headers...");
+  const styleSrc = "style-src 'self' 'unsafe-inline'";
+  const fontSrc = "font-src 'self' data:";
+  const connect = [
+    "connect-src 'self'",
+    "https://api.openai.com",
+    "https://api.groq.com",
+    "https://api.deepgram.com",
+    ...(isDev
+      ? [
+          "http://localhost:*",
+          "http://127.0.0.1:*",
+          "ws://localhost:*",
+          "ws://127.0.0.1:*",
+        ]
+      : []),
+    "blob:",
+    "data:",
+  ].join(" ");
+
+  // ORT Web needs WASM compilation for local VAD. Keep JS eval blocked.
+  const scriptSrc = [
+    "script-src 'self'",
+    "'wasm-unsafe-eval'",
+    ...(isDev ? ["'unsafe-inline'"] : []),
+  ].join(" ");
+  const imgSrc = "img-src 'self' data:";
+  const csp = [
+    "default-src 'self'",
+    connect,
+    scriptSrc,
+    styleSrc,
+    imgSrc,
+    fontSrc,
+  ].join("; ");
+  const rendererSecurityHeaders: Record<string, string> = {
+    "Content-Security-Policy": csp,
+    ...(isPackaged
+      ? {
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Embedder-Policy": "require-corp",
+        }
+      : {}),
+  };
+
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const styleSrc = "style-src 'self' 'unsafe-inline'";
-    const fontSrc = "font-src 'self' data:";
-    const connect = [
-      "connect-src 'self'",
-      "https://api.openai.com",
-      "https://api.groq.com",
-      "https://api.deepgram.com",
-      ...(isDev
-        ? [
-            "http://localhost:*",
-            "http://127.0.0.1:*",
-            "ws://localhost:*",
-            "ws://127.0.0.1:*",
-          ]
-        : []),
-      "blob:",
-      "data:",
-    ].join(" ");
-
-    // ORT Web needs WASM compilation for local VAD. Keep JS eval blocked.
-    const scriptSrc = [
-      "script-src 'self'",
-      "'wasm-unsafe-eval'",
-      ...(isDev ? ["'unsafe-inline'"] : []),
-    ].join(" ");
-    const imgSrc = "img-src 'self' data:";
-    const csp = [
-      "default-src 'self'",
-      connect,
-      scriptSrc,
-      styleSrc,
-      imgSrc,
-      fontSrc,
-    ].join("; ");
-
     const headers: Record<string, string | string[]> = {
       ...details.responseHeaders,
-      "Content-Security-Policy": csp,
+      ...rendererSecurityHeaders,
     };
-    if (app.isPackaged) {
-      headers["Cross-Origin-Opener-Policy"] = "same-origin";
-      headers["Cross-Origin-Embedder-Policy"] = "require-corp";
-    }
 
     callback({ responseHeaders: headers });
   });
