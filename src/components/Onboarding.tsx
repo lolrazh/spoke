@@ -120,8 +120,8 @@ const Onboarding: React.FC = () => {
     !showIntro && currentStep === "transcription-setup";
   // Drives Next-gating and prewarm off the *active* model's live status: the
   // user installs a model in a card below, it becomes active + ready, and that
-  // flips `transcriptionSetupReady`. `refresh` re-reads after the cards mutate
-  // state (install/activate) so this status stays in sync with the active row.
+  // flips `transcriptionSetupReady`. Status events keep this value in sync with
+  // the active row after the cards mutate state (install/activate).
   const {
     status: modelStatus,
   } = useModelStatus({

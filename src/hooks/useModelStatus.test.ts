@@ -16,12 +16,6 @@ describe("useModelStatus", () => {
     });
   });
 
-  it("provides the status refresh function", () => {
-    const { result } = renderHook(() => useModelStatus());
-
-    expect(typeof result.current.refresh).toBe("function");
-  });
-
   it("calls getModelStatus on mount", async () => {
     renderHook(() => useModelStatus());
 
@@ -80,7 +74,10 @@ describe("useModelStatus", () => {
     const beforeRefresh = result.current.status;
 
     await act(async () => {
-      await result.current.refresh();
+      window.dispatchEvent(new Event("focus"));
+      await waitFor(() => {
+        expect(window.stt.getModelStatus).toHaveBeenCalled();
+      });
     });
 
     expect(result.current.status).toBe(beforeRefresh);

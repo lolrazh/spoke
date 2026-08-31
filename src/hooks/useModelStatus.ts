@@ -90,5 +90,5 @@ export function useModelStatus(options: UseModelStatusOptions = {}) {
     };
   }, [enabled, refresh]);
 
-  return { status, refresh };
+  return { status };
 }
