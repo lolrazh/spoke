@@ -256,4 +256,4 @@ const TranscriptionHistoryView: React.FC = () => {
   );
 };
 
-export default TranscriptionHistoryView;
+export default React.memo(TranscriptionHistoryView);

@@ -50,4 +50,4 @@ const ModelsList: React.FC<{
   );
 };
 
-export default ModelsList;
+export default React.memo(ModelsList);
