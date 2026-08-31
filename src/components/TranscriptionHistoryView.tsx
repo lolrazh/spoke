@@ -14,25 +14,25 @@ import type { TranscriptionItem } from "../types/shared";
 
 /** Number of items to load per batch */
 const PAGE_SIZE = 50;
+const MONTH_LABELS = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+];
 
 // Helper function to format date as "MMM DD, YYYY" in caps
 const formatDateLabel = (timestamp: number): string => {
   const date = new Date(timestamp);
-  const months = [
-    "JAN",
-    "FEB",
-    "MAR",
-    "APR",
-    "MAY",
-    "JUN",
-    "JUL",
-    "AUG",
-    "SEP",
-    "OCT",
-    "NOV",
-    "DEC",
-  ];
-  const month = months[date.getMonth()];
+  const month = MONTH_LABELS[date.getMonth()];
   const day = date.getDate();
   const year = date.getFullYear();
   return `${month} ${day}, ${year}`;
@@ -77,10 +77,12 @@ const groupItemsByDate = (items: HistoryItemData[]) => {
       sortKey = dayStart;
     }
 
-    if (!groupMap.has(label)) {
-      groupMap.set(label, { label, items: [], sortKey });
+    let group = groupMap.get(label);
+    if (!group) {
+      group = { label, items: [], sortKey };
+      groupMap.set(label, group);
     }
-    groupMap.get(label)!.items.push(item);
+    group.items.push(item);
   });
 
   // Convert to array and sort by date (most recent first)
