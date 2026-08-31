@@ -20,7 +20,10 @@ import {
   LOCAL_STT_PROVIDER_ID,
   type PreferredTranscriptionProviderId,
 } from "../core/transcription/providerPreferences";
-import { buildSTTPrompt } from "../../shared/sttPrompt";
+import {
+  buildSTTPrompt,
+  DEFAULT_STT_PROMPT,
+} from "../../shared/sttPrompt";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
 import type { VadAudioResult } from "../utils/vadTrimmer";
 import type {
@@ -273,7 +276,9 @@ export function useTranscription(
       // avoid adding latency; whatever's already there just rides along).
       // With no OCR words yet, buildSTTPrompt still returns its default
       // vocabulary hint (the product name), which is a free win on its own.
-      sttPrompt: buildSTTPrompt({ extraVocab: ocrWordsRef.current }),
+      sttPrompt: ENABLE_SCREEN_CONTEXT
+        ? buildSTTPrompt({ extraVocab: ocrWordsRef.current })
+        : DEFAULT_STT_PROMPT,
     };
   }, []);
 
@@ -445,23 +450,27 @@ export function useTranscription(
       setRecording(true);
       activeProviderIdRef.current = providerId;
 
-      // Start OCR extraction in parallel. It is non-critical and can finish
-      // after capture has started.
-      const ocrPromise = (async () => {
-        try {
-          const imageBase64 = await captureScreenshotBase64();
-          if (imageBase64 && window.stt?.extractOcr) {
-            const result = await window.stt.extractOcr(imageBase64);
-            ocrWordsRef.current = result.words ?? [];
-            if (result.words?.length) {
-              ocrLog.info(`Extracted ${result.words.length} vocabulary words`);
+      // Start OCR extraction in parallel only when screen context is enabled.
+      // The current production flag is off, so a recording does not create a
+      // needless async task or await an empty OCR promise.
+      let ocrPromise: Promise<void> | null = null;
+      if (ENABLE_SCREEN_CONTEXT) {
+        ocrPromise = (async () => {
+          try {
+            const imageBase64 = await captureScreenshotBase64();
+            if (imageBase64 && window.stt?.extractOcr) {
+              const result = await window.stt.extractOcr(imageBase64);
+              ocrWordsRef.current = result.words ?? [];
+              if (result.words?.length) {
+                ocrLog.info(`Extracted ${result.words.length} vocabulary words`);
+              }
             }
+          } catch (err) {
+            ocrLog.warn("Extraction failed:", err);
+            // Non-critical — continue without OCR vocabulary
           }
-        } catch (err) {
-          ocrLog.warn("Extraction failed:", err);
-          // Non-critical — continue without OCR vocabulary
-        }
-      })();
+        })();
+      }
 
       // Wait for recorder to be ready, but OCR continues in background
       const recorder = await recorderPromise;
