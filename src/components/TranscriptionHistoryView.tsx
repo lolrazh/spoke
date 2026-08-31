@@ -14,7 +14,7 @@ import {
 } from "../state/transcriptionHistory";
 import type { TranscriptionItem } from "../types/shared";
 
-const INITIAL_PAGE_SIZE = 50;
+const INITIAL_ANIMATED_ITEM_COUNT = 8;
 const MONTH_LABELS = [
   "JAN",
   "FEB",
@@ -103,14 +103,15 @@ const TranscriptionHistoryView: React.FC = () => {
     null,
   );
 
-  // Track which items were in the initial batch (for animation skipping)
+  // Animate only the first visible-range rows. The rest of the first page is
+  // already below the scroll window and should mount without motion work.
   const initialBatchIdsRef = useRef<Set<string>>(new Set());
 
   // Initialize the initial batch IDs on first render
   useEffect(() => {
     if (initialBatchIdsRef.current.size === 0 && historyItems.length > 0) {
       const initialIds = historyItems
-        .slice(0, INITIAL_PAGE_SIZE)
+        .slice(0, INITIAL_ANIMATED_ITEM_COUNT)
         .map((item) => item.id);
       initialBatchIdsRef.current = new Set(initialIds);
     }
