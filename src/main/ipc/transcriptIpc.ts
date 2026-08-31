@@ -12,7 +12,6 @@ import {
 } from "electron";
 
 import {
-  getTranscriptions,
   getTranscriptionsPage,
   saveTranscription,
   deleteTranscription,
@@ -88,12 +87,6 @@ export function registerTranscriptIpc(): void {
   );
 
   // Transcription history storage handlers
-  ipcMain.handle("transcriptions:get-all", () => {
-    return bootTimeline.measureSync("ipc:transcriptions:get-all", () =>
-      getTranscriptions(),
-    );
-  });
-
   ipcMain.handle(
     "transcriptions:get-page",
     (_event, payload?: { offset?: number; limit?: number }) => {

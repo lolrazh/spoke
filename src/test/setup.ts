@@ -159,7 +159,7 @@ if (!globalThis.window.mic) {
 if (!globalThis.window.transcriptions) {
   // @ts-ignore
   globalThis.window.transcriptions = {
-    getAll: vi.fn(async () => []),
+    getPage: vi.fn(async () => ({ items: [], hasMore: false })),
     save: vi.fn(
       async (payload: {
         text: string;

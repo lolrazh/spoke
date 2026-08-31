@@ -285,7 +285,6 @@ declare global {
       onError: (cb: (message: string) => void) => () => void;
     };
     transcriptions: {
-      getAll: () => Promise<TranscriptionItem[]>;
       getPage: (
         offset?: number,
         limit?: number,

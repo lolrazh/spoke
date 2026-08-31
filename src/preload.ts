@@ -357,8 +357,6 @@ contextBridge.exposeInMainWorld("update", {
 
 // Transcription history storage bridge
 contextBridge.exposeInMainWorld("transcriptions", {
-  getAll: (): Promise<TranscriptionItem[]> =>
-    ipcRenderer.invoke("transcriptions:get-all"),
   getPage: (offset?: number, limit?: number): Promise<TranscriptionHistoryPage> =>
     ipcRenderer.invoke("transcriptions:get-page", { offset, limit }),
   save: (payload: {
