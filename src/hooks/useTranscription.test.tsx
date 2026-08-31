@@ -314,6 +314,58 @@ describe("useTranscription", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("cleans up recording when provider resolution rejects during stop", async () => {
+    const { defaultTranscriptionSessionOrchestrator } = await import(
+      "../core/transcription/defaultSessionOrchestrator"
+    );
+    const originalResolveProvider =
+      defaultTranscriptionSessionOrchestrator.resolveProvider;
+    const resolveProviderSpy = vi
+      .spyOn(defaultTranscriptionSessionOrchestrator, "resolveProvider")
+      .mockImplementationOnce(originalResolveProvider)
+      .mockImplementationOnce(() => {
+        throw new Error("Provider resolution failed");
+      });
+    const trackStop = vi.fn();
+    (navigator.mediaDevices.getUserMedia as any).mockResolvedValueOnce({
+      getTracks: () => [{ stop: trackStop, readyState: "live" }],
+      getAudioTracks: () => [{ stop: trackStop, readyState: "live" }],
+    });
+
+    try {
+      const { result } = renderHook(() =>
+        useTranscription({ autoInitStream: false }),
+      );
+
+      await act(async () => {
+        result.current.start();
+        await emitPcmFrame([1, 2, 3, 4]);
+      });
+
+      expect(result.current.recording).toBe(true);
+
+      await act(async () => {
+        await result.current.stop();
+      });
+
+      expect(result.current.recording).toBe(false);
+      expect(result.current.processing).toBe(false);
+      expect(result.current.error).toBe("Provider resolution failed");
+      expect(trackStop).toHaveBeenCalledOnce();
+
+      // A failed stop must not leave stopInFlightRef latched and block the
+      // next dictation.
+      await act(async () => {
+        result.current.start();
+        await emitPcmFrame([5, 6, 7, 8]);
+      });
+      expect(result.current.recording).toBe(true);
+      act(() => result.current.cancel());
+    } finally {
+      resolveProviderSpy.mockRestore();
+    }
+  });
+
   it("fails fast before recording when the local model is not installed", async () => {
     (window.stt.getModelStatus as any).mockResolvedValue({
       state: "not_installed",

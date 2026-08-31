@@ -632,14 +632,9 @@ export function useTranscription(
     const generation = stopGenerationRef.current;
     const isCancelled = () => stopGenerationRef.current !== generation;
 
-    const providerId =
-      activeProviderIdRef.current ?? (await resolveActiveProviderId());
-    // cancel() already reset all state if it fired during the await above
-    if (isCancelled()) return;
-    const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
-    if (isCancelled()) return;
-    const provider = orchestrator.resolveProvider(providerId);
-    const prepareResult = prepareResultRef.current;
+    let streamingVadSession: StreamingVadSessionHandle | null = null;
+    let localStreamingDictation: LocalStreamingDictation | null = null;
+    let recorderWasStopped = false;
 
     const timing = {
       stopStartedAt: performance.now(),
@@ -655,17 +650,26 @@ export function useTranscription(
       pasteDoneAt: 0,
     };
 
-    const streamingVadSession = streamingVadRef.current;
-    const localStreamingDictation = localStreamingDictationRef.current;
-    // Keep the shared reference until stop() finishes so cancel() can dispose
-    // a session while its async finish() is still finalizing.
-
     try {
       setProcessing(true);
       setRecording(false);
       // Recording ended — drop the live level so the visualizer settles to idle.
       setAudioLevel(0);
       playToggleOff();
+
+      // Keep the shared references until stop() finishes so cancel() can
+      // dispose a session while its async finish() is still finalizing.
+      streamingVadSession = streamingVadRef.current;
+      localStreamingDictation = localStreamingDictationRef.current;
+
+      const providerId =
+        activeProviderIdRef.current ?? (await resolveActiveProviderId());
+      // cancel() already reset all state if it fired during the await above
+      if (isCancelled()) return;
+      const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
+      if (isCancelled()) return;
+      const provider = orchestrator.resolveProvider(providerId);
+      const prepareResult = prepareResultRef.current;
 
       // Batch paths need a short tail for VAD trimming. Live Nemotron adds
       // its own bounded final silence inside the sidecar, so do not start a
@@ -709,6 +713,7 @@ export function useTranscription(
 
       const localChunkedDictation = localChunkedDictationRef.current;
       let capturedAudio: CapturedAudio | null = await recorder.stop();
+      recorderWasStopped = true;
       recorderRef.current = null;
       timing.pcmReadyAt = performance.now();
       if (isCancelled()) return;
@@ -965,10 +970,9 @@ export function useTranscription(
       setLiveTranscript("");
       reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
-      // stop() owns streamingVadSession once it's captured it above (the
-      // shared ref was already nulled), regardless of how the pipeline
-      // above exited — mirrors how `recorder.stop()` always runs. dispose()
-      // is a no-op if finish() already completed it.
+      // stop() owns streamingVadSession once it captures it, regardless of
+      // how the pipeline above exits. dispose() is a no-op if finish() already
+      // completed it.
       streamingVadSession?.dispose();
       if (streamingVadRef.current === streamingVadSession) {
         streamingVadRef.current = null;
@@ -976,6 +980,28 @@ export function useTranscription(
       // If cancel() interrupted this pipeline it already performed the
       // cleanup below and a new session may have started since; leave it be.
       if (!isCancelled()) {
+        if (!recorderWasStopped) {
+          const activeRecorder = recorderRef.current;
+          try {
+            activeRecorder?.cancel();
+            if (recorder && recorder !== activeRecorder) {
+              recorder.cancel();
+            }
+          } catch (cancelError) {
+            log.warn("Failed to release audio capture session:", cancelError);
+          }
+          recorderRef.current = null;
+          if (!recorder && recorderStartPromise) {
+            void recorderStartPromise
+              .then((pendingRecorder) => pendingRecorder.cancel())
+              .catch((cancelError) => {
+                log.warn(
+                  "Failed to release pending audio capture session:",
+                  cancelError,
+                );
+              });
+          }
+        }
         if (
           localStreamingDictation &&
           localStreamingDictationRef.current === localStreamingDictation
