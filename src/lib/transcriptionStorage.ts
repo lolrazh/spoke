@@ -124,14 +124,6 @@ function ensureCache(): TranscriptionItem[] {
   return cache;
 }
 
-/**
- * Get all transcriptions from storage (most recent first)
- * Served from the validated in-memory cache.
- */
-export function getTranscriptions(): TranscriptionItem[] {
-  return ensureCache();
-}
-
 /** Return one bounded history page without copying the rest of the cache. */
 export function getTranscriptionsPage(
   offset = 0,

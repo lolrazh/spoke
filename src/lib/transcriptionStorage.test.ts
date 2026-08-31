@@ -63,7 +63,7 @@ describe("transcriptionStorage", () => {
   });
 
   it("prunes to the cap when saving beyond MAX_TRANSCRIPTION_HISTORY", async () => {
-    const { getTranscriptions, saveTranscription } = await loadModuleWith(
+    const { getTranscriptionsPage, saveTranscription } = await loadModuleWith(
       makeItems(MAX_TRANSCRIPTION_HISTORY),
     );
 
@@ -73,24 +73,31 @@ describe("transcriptionStorage", () => {
       mode: "dictation",
     });
 
-    const all = getTranscriptions();
-    expect(all).toHaveLength(MAX_TRANSCRIPTION_HISTORY);
-    expect(all[0].id).toBe(saved.id);
-    expect(all[0].text).toBe("newest");
+    const firstPage = getTranscriptionsPage(0, 100);
+    expect(firstPage.items).toHaveLength(100);
+    expect(firstPage.items[0].id).toBe(saved.id);
+    expect(firstPage.items[0].text).toBe("newest");
+
+    const lastPage = getTranscriptionsPage(MAX_TRANSCRIPTION_HISTORY - 100, 100);
+    expect(lastPage.items).toHaveLength(100);
+    expect(lastPage.hasMore).toBe(false);
   });
 
   it("truncates a legacy oversized file down to the cap once on first read", async () => {
-    const { getTranscriptions } = await loadModuleWith(
+    const { getTranscriptionsPage } = await loadModuleWith(
       makeItems(MAX_TRANSCRIPTION_HISTORY + 50),
     );
 
-    const all = getTranscriptions();
-    expect(all).toHaveLength(MAX_TRANSCRIPTION_HISTORY);
+    const firstPage = getTranscriptionsPage(0, 100);
+    expect(firstPage.items).toHaveLength(100);
     // The most-recent-first order is preserved: the head survives, the tail is cut.
-    expect(all[0].id).toBe("item-0");
-    expect(all[all.length - 1].id).toBe(
+    expect(firstPage.items[0].id).toBe("item-0");
+
+    const lastPage = getTranscriptionsPage(MAX_TRANSCRIPTION_HISTORY - 100, 100);
+    expect(lastPage.items[lastPage.items.length - 1].id).toBe(
       `item-${MAX_TRANSCRIPTION_HISTORY - 1}`,
     );
+    expect(lastPage.hasMore).toBe(false);
 
     // The truncation is persisted exactly once.
     expect(mocks.writeFileSync).toHaveBeenCalledTimes(1);
@@ -101,13 +108,12 @@ describe("transcriptionStorage", () => {
   });
 
   it("serves the second read from cache without re-reading or re-validating", async () => {
-    const { getTranscriptions } = await loadModuleWith(makeItems(10));
+    const { getTranscriptionsPage } = await loadModuleWith(makeItems(10));
 
-    const first = getTranscriptions();
-    const second = getTranscriptions();
+    const first = getTranscriptionsPage(0, 10);
+    const second = getTranscriptionsPage(0, 10);
 
-    // Same cached array instance handed back on both reads.
-    expect(second).toBe(first);
+    expect(second.items).toEqual(first.items);
     // The file was read exactly once.
     expect(mocks.readFileSync).toHaveBeenCalledTimes(1);
     // A clean, within-cap file is never rewritten on read.
@@ -129,15 +135,16 @@ describe("transcriptionStorage", () => {
   });
 
   it("drops corrupted items and persists the cleaned list once", async () => {
-    const { getTranscriptions } = await loadModuleWith([
+    const { getTranscriptionsPage } = await loadModuleWith([
       { id: "good", text: "keep me", timestamp: 1, mode: "dictation" },
       { id: "bad", text: "", timestamp: 2, mode: "dictation" },
       { id: "also-bad", timestamp: 3, mode: "dictation" },
     ]);
 
-    const all = getTranscriptions();
-    expect(all).toHaveLength(1);
-    expect(all[0].id).toBe("good");
+    const page = getTranscriptionsPage(0, 100);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].id).toBe("good");
+    expect(page.hasMore).toBe(false);
     expect(mocks.writeFileSync).toHaveBeenCalledTimes(1);
   });
 });
