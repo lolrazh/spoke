@@ -37,10 +37,23 @@ export class LocalChunkedDictation {
   private finished = false;
   private dispatchedChunkCount = 0;
   private readonly maxSamples: number;
+  private readonly minNaturalChunkSamples: number;
+  private readonly naturalChunkingStartSamples: number;
+  private readonly forcedChunkSamples: number;
 
   constructor(private readonly options: LocalChunkedDictationOptions) {
+    const samplesPerMs = options.sampleRateHz / 1000;
     this.maxSamples = Math.round(
       (options.maxDurationMs * options.sampleRateHz) / 1000,
+    );
+    this.minNaturalChunkSamples = Math.ceil(
+      options.minNaturalChunkMs * samplesPerMs,
+    );
+    this.naturalChunkingStartSamples = Math.ceil(
+      (options.naturalChunkingStartMs ?? 0) * samplesPerMs,
+    );
+    this.forcedChunkSamples = Math.ceil(
+      options.forcedChunkMs * samplesPerMs,
     );
   }
 
@@ -59,19 +72,16 @@ export class LocalChunkedDictation {
     this.freshSamples += acceptedFrame.length;
     this.totalSamples += acceptedFrame.length;
 
-    if (
-      !this.limitReached &&
-      this.totalDurationMs() >= this.options.maxDurationMs
-    ) {
+    if (!this.limitReached && this.totalSamples >= this.maxSamples) {
       this.limitReached = true;
       this.options.onLimitReached();
     }
 
-    if (this.pendingDurationMs() >= this.options.forcedChunkMs) {
+    if (this.pendingSamples >= this.forcedChunkSamples) {
       this.seal();
     } else if (
       this.naturalBoundaryReady &&
-      this.pendingDurationMs() >= this.options.minNaturalChunkMs
+      this.pendingSamples >= this.minNaturalChunkSamples
     ) {
       this.seal();
     }
@@ -81,7 +91,7 @@ export class LocalChunkedDictation {
   requestNaturalBoundary(): void {
     if (
       this.finished ||
-      this.totalDurationMs() < (this.options.naturalChunkingStartMs ?? 0)
+      this.totalSamples < this.naturalChunkingStartSamples
     ) {
       return;
     }
@@ -163,7 +173,7 @@ export class LocalChunkedDictation {
   }
 
   get durationMs(): number {
-    return this.totalDurationMs();
+    return (this.totalSamples / this.options.sampleRateHz) * 1000;
   }
 
   /** Whether recording has already moved onto the bounded streaming path. */
@@ -206,7 +216,7 @@ export class LocalChunkedDictation {
     if (
       !this.finished &&
       this.naturalBoundaryReady &&
-      this.pendingDurationMs() >= this.options.minNaturalChunkMs
+      this.pendingSamples >= this.minNaturalChunkSamples
     ) {
       this.seal();
     }
@@ -219,13 +229,6 @@ export class LocalChunkedDictation {
     }
   }
 
-  private pendingDurationMs(): number {
-    return (this.pendingSamples / this.options.sampleRateHz) * 1000;
-  }
-
-  private totalDurationMs(): number {
-    return (this.totalSamples / this.options.sampleRateHz) * 1000;
-  }
 }
 
 /** Join chunk results without repeating words generated from the overlap. */
