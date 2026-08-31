@@ -120,10 +120,8 @@ app.whenReady().then(async () => {
     initProviderStore(userDataPath);
   });
   bootTimeline.measureSync("startup:init-model-manager", () => {
-    // Broadcast model events to every window. The model install runs during
-    // onboarding, which lives in its own window (state.onboardingWindow) — sending
-    // only to state.mainWindow meant the onboarding progress bar received almost no
-    // updates and appeared to jump straight from ~0% to done.
+    // Broadcast model download progress to every window. The model install runs
+    // during onboarding, which lives in its own window.
     const broadcastToAllWindows = (channel: string, payload: unknown) => {
       try {
         BrowserWindow.getAllWindows().forEach((window) => {
@@ -139,9 +137,6 @@ app.whenReady().then(async () => {
     const PROGRESS_EMIT_INTERVAL_MS = 30;
 
     initModelManager({
-      onStatusChange: (status) => {
-        broadcastToAllWindows("stt:model-status-changed", status);
-      },
       onDownloadProgress: (progress) => {
         const now = Date.now();
         const isEndpoint = progress.progress <= 0 || progress.progress >= 1;

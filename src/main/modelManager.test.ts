@@ -107,7 +107,6 @@ const OTHER_INSTALLED_FILES = OTHER_ENTRY.manifest.files.map((f) => ({
 
 function makeCallbacks(): ModelManagerCallbacks {
   return {
-    onStatusChange: vi.fn(),
     onDownloadProgress: vi.fn(),
   };
 }
@@ -225,16 +224,6 @@ describe("modelManager", () => {
       expect(status.version).toBe(VERSION);
       expect(status.totalBytes).toBeGreaterThan(0);
       expect(status.error).toBeNull();
-    });
-
-    it("emits a status change for every known model during init", () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-
-      expect(cbs.onStatusChange).toHaveBeenCalledTimes(LOCAL_MODEL_IDS.length);
-      expect(cbs.onStatusChange).toHaveBeenCalledWith(
-        expect.objectContaining({ state: "not_installed" }),
-      );
     });
 
     it("activates the default model with no persisted state", () => {
@@ -441,18 +430,6 @@ describe("modelManager", () => {
       expect(fs.writeFileSync).toHaveBeenCalledWith(
         path.join(MOCK_LOCAL_STT_DIR, "model-state.json"),
         expect.any(String),
-      );
-    });
-
-    it("notifies via callback after removal", async () => {
-      const cbs = makeCallbacks();
-      initModelManager(cbs);
-      vi.mocked(cbs.onStatusChange).mockClear();
-
-      await removeModel();
-
-      expect(cbs.onStatusChange).toHaveBeenCalledWith(
-        expect.objectContaining({ state: "not_installed" }),
       );
     });
 
