@@ -48,15 +48,15 @@ const leadingThrottle = <T extends (...args: unknown[]) => void>(
   fn: T,
   delay: number,
 ) => {
-  let timeoutId: NodeJS.Timeout | null = null;
+  let lastInvokedAt = Number.NEGATIVE_INFINITY;
   return (...args: Parameters<T>) => {
-    if (timeoutId == null) {
-      fn(...args);
-      timeoutId = setTimeout(() => {
-        timeoutId = null;
-      }, delay);
-    }
-    // Ignore subsequent calls while throttled - do NOT reset the timeout
+    const now = globalThis.performance?.now?.() ?? Date.now();
+    if (now - lastInvokedAt < delay) return;
+
+    fn(...args);
+    // Start the throttle window after the callback, matching the old timer
+    // implementation without allocating a timer for every key event.
+    lastInvokedAt = globalThis.performance?.now?.() ?? Date.now();
   };
 };
 
