@@ -5,6 +5,7 @@
 import type {
   SelectionInspectSnapshot,
   ActiveDisplayPayload,
+  TranscriptionHistoryPage,
   TranscriptionItem,
   LocalTranscribeResult,
 } from "./shared";
@@ -285,6 +286,10 @@ declare global {
     };
     transcriptions: {
       getAll: () => Promise<TranscriptionItem[]>;
+      getPage: (
+        offset?: number,
+        limit?: number,
+      ) => Promise<TranscriptionHistoryPage>;
       save: (payload: {
         text: string;
         timestamp: number;

@@ -105,6 +105,11 @@ export type TranscriptionItem = {
   mode: "dictation" | "edit";
 };
 
+export type TranscriptionHistoryPage = {
+  items: TranscriptionItem[];
+  hasMore: boolean;
+};
+
 /**
  * Maximum number of transcription history items retained on disk and mirrored
  * in memory. Bounds the JSON store to a few hundred KB so full loads stay cheap.

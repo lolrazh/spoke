@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   ActiveDisplayPayload,
   MicDevice,
+  TranscriptionHistoryPage,
   TranscriptionItem,
 } from "./types/shared";
 
@@ -358,6 +359,8 @@ contextBridge.exposeInMainWorld("update", {
 contextBridge.exposeInMainWorld("transcriptions", {
   getAll: (): Promise<TranscriptionItem[]> =>
     ipcRenderer.invoke("transcriptions:get-all"),
+  getPage: (offset?: number, limit?: number): Promise<TranscriptionHistoryPage> =>
+    ipcRenderer.invoke("transcriptions:get-page", { offset, limit }),
   save: (payload: {
     text: string;
     timestamp: number;

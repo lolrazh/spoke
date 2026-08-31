@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   MAX_TRANSCRIPTION_HISTORY,
+  type TranscriptionHistoryPage,
   type TranscriptionItem,
 } from "../types/shared";
 
@@ -16,6 +17,8 @@ const storagePath = path.join(
   app.getPath("userData"),
   "transcription-history.json",
 );
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
 
 function readStore(): TranscriptionStoreSchema {
   try {
@@ -127,6 +130,26 @@ function ensureCache(): TranscriptionItem[] {
  */
 export function getTranscriptions(): TranscriptionItem[] {
   return ensureCache();
+}
+
+/** Return one bounded history page without copying the rest of the cache. */
+export function getTranscriptionsPage(
+  offset = 0,
+  limit = DEFAULT_PAGE_SIZE,
+): TranscriptionHistoryPage {
+  const transcriptions = ensureCache();
+  const safeOffset = Number.isFinite(offset)
+    ? Math.max(0, Math.floor(offset))
+    : 0;
+  const safeLimit = Number.isFinite(limit)
+    ? Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(limit)))
+    : DEFAULT_PAGE_SIZE;
+  const items = transcriptions.slice(safeOffset, safeOffset + safeLimit);
+
+  return {
+    items,
+    hasMore: safeOffset + items.length < transcriptions.length,
+  };
 }
 
 /**

@@ -13,6 +13,7 @@ import {
 
 import {
   getTranscriptions,
+  getTranscriptionsPage,
   saveTranscription,
   deleteTranscription,
 } from "../../lib/transcriptionStorage";
@@ -92,6 +93,15 @@ export function registerTranscriptIpc(): void {
       getTranscriptions(),
     );
   });
+
+  ipcMain.handle(
+    "transcriptions:get-page",
+    (_event, payload?: { offset?: number; limit?: number }) => {
+      return bootTimeline.measureSync("ipc:transcriptions:get-page", () =>
+        getTranscriptionsPage(payload?.offset, payload?.limit),
+      );
+    },
+  );
 
   ipcMain.handle(
     "transcriptions:save",

@@ -114,6 +114,20 @@ describe("transcriptionStorage", () => {
     expect(mocks.writeFileSync).not.toHaveBeenCalled();
   });
 
+  it("returns bounded pages and reports whether more history exists", async () => {
+    const { getTranscriptionsPage } = await loadModuleWith(makeItems(120));
+
+    const middle = getTranscriptionsPage(50, 50);
+    const last = getTranscriptionsPage(100, 50);
+
+    expect(middle.items).toHaveLength(50);
+    expect(middle.items[0].id).toBe("item-50");
+    expect(middle.hasMore).toBe(true);
+    expect(last.items).toHaveLength(20);
+    expect(last.items[0].id).toBe("item-100");
+    expect(last.hasMore).toBe(false);
+  });
+
   it("drops corrupted items and persists the cleaned list once", async () => {
     const { getTranscriptions } = await loadModuleWith([
       { id: "good", text: "keep me", timestamp: 1, mode: "dictation" },
