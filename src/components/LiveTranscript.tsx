@@ -15,10 +15,7 @@ import {
   getLiveTranscript,
   subscribeLiveTranscript,
 } from "../state/liveTranscript";
-import {
-  splitLiveTranscriptText,
-  type LiveTranscriptText,
-} from "./liveTranscriptText";
+import { splitLiveTranscriptText } from "./liveTranscriptText";
 
 export const LIVE_TRANSCRIPT_CARET_IDLE_MS = 480;
 
@@ -27,7 +24,6 @@ export type LiveTranscriptMetrics = {
 };
 
 type LiveTranscriptProps = {
-  text: string;
   isProcessing: boolean;
   textWidth: number;
   visibleTextHeight: number;
@@ -37,7 +33,7 @@ type LiveTranscriptProps = {
   onTextMetricsChange: (metrics: LiveTranscriptMetrics) => void;
 };
 
-type LiveTranscriptVisualProps = Omit<LiveTranscriptProps, "text">;
+type LiveTranscriptVisualProps = LiveTranscriptProps;
 
 type LiveTranscriptRefs = {
   committed: RefObject<HTMLSpanElement>;
@@ -195,10 +191,6 @@ export function LiveTranscriptFromStore(
   return (
     <LiveTranscriptMarkup
       {...props}
-      text=""
-      displayText={{ committed: "", tentative: "" }}
-      caretIdle={false}
-      imperativeText
       refs={{
         committed: committedRef,
         tentative: tentativeRef,
@@ -210,23 +202,14 @@ export function LiveTranscriptFromStore(
 }
 
 function LiveTranscriptMarkup({
-  text,
   isProcessing,
   textWidth,
   visibleTextHeight,
   railOffsetY,
   overflowing,
   reducedMotion,
-  displayText,
-  caretIdle,
   refs,
-  imperativeText = false,
-}: LiveTranscriptProps & {
-  displayText: LiveTranscriptText;
-  caretIdle: boolean;
-  refs: LiveTranscriptRefs;
-  imperativeText?: boolean;
-}) {
+}: LiveTranscriptProps & { refs: LiveTranscriptRefs }) {
   return (
     <m.div
       className="live-transcript"
@@ -260,11 +243,11 @@ function LiveTranscriptMarkup({
               : { duration: 0.14, ease: [0.2, 0, 0, 1] }
           }
         >
-          <span ref={refs.committed} className="live-transcript-committed">
-            {imperativeText ? null : displayText.committed}
-          </span>
+          <span
+            ref={refs.committed}
+            className="live-transcript-committed"
+          />
           <m.span
-            key={imperativeText ? undefined : displayText.committed}
             ref={refs.tentative}
             className="live-transcript-tentative"
             initial={reducedMotion ? false : { opacity: 0.72 }}
@@ -273,13 +256,11 @@ function LiveTranscriptMarkup({
               duration: reducedMotion ? 0 : 0.1,
               ease: "easeOut",
             }}
-          >
-            {imperativeText ? null : displayText.tentative}
-          </m.span>
+          />
           {!isProcessing && (
             <span
               ref={refs.caret}
-              className={`live-transcript-caret ${caretIdle ? "is-blinking" : ""}`}
+              className="live-transcript-caret"
             />
           )}
         </m.span>
@@ -289,9 +270,7 @@ function LiveTranscriptMarkup({
         ref={refs.measure}
         className="live-transcript-measure live-transcript-measure-wrapped"
         style={{ width: textWidth }}
-      >
-        {imperativeText ? null : text}
-      </span>
+      />
     </m.div>
   );
 }
