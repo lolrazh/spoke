@@ -70,6 +70,32 @@ describe("usePermissions", () => {
     expect(provider.checkScreenRecordingPermission).toHaveBeenCalledTimes(2);
   });
 
+  it("coalesces concurrent permission initializations", async () => {
+    const provider = createProvider();
+    const systemCheck = deferred<{
+      needAX?: boolean;
+      needIM?: boolean;
+      isDev?: boolean;
+    }>();
+    provider.checkPermissions = vi.fn(() => systemCheck.promise);
+    const { result } = renderHook(() =>
+      usePermissions(provider, { includeScreenRecording: true }),
+    );
+
+    const first = result.current.init();
+    const second = result.current.init();
+
+    expect(second).toBe(first);
+    expect(provider.checkPermissions).toHaveBeenCalledOnce();
+    expect(provider.checkMicrophonePermission).toHaveBeenCalledOnce();
+    expect(provider.checkScreenRecordingPermission).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      systemCheck.resolve({ needAX: false, needIM: false, isDev: false });
+      await first;
+    });
+  });
+
   it("does not overlap microphone permission polls", async () => {
     vi.useFakeTimers();
     try {

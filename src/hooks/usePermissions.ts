@@ -210,6 +210,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
   const permissionsRef = useRef(DEFAULT_PERMISSIONS);
   const loadedRef = useRef(false);
   const prevPermissionsRef = useRef<PermissionsState | null>(null);
+  const initPromiseRef = useRef<Promise<void> | null>(null);
   const timersRef = useRef<{
     mic: ReturnType<typeof setInterval> | null;
     sr: ReturnType<typeof setInterval> | null;
@@ -281,40 +282,51 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     };
   }, []);
 
-  const init = async () => {
-    try {
-      const [sys, mic, sr] = await Promise.all([
-        p.checkPermissions(),
-        p.checkMicrophonePermission(),
-        includeScreenRecording
-          ? p.checkScreenRecordingPermission()
-          : Promise.resolve({ granted: false, status: "disabled" }),
-      ]);
-      if (!mountedRef.current) return;
-      const nextPermissions: PermissionsState = {
-        microphone: !!mic?.granted,
-        screenRecording: includeScreenRecording ? !!sr?.granted : false,
-        inputMonitoring: !(sys?.needIM ?? true),
-        accessibility: !(sys?.needAX ?? true),
-      };
-      updatePermissions(nextPermissions);
-      debugPermLog("init:snapshot", {
-        needAX: sys?.needAX ?? true,
-        needIM: sys?.needIM ?? true,
-        micStatus: mic?.status ?? "unknown",
-        screenRecordingStatus: sr?.status ?? "unknown",
-        permissions: nextPermissions,
-      });
-    } catch {
-      // ignore; pollers/focus retries will recover
-    } finally {
-      // Mark loaded after the first attempt (success or failure) so the UI
-      // doesn't sit on a placeholder forever.
-      if (mountedRef.current && !loadedRef.current) {
-        loadedRef.current = true;
-        setLoaded(true);
+  const init = () => {
+    if (initPromiseRef.current) return initPromiseRef.current;
+
+    const promise = (async () => {
+      try {
+        const [sys, mic, sr] = await Promise.all([
+          p.checkPermissions(),
+          p.checkMicrophonePermission(),
+          includeScreenRecording
+            ? p.checkScreenRecordingPermission()
+            : Promise.resolve({ granted: false, status: "disabled" }),
+        ]);
+        if (!mountedRef.current) return;
+        const nextPermissions: PermissionsState = {
+          microphone: !!mic?.granted,
+          screenRecording: includeScreenRecording ? !!sr?.granted : false,
+          inputMonitoring: !(sys?.needIM ?? true),
+          accessibility: !(sys?.needAX ?? true),
+        };
+        updatePermissions(nextPermissions);
+        debugPermLog("init:snapshot", {
+          needAX: sys?.needAX ?? true,
+          needIM: sys?.needIM ?? true,
+          micStatus: mic?.status ?? "unknown",
+          screenRecordingStatus: sr?.status ?? "unknown",
+          permissions: nextPermissions,
+        });
+      } catch {
+        // ignore; pollers/focus retries will recover
+      } finally {
+        // Mark loaded after the first attempt (success or failure) so the UI
+        // doesn't sit on a placeholder forever.
+        if (mountedRef.current && !loadedRef.current) {
+          loadedRef.current = true;
+          setLoaded(true);
+        }
       }
-    }
+    })().finally(() => {
+      if (initPromiseRef.current === promise) {
+        initPromiseRef.current = null;
+      }
+    });
+
+    initPromiseRef.current = promise;
+    return promise;
   };
 
   const requestMicrophone = async () => {
