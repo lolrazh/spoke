@@ -61,6 +61,9 @@ export function LiveTranscriptFromStore(
   const committedTextRef = useRef<string | null>(null);
   const tentativeTextRef = useRef<string | null>(null);
   const measuredTextRef = useRef<string | null>(null);
+  const lastUpdatedTextRef = useRef<string | null>(null);
+  const lastUpdatedProcessingRef = useRef<boolean | null>(null);
+  const lastUpdatedReducedMotionRef = useRef<boolean | null>(null);
   latestPropsRef.current = props;
 
   const publishMeasuredHeight = useCallback((height: number) => {
@@ -102,6 +105,16 @@ export function LiveTranscriptFromStore(
 
   const updateText = useCallback((text: string) => {
     const { isProcessing, reducedMotion } = latestPropsRef.current;
+    if (
+      lastUpdatedTextRef.current === text &&
+      lastUpdatedProcessingRef.current === isProcessing &&
+      lastUpdatedReducedMotionRef.current === reducedMotion
+    ) {
+      return;
+    }
+    lastUpdatedTextRef.current = text;
+    lastUpdatedProcessingRef.current = isProcessing;
+    lastUpdatedReducedMotionRef.current = reducedMotion;
     const displayText = splitLiveTranscriptText(text, isProcessing);
 
     if (
