@@ -90,13 +90,6 @@ const groupItemsByDate = (items: HistoryItemData[]) => {
   return groups;
 };
 
-// Convert TranscriptionItem to HistoryItemData
-const toHistoryItem = (item: TranscriptionItem): HistoryItemData => ({
-  id: item.id,
-  text: item.text,
-  timestamp: item.timestamp,
-});
-
 const TranscriptionHistoryView: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<TranscriptionItem[]>(() =>
     getTranscriptionHistory(),
@@ -125,11 +118,11 @@ const TranscriptionHistoryView: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  // Map only the visible slice of items. Memoized so its identity is stable
-  // across renders where neither the list nor the paging cursor changed,
-  // which keeps the grouping memo below from recomputing needlessly.
+  // Keep the original item objects for the visible slice. TranscriptionItem
+  // already contains every field HistoryItem needs, so mapping here would
+  // allocate one new object per visible row on every list update.
   const visibleItems = React.useMemo(
-    () => historyItems.slice(0, displayedCount).map(toHistoryItem),
+    () => historyItems.slice(0, displayedCount),
     [historyItems, displayedCount],
   );
 
