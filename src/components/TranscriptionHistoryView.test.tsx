@@ -73,6 +73,11 @@ describe("TranscriptionHistoryView", () => {
     await waitFor(() =>
       expect(browserWrite).toHaveBeenCalledWith("Copied transcript text"),
     );
+    expect(
+      screen
+        .getByRole("button", { name: "Copy to clipboard" })
+        .querySelector("svg"),
+    ).toBeTruthy();
     expect(window.clipboard.writeText).not.toHaveBeenCalled();
   });
 

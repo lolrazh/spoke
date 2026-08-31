@@ -98,6 +98,10 @@ const TranscriptionHistoryView: React.FC = () => {
     getTranscriptionHistory(),
   );
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
+  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   // Track which items were in the initial batch (for animation skipping)
   const initialBatchIdsRef = useRef<Set<string>>(new Set());
@@ -118,6 +122,14 @@ const TranscriptionHistoryView: React.FC = () => {
   useEffect(() => {
     const unsubscribe = subscribeTranscriptionHistory(setHistoryItems);
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current !== null) {
+        clearTimeout(copiedResetTimerRef.current);
+      }
+    };
   }, []);
 
   // Memoize grouping since it does real work (Map creation, sorting). The
@@ -152,10 +164,22 @@ const TranscriptionHistoryView: React.FC = () => {
   }, [hasMore, historyItems.length, loadMore]);
 
   const handleCopy = useCallback(async (item: HistoryItemData) => {
+    const markCopied = () => {
+      setCopiedItemId(item.id);
+      if (copiedResetTimerRef.current !== null) {
+        clearTimeout(copiedResetTimerRef.current);
+      }
+      copiedResetTimerRef.current = setTimeout(() => {
+        copiedResetTimerRef.current = null;
+        setCopiedItemId(null);
+      }, 1500);
+    };
+
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(item.text);
-        return true;
+        markCopied();
+        return;
       }
     } catch (error) {
       console.warn("[History] Browser clipboard write failed:", error);
@@ -163,10 +187,11 @@ const TranscriptionHistoryView: React.FC = () => {
 
     try {
       const result = await window.clipboard?.writeText?.(item.text);
-      return result?.ok === true;
+      if (result?.ok === true) {
+        markCopied();
+      }
     } catch (error) {
       console.warn("[History] Electron clipboard write failed:", error);
-      return false;
     }
   }, []);
 
@@ -208,6 +233,7 @@ const TranscriptionHistoryView: React.FC = () => {
               key={item.id}
               item={item}
               onCopy={handleCopy}
+              copied={copiedItemId === item.id}
               skipAnimation={shouldSkipAnimation(item.id)}
             />
           ))}

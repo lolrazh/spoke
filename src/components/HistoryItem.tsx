@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React from "react";
 import { m } from "framer-motion";
 import SfIcon from "./icons/SfIcon";
 import IconButton from "./ui/IconButton";
@@ -12,9 +12,8 @@ export interface HistoryItemData {
 
 interface HistoryItemProps {
   item: HistoryItemData;
-  onCopy: (
-    item: HistoryItemData,
-  ) => void | boolean | Promise<void | boolean>;
+  onCopy: (item: HistoryItemData) => void | Promise<void>;
+  copied: boolean;
   skipAnimation?: boolean;
 }
 
@@ -31,33 +30,10 @@ const formatTime = (timestamp: number): string => {
 const HistoryItemInner: React.FC<HistoryItemProps> = ({
   item,
   onCopy,
+  copied,
   skipAnimation = false,
 }) => {
-  const [copied, setCopied] = useState(false);
-  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-
-  useEffect(() => {
-    return () => {
-      if (copiedResetTimerRef.current !== null) {
-        clearTimeout(copiedResetTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = async () => {
-    const result = await onCopy(item);
-    if (result === false) return;
-    setCopied(true);
-    if (copiedResetTimerRef.current !== null) {
-      clearTimeout(copiedResetTimerRef.current);
-    }
-    copiedResetTimerRef.current = setTimeout(() => {
-      copiedResetTimerRef.current = null;
-      setCopied(false);
-    }, 1500);
-  };
+  const handleCopy = () => void onCopy(item);
 
   const content = (
     <>
@@ -153,6 +129,7 @@ const HistoryItem = React.memo(HistoryItemInner, (prev, next) => {
     prev.item.id === next.item.id &&
     prev.item.text === next.item.text &&
     prev.item.timestamp === next.item.timestamp &&
+    prev.copied === next.copied &&
     prev.skipAnimation === next.skipAnimation
   );
 });
