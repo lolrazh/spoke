@@ -137,14 +137,20 @@ function defaultStatus(modelId: string): ModelStatus {
 }
 
 function setStatus(modelId: string, partial: Partial<ModelStatus>): void {
-  const current = statuses.get(modelId) ?? defaultStatus(modelId);
-  const next = { ...current, ...partial };
-  statuses.set(modelId, next);
+  let current = statuses.get(modelId);
+  if (!current) {
+    current = defaultStatus(modelId);
+    statuses.set(modelId, current);
+  }
+  const previousState = current.state;
+  Object.assign(current, partial);
   // Progress-only updates use the throttled download channel. Broadcast only
   // state transitions so renderers can update without polling.
-  if (next.state === current.state) return;
+  if (current.state === previousState) return;
   try {
-    callbacks.onStatusChange(next);
+    // Keep the internal status object private. A transition callback may be
+    // retained by an IPC layer while later download chunks mutate `current`.
+    callbacks.onStatusChange({ ...current });
   } catch {}
 }
 
