@@ -37,6 +37,7 @@ let idleTimer: NodeJS.Timeout | null = null;
 let transcriptionsInFlight = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
 let prewarmGeneration = 0;
+let queuedPrewarmGeneration: number | null = null;
 let activePrewarm: {
   generation: number;
   cancelled: boolean;
@@ -183,20 +184,38 @@ function queueLocalSidecarPrewarm(
   generation: number,
   waitBeforeStart: Promise<void>,
 ): void {
+  if (
+    queuedPrewarmGeneration === generation ||
+    activePrewarm?.generation === generation
+  ) {
+    return;
+  }
+
+  queuedPrewarmGeneration = generation;
+  const releaseQueuedPrewarm = () => {
+    if (queuedPrewarmGeneration === generation) {
+      queuedPrewarmGeneration = null;
+    }
+  };
   void enqueueLifecycle(async () => {
     try {
       await waitBeforeStart;
     } catch (error) {
       logPrewarmFailure(reason, error);
+      releaseQueuedPrewarm();
       return;
     }
-    if (generation !== prewarmGeneration) return;
+    if (generation !== prewarmGeneration) {
+      releaseQueuedPrewarm();
+      return;
+    }
 
     const modelId = getActiveModelId();
     if (
       !isPreferredProviderLocal() ||
       getModelInstallState(modelId) !== "ready"
     ) {
+      releaseQueuedPrewarm();
       return;
     }
 
@@ -230,6 +249,7 @@ function queueLocalSidecarPrewarm(
       logPrewarmFailure(reason, err);
     } finally {
       if (activePrewarm === task) activePrewarm = null;
+      releaseQueuedPrewarm();
     }
   });
 }

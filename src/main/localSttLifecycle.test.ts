@@ -336,6 +336,20 @@ describe("localSttLifecycle", () => {
     expect(mocks.setAutoRestart).not.toHaveBeenCalled();
   });
 
+  it("coalesces repeated prewarm requests while startup is queued", async () => {
+    const { prewarmLocalSidecar } = await importLifecycle();
+
+    prewarmLocalSidecar("ptt-down");
+    prewarmLocalSidecar("renderer");
+    prewarmLocalSidecar("ptt-down");
+
+    await vi.waitFor(() => {
+      expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
+    });
+
+    expect(mocks.spawnSidecar).toHaveBeenCalledWith("current-model");
+  });
+
   it("does not prewarm when provider is not local", async () => {
     mocks.isPreferredProviderLocal.mockReturnValue(false);
     const { prewarmLocalSidecar } = await importLifecycle();
