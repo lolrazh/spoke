@@ -432,7 +432,6 @@ function scheduleMainWindowPostReadyWork(): void {
   }, 50);
   trayTimer.unref?.();
 
-  scheduleLocalSidecarPrewarm("renderer-ready", 250);
 }
 
 export const createWindow = () => {

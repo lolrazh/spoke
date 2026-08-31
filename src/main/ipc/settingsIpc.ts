@@ -30,7 +30,6 @@ import {
   getDisplayForWindow,
   computeScaleForDisplay,
   emitActiveDisplayInfo,
-  scheduleLocalSidecarPrewarm,
 } from "../windows";
 import { createTray } from "../tray";
 import { startFnListener, startHelperIfIMGranted } from "../fnListener";
@@ -161,8 +160,6 @@ export function registerSettingsIpc(): void {
 
     // Schedule background update check ~60s after onboarding completes (with jitter)
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
-    scheduleLocalSidecarPrewarm("post-onboarding", 250);
-
     // Renderer will show any post-sign-in notification; keep main focused on window.
   });
 
