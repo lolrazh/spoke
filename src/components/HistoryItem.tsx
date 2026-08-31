@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { m, AnimatePresence } from "framer-motion";
 import SfIcon from "./icons/SfIcon";
 import IconButton from "./ui/IconButton";
@@ -34,12 +34,29 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
   skipAnimation = false,
 }) => {
   const [copied, setCopied] = useState(false);
+  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current !== null) {
+        clearTimeout(copiedResetTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleCopy = async () => {
     const result = await onCopy(item);
     if (result === false) return;
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copiedResetTimerRef.current !== null) {
+      clearTimeout(copiedResetTimerRef.current);
+    }
+    copiedResetTimerRef.current = setTimeout(() => {
+      copiedResetTimerRef.current = null;
+      setCopied(false);
+    }, 1500);
   };
 
   return (
