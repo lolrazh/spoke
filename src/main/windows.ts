@@ -74,6 +74,7 @@ let followCursorInterval: NodeJS.Timeout | null = null;
 let followCursorActive = false;
 let coalesceTimer: NodeJS.Timeout | null = null;
 let pendingBounds: Rectangle | null = null;
+let lastFollowCursorPoint: Point | null = null;
 
 export function getDisplayForPoint(point: Point): Display {
   return screen.getDisplayNearestPoint(point);
@@ -254,10 +255,18 @@ function runFollowCursorInterval(): void {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
   }
+  lastFollowCursorPoint = null;
   // 5 Hz polling to reduce CPU usage while still tracking display changes
   followCursorInterval = setInterval(() => {
     try {
       const point = screen.getCursorScreenPoint();
+      if (
+        lastFollowCursorPoint?.x === point.x &&
+        lastFollowCursorPoint?.y === point.y
+      ) {
+        return;
+      }
+      lastFollowCursorPoint = point;
       const display = getDisplayForPoint(point);
       if (display.id !== state.activeDisplayId) {
         state.activeDisplayId = display.id;
@@ -278,6 +287,7 @@ function pauseFollowCursorInterval(): void {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
   }
+  lastFollowCursorPoint = null;
 }
 
 export function startFollowCursor(): void {
@@ -312,6 +322,7 @@ function pauseFollowCursorOnHide(): void {
 
 export function syncToCurrentDisplay(): void {
   try {
+    lastFollowCursorPoint = null;
     // On OS display changes, select display based on current window location
     const display = getDisplayForWindow();
     state.activeDisplayId = display.id;
