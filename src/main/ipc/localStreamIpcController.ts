@@ -6,6 +6,7 @@ import type {
 
 import type { LocalTranscribeResult } from "../../types/shared";
 import type { ManagedLocalStreamingSession } from "../localSttLifecycle";
+import { boundLiveTranscriptText } from "../../utils/liveTranscriptText";
 
 type BeginLocalStream = (
   modelId: string,
@@ -65,13 +66,17 @@ export class LocalStreamIpcController {
     record.removeOwnerListeners = this.watchOwner(record);
 
     try {
+      let lastVisiblePartial: string | null = null;
       const session = await this.begin(
         modelId,
         (text) => {
           if (this.current !== record || owner.isDestroyed()) return;
+          const visibleText = boundLiveTranscriptText(text);
+          if (visibleText === lastVisiblePartial) return;
+          lastVisiblePartial = visibleText;
           owner.send("stt:local-stream-partial", {
             sessionId: record.id,
-            text,
+            text: visibleText,
           });
         },
         record.abortController.signal,
