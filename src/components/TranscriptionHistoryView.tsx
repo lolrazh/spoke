@@ -214,7 +214,7 @@ const TranscriptionHistoryView: React.FC = () => {
             <div key={item.id}>
               <HistoryItem
                 item={item}
-                onCopy={() => handleCopy(item)}
+                onCopy={handleCopy}
                 skipAnimation={shouldSkipAnimation(item.id)}
               />
               {/* Don't show border after last item */}

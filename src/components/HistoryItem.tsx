@@ -12,7 +12,9 @@ export interface HistoryItemData {
 
 interface HistoryItemProps {
   item: HistoryItemData;
-  onCopy: () => void | boolean | Promise<void | boolean>;
+  onCopy: (
+    item: HistoryItemData,
+  ) => void | boolean | Promise<void | boolean>;
   skipAnimation?: boolean;
 }
 
@@ -34,7 +36,7 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    const result = await onCopy();
+    const result = await onCopy(item);
     if (result === false) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
