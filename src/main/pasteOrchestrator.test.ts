@@ -50,7 +50,8 @@ vi.mock("./windowState", () => ({
 }));
 
 import { clipboard } from "electron";
-import { applyAutoSpace, insertTextAtCursor } from "./pasteOrchestrator";
+import { insertTextAtCursor } from "./pasteOrchestrator";
+import { applyAutoSpace } from "./contextualDictationFormatter";
 import { inspectFocusedSelection } from "./selectionInspect";
 import { state } from "./windowState";
 

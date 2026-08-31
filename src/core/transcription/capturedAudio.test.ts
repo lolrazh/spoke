@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CAPTURED_AUDIO_CHANNEL_COUNT,
   CAPTURED_AUDIO_SAMPLE_RATE_HZ,
-  concatPcm16,
   createCapturedAudio,
   encodeCapturedAudioAsWav,
   encodePcm16Wav,
@@ -39,17 +38,6 @@ describe("capturedAudio", () => {
   it("computes PCM16 duration from sample count and sample rate", () => {
     expect(getPcm16DurationMs(16_000)).toBe(1000);
     expect(getPcm16DurationMs(24_000, 48_000)).toBe(500);
-  });
-
-  it("concatenates PCM chunks without mutating inputs", () => {
-    const first = new Int16Array([1, 2]);
-    const second = new Int16Array([-3, 4, 5]);
-
-    const result = concatPcm16([first, new Int16Array(0), second]);
-
-    expect(Array.from(result)).toEqual([1, 2, -3, 4, 5]);
-    expect(Array.from(first)).toEqual([1, 2]);
-    expect(Array.from(second)).toEqual([-3, 4, 5]);
   });
 
   it("normalizes trim ranges by clamping to available samples", () => {

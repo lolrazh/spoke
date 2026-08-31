@@ -32,6 +32,22 @@ let fnRestartTimeout: NodeJS.Timeout | null = null;
 let fnPermissionDenied = false;
 let fnStdoutBuffer = ""; // Buffer for incomplete lines from spoke-helper stdout
 
+function consumeFnStdoutLines(
+  buffer: string,
+  onLine: (line: string) => void,
+): string {
+  let lineStart = 0;
+  let lineEnd = buffer.indexOf("\n");
+
+  while (lineEnd !== -1) {
+    onLine(buffer.slice(lineStart, lineEnd));
+    lineStart = lineEnd + 1;
+    lineEnd = buffer.indexOf("\n", lineStart);
+  }
+
+  return lineStart === 0 ? buffer : buffer.slice(lineStart);
+}
+
 // ── Shutdown helper ────────────────────────────────────────────────────
 
 /** Clears any pending restart timer. Called during app shutdown. */
@@ -147,14 +163,8 @@ export function startFnListener() {
       // Append chunk to buffer to handle commands split across boundaries
       fnStdoutBuffer += chunk;
 
-      // Process complete lines
-      const lines = fnStdoutBuffer.split(/\r?\n/);
-
-      // Keep the last (potentially incomplete) line in the buffer
-      fnStdoutBuffer = lines.pop() || "";
-
-      // Process complete lines
-      lines.forEach((line: string) => {
+      // Process complete lines without allocating an intermediate line array.
+      fnStdoutBuffer = consumeFnStdoutLines(fnStdoutBuffer, (line) => {
         const trimmedLine = line.trim();
         if (!trimmedLine) return; // Skip empty lines
 
@@ -204,15 +214,6 @@ export function startFnListener() {
             mirrorWindow !== targetWindow
           )
             mirrorWindow.webContents.send("ptt-up");
-        } else if (trimmedLine === "cmdR-down") {
-          // Right Command: visual press state only
-          targetWindow?.webContents.send("ptt-cancel-down");
-          if (
-            state.pttTarget === "main" &&
-            mirrorWindow &&
-            mirrorWindow !== targetWindow
-          )
-            mirrorWindow.webContents.send("ptt-cancel-down");
         } else if (trimmedLine === "cmdR-up") {
           // Right Command: trigger cancel on release
           targetWindow?.webContents.send("ptt-cancel");

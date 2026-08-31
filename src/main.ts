@@ -1,7 +1,6 @@
 import {
   app,
   BrowserWindow,
-  screen,
   session,
   globalShortcut,
   Notification,
@@ -121,10 +120,8 @@ app.whenReady().then(async () => {
     initProviderStore(userDataPath);
   });
   bootTimeline.measureSync("startup:init-model-manager", () => {
-    // Broadcast model events to every window. The model install runs during
-    // onboarding, which lives in its own window (state.onboardingWindow) — sending
-    // only to state.mainWindow meant the onboarding progress bar received almost no
-    // updates and appeared to jump straight from ~0% to done.
+    // Broadcast model download progress to every window. The model install runs
+    // during onboarding, which lives in its own window.
     const broadcastToAllWindows = (channel: string, payload: unknown) => {
       try {
         BrowserWindow.getAllWindows().forEach((window) => {
@@ -133,22 +130,11 @@ app.whenReady().then(async () => {
       } catch {}
     };
 
-    // Throttle high-frequency download chunks (~thousands for a 442MB file),
-    // but always emit the endpoints so the bar reliably reaches 0% and 100%.
-    // Keyed per modelId so concurrent installs don't starve each other's bars.
-    const lastProgressEmit = new Map<string, number>();
-    const PROGRESS_EMIT_INTERVAL_MS = 30;
-
     initModelManager({
       onStatusChange: (status) => {
         broadcastToAllWindows("stt:model-status-changed", status);
       },
       onDownloadProgress: (progress) => {
-        const now = Date.now();
-        const isEndpoint = progress.progress <= 0 || progress.progress >= 1;
-        const last = lastProgressEmit.get(progress.modelId) ?? 0;
-        if (!isEndpoint && now - last < PROGRESS_EMIT_INTERVAL_MS) return;
-        lastProgressEmit.set(progress.modelId, now);
         broadcastToAllWindows("stt:model-download-progress", progress);
       },
     });
@@ -239,52 +225,58 @@ app.whenReady().then(async () => {
     console.error("[STT] Failed to sync sidecar on startup:", err);
   });
 
-  const isDev = !app.isPackaged;
+  const isPackaged = app.isPackaged;
+  const isDev = !isPackaged;
   console.log("[Main Process] Setting up renderer security headers...");
+  const styleSrc = "style-src 'self' 'unsafe-inline'";
+  const fontSrc = "font-src 'self' data:";
+  const connect = [
+    "connect-src 'self'",
+    "https://api.openai.com",
+    "https://api.groq.com",
+    "https://api.deepgram.com",
+    ...(isDev
+      ? [
+          "http://localhost:*",
+          "http://127.0.0.1:*",
+          "ws://localhost:*",
+          "ws://127.0.0.1:*",
+        ]
+      : []),
+    "blob:",
+    "data:",
+  ].join(" ");
+
+  // ORT Web needs WASM compilation for local VAD. Keep JS eval blocked.
+  const scriptSrc = [
+    "script-src 'self'",
+    "'wasm-unsafe-eval'",
+    ...(isDev ? ["'unsafe-inline'"] : []),
+  ].join(" ");
+  const imgSrc = "img-src 'self' data:";
+  const csp = [
+    "default-src 'self'",
+    connect,
+    scriptSrc,
+    styleSrc,
+    imgSrc,
+    fontSrc,
+  ].join("; ");
+  const rendererSecurityHeaders: Record<string, string> = {
+    "Content-Security-Policy": csp,
+    ...(isPackaged
+      ? {
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Embedder-Policy": "require-corp",
+        }
+      : {}),
+  };
+
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    const styleSrc = "style-src 'self' 'unsafe-inline'";
-    const fontSrc = "font-src 'self' data:";
-    const connect = [
-      "connect-src 'self'",
-      "https://api.openai.com",
-      "https://api.groq.com",
-      "https://api.deepgram.com",
-      ...(isDev
-        ? [
-            "http://localhost:*",
-            "http://127.0.0.1:*",
-            "ws://localhost:*",
-            "ws://127.0.0.1:*",
-          ]
-        : []),
-      "blob:",
-      "data:",
-    ].join(" ");
-
-    // ORT Web needs WASM compilation for local VAD. Keep JS eval blocked.
-    const scriptSrc = [
-      "script-src 'self'",
-      "'wasm-unsafe-eval'",
-      ...(isDev ? ["'unsafe-inline'"] : []),
-    ].join(" ");
-    const imgSrc = "img-src 'self' data:";
-    const csp = [
-      "default-src 'self'",
-      connect,
-      scriptSrc,
-      styleSrc,
-      imgSrc,
-      fontSrc,
-    ].join("; ");
-
     const headers: Record<string, string | string[]> = {
       ...details.responseHeaders,
-      "Content-Security-Policy": csp,
+      ...rendererSecurityHeaders,
     };
-    if (app.isPackaged) {
-      headers["Cross-Origin-Opener-Policy"] = "same-origin";
-      headers["Cross-Origin-Embedder-Policy"] = "require-corp";
-    }
 
     callback({ responseHeaders: headers });
   });

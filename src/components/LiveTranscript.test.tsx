@@ -4,12 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   LIVE_TRANSCRIPT_CARET_IDLE_MS,
-  LiveTranscript,
+  LiveTranscriptFromStore,
 } from "./LiveTranscript";
+import {
+  getLiveTranscript,
+  setLiveTranscript,
+} from "../state/liveTranscript";
+import { MAX_LIVE_TRANSCRIPT_DOM_CHARS } from "./liveTranscriptText";
 
 vi.mock("./FrequencyBars", () => ({
   default: () => <div />,
   ListeningFrequencyBars: () => <div />,
+  ProcessingFrequencyBars: () => <div />,
 }));
 
 const commonProps = {
@@ -23,17 +29,32 @@ const commonProps = {
 };
 
 describe("LiveTranscript caret", () => {
+  let pendingFrame: FrameRequestCallback | null = null;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    pendingFrame = null;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrame = callback;
+      return 1;
+    });
+    act(() => setLiveTranscript(""));
   });
 
   afterEach(() => {
+    act(() => {
+      setLiveTranscript("");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
   it("blinks only after an idle gap and becomes solid on new text", () => {
+    act(() => setLiveTranscript("Hello"));
     const { container, rerender } = render(
-      <LiveTranscript {...commonProps} text="Hello" />,
+      <LiveTranscriptFromStore {...commonProps} />,
     );
     const caret = container.querySelector(".live-transcript-caret");
 
@@ -50,13 +71,29 @@ describe("LiveTranscript caret", () => {
     });
     expect(caret?.classList.contains("is-blinking")).toBe(true);
 
-    rerender(<LiveTranscript {...commonProps} text="Hello world" />);
+    act(() => {
+      setLiveTranscript("Hello world");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
     expect(caret?.classList.contains("is-blinking")).toBe(false);
+
+    const timerCount = vi.getTimerCount();
+    act(() => {
+      setLiveTranscript("Hello world again");
+      setLiveTranscript("Hello world again and again");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+    expect(vi.getTimerCount()).toBe(timerCount);
+
+    rerender(<LiveTranscriptFromStore {...commonProps} />);
   });
 
   it("does not blink with reduced motion and hides while processing", () => {
+    act(() => setLiveTranscript("Hello"));
     const { container, rerender } = render(
-      <LiveTranscript {...commonProps} text="Hello" reducedMotion />,
+      <LiveTranscriptFromStore {...commonProps} reducedMotion />,
     );
 
     act(() => {
@@ -69,8 +106,87 @@ describe("LiveTranscript caret", () => {
     ).toBe(false);
 
     rerender(
-      <LiveTranscript {...commonProps} text="Hello" isProcessing />,
+      <LiveTranscriptFromStore {...commonProps} isProcessing />,
     );
     expect(container.querySelector(".live-transcript-caret")).toBeNull();
+  });
+});
+
+describe("live transcript store", () => {
+  let pendingFrame: FrameRequestCallback | null = null;
+  let nextFrameId = 0;
+
+  beforeEach(() => {
+    pendingFrame = null;
+    nextFrameId = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrame = callback;
+      return ++nextFrameId;
+    });
+  });
+
+  afterEach(() => {
+    act(() => {
+      setLiveTranscript("");
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+    vi.restoreAllMocks();
+  });
+
+  it("updates the production leaf without rendering for each hypothesis", () => {
+    let renderCount = 0;
+    function Probe() {
+      renderCount += 1;
+      return <LiveTranscriptFromStore {...commonProps} />;
+    }
+
+    const { container } = render(<Probe />);
+    expect(renderCount).toBe(1);
+
+    act(() => {
+      setLiveTranscript("Hello");
+      setLiveTranscript("Hello world");
+    });
+
+    expect(renderCount).toBe(1);
+    expect(getLiveTranscript()).toBe("Hello world");
+    expect(
+      container.querySelector(".live-transcript-measure")?.textContent,
+    ).toBe("");
+
+    act(() => {
+      pendingFrame?.(16);
+      pendingFrame = null;
+    });
+
+    expect(renderCount).toBe(1);
+    expect(
+      container.querySelector(".live-transcript-measure")?.textContent,
+    ).toBe("Hello world");
+    expect(
+      container.querySelector(".live-transcript-tentative")?.textContent,
+    ).toBe("world");
+  });
+
+  it("bounds the live transcript DOM to the recent tail", () => {
+    const text = Array.from({ length: 500 }, () => "word").join(" ");
+    const { container } = render(
+      <LiveTranscriptFromStore {...commonProps} />,
+    );
+
+    act(() => {
+      setLiveTranscript(text);
+      pendingFrame?.(0);
+      pendingFrame = null;
+    });
+
+    expect(
+      container.querySelector(".live-transcript-measure")?.textContent
+        ?.length,
+    ).toBeLessThanOrEqual(MAX_LIVE_TRANSCRIPT_DOM_CHARS);
+    expect(
+      container.querySelector(".live-transcript-rail")?.textContent?.length,
+    ).toBeLessThanOrEqual(MAX_LIVE_TRANSCRIPT_DOM_CHARS);
   });
 });

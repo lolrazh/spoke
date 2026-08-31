@@ -73,7 +73,8 @@ describe("fnListener paste pre-spawn", () => {
     const { startFnListener } = await import("./fnListener");
 
     startFnListener();
-    functionKeyProcess.stdout.emit("data", "optR-down\noptR-up\n");
+    functionKeyProcess.stdout.emit("data", "optR-down");
+    functionKeyProcess.stdout.emit("data", "\noptR-up\n");
 
     expect(mocks.preSpawnPasteHelper).toHaveBeenCalledOnce();
     expect(mocks.killPasteDaemon).not.toHaveBeenCalled();

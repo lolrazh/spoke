@@ -1,6 +1,6 @@
 import { encodeCapturedAudioAsWav, type CapturedAudio } from "../capturedAudio";
 
-export const CLOUD_TRANSCRIPTION_AUDIO_MIME_TYPE = "audio/wav";
+const CLOUD_TRANSCRIPTION_AUDIO_MIME_TYPE = "audio/wav";
 
 export interface CloudTranscriptionAudioPayload {
   audioBuffer: ArrayBuffer;

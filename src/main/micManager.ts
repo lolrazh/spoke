@@ -31,10 +31,6 @@ export function getMicDevices(): MicDevice[] {
   return micDevices;
 }
 
-export function getMicPreferences(): MicPreferences {
-  return micPreferences;
-}
-
 export function getSelectedMicId(): string {
   return micPreferences.selectedMicId || "default";
 }
@@ -81,7 +77,7 @@ export function selectMicDevice(deviceId: string): void {
   broadcastMicSelection();
 }
 
-export function broadcastMicSelection(): void {
+function broadcastMicSelection(): void {
   const selectedId = micPreferences.selectedMicId || "default";
   console.log("[MicMgmt] Broadcasting selection:", selectedId);
 

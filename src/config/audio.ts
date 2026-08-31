@@ -7,9 +7,9 @@
 // Keep small to balance responsiveness vs. completeness
 export const POST_ROLL_MS = 240;
 
-// Canonical local capture format. 30 ms aligns with Silero VAD windows.
+// Canonical local capture format. 96 ms is one complete Silero VAD window.
 export const TARGET_SAMPLE_RATE_HZ = 16000;
-export const PCM_CAPTURE_FRAME_MS = 30;
+const PCM_CAPTURE_FRAME_MS = 96;
 export const PCM_CAPTURE_FRAME_SAMPLES =
   (TARGET_SAMPLE_RATE_HZ * PCM_CAPTURE_FRAME_MS) / 1000;
 
@@ -29,4 +29,3 @@ export const LOCAL_STT_CHUNK_OVERLAP_MS = 750;
 // extra pause makes the effective natural-boundary guard about 1.4s, close to
 // the later legacy implementation's 1.5s sentence pause.
 export const LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS = 1200;
-export const LOCAL_STT_MAX_REQUEST_MS = 30 * 1000;

@@ -47,6 +47,89 @@ describe("LocalStreamingDictation", () => {
     expect(Array.from(first.slice(18, 22))).toEqual([1, 1, 2, 2]);
   });
 
+  it("waits for an in-flight batch before finalization", async () => {
+    let resolvePush!: () => void;
+    const pushFinished = new Promise<void>((resolve) => {
+      resolvePush = resolve;
+    });
+    window.stt.pushLocalStream = vi.fn(() => pushFinished);
+
+    const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
+      sampleRateHz: 100,
+      batchMs: 320,
+      maxDurationMs: 5_000,
+      onPartial: vi.fn(),
+      onLimitReached: vi.fn(),
+    });
+    await stream.start();
+    stream.pushFrame(new Int16Array(32));
+
+    const finishing = stream.finish();
+    await Promise.resolve();
+    expect(window.stt.finishLocalStream).not.toHaveBeenCalled();
+
+    resolvePush();
+    await finishing;
+    expect(window.stt.finishLocalStream).toHaveBeenCalledWith("stream-1");
+  });
+
+  it("reuses a completed full batch buffer after its send resolves", async () => {
+    let releaseFirst!: () => void;
+    let releaseSecond!: () => void;
+    const firstPush = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const secondPush = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const pushedBuffers: ArrayBuffer[] = [];
+    let pushCount = 0;
+    window.stt.pushLocalStream = vi.fn((_sessionId, buffer) => {
+      pushedBuffers.push(buffer);
+      pushCount += 1;
+      return pushCount === 1
+        ? firstPush
+        : pushCount === 2
+          ? secondPush
+          : Promise.resolve();
+    });
+
+    const stream = new LocalStreamingDictation({
+      modelId: "nemotron",
+      sampleRateHz: 100,
+      batchMs: 320,
+      maxDurationMs: 5_000,
+      onPartial: vi.fn(),
+      onLimitReached: vi.fn(),
+    });
+    await stream.start();
+    stream.pushFrame(new Int16Array(32));
+    expect(pushedBuffers).toHaveLength(1);
+
+    stream.pushFrame(new Int16Array(32));
+    expect(pushedBuffers).toHaveLength(1);
+
+    releaseFirst();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pushedBuffers).toHaveLength(2);
+    expect(pushedBuffers[1]).not.toBe(pushedBuffers[0]);
+    expect(
+      (stream as unknown as { queuedBatches: Int16Array[] }).queuedBatches[0],
+    ).toHaveLength(0);
+
+    releaseSecond();
+    await Promise.resolve();
+    await Promise.resolve();
+    stream.pushFrame(new Int16Array(32));
+    stream.pushFrame(new Int16Array(32));
+    await stream.finish();
+
+    expect(pushedBuffers).toHaveLength(4);
+    expect(pushedBuffers[3]).toBe(pushedBuffers[1]);
+  });
+
   it("forwards only partials for its session", async () => {
     const onPartial = vi.fn();
     const stream = new LocalStreamingDictation({

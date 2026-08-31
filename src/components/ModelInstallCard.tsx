@@ -6,7 +6,7 @@ import SettingsCard, { CardTrailing } from "./SettingsCard";
 import IconButton from "./ui/IconButton";
 import ProgressRing from "./ui/ProgressRing";
 import { glyphForFamily } from "./ModelGlyph";
-import { DownloadGlyph } from "./SettingsPanel";
+import DownloadGlyph from "./DownloadGlyph";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) {
@@ -79,10 +79,10 @@ interface ModelInstallCardProps {
   status: ModelStatus;
   isActive: boolean;
   loaded: boolean;
-  onInstall: () => void;
-  onRemove: () => void;
-  onCancel: () => void;
-  onActivate: () => void;
+  onInstall: (modelId: string) => void;
+  onRemove: (modelId: string) => void;
+  onCancel: (modelId: string) => void;
+  onActivate: (modelId: string) => void;
   inGroup?: boolean;
 }
 
@@ -138,7 +138,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
       // Every loaded card highlights on hover for visual consistency; this is
       // decoupled from clickability, so the active (inert) row still lights up.
       interactive={loaded}
-      onClick={rowClick}
+      onClick={rowClick ? () => rowClick(info.modelId) : undefined}
     >
       <div className="ml-2 flex items-center justify-end">
         <AnimatePresence mode="wait" initial={false}>
@@ -222,7 +222,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                 action={
                   status.state === "ready" ? (
                     <TrashAction
-                      onClick={onRemove}
+                      onClick={() => onRemove(info.modelId)}
                       title="Uninstall"
                       ariaLabel="Uninstall model"
                     />
@@ -230,7 +230,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
                     // Same reveal trash, but mid-install it cancels the download
                     // (which resets the model to not_installed).
                     <TrashAction
-                      onClick={onCancel}
+                      onClick={() => onCancel(info.modelId)}
                       title="Cancel download"
                       ariaLabel="Cancel download"
                     />
@@ -250,7 +250,7 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
               <Button
                 type="button"
                 size="sm"
-                onClick={onInstall}
+                onClick={() => onInstall(info.modelId)}
                 className="text-xs onboarding-cta"
               >
                 Repair
@@ -263,4 +263,4 @@ const ModelInstallCard: React.FC<ModelInstallCardProps> = ({
   );
 };
 
-export default ModelInstallCard;
+export default React.memo(ModelInstallCard);

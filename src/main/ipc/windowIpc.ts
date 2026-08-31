@@ -1,17 +1,17 @@
 /**
  * Window IPC
  *
- * Pill window controls: expand/reveal, the pill's right-click context menu,
- * slide/bounds updates, click-through & focusable toggles, floating-bar
+ * Pill window controls: onboarding test reveal, the pill's right-click context menu,
+ * bounds updates, click-through & focusable toggles, floating-bar
  * visibility, and dock icon visibility.
  */
 
-import { app, BrowserWindow, ipcMain, Menu, screen } from "electron";
+import { app, ipcMain, Menu, screen } from "electron";
 
-import { ISLAND_HIDDEN_Y, ISLAND_VISIBLE_Y } from "../../constants/window";
+import { ISLAND_VISIBLE_Y } from "../../constants/window";
 import { logger } from "../../utils/logger";
 import { state } from "../windowState";
-import { createWindow, getActiveDisplay, coalescedSetBounds } from "../windows";
+import { createWindow } from "../windows";
 import { rebuildTrayMenu, buildPillContextMenu } from "../tray";
 import { smoothShow, smoothHide } from "../windowAnimation";
 import {
@@ -22,101 +22,6 @@ import {
 import { saveAppPreferences } from "../preferences";
 
 export function registerWindowIpc(): void {
-  // Allow other windows (onboarding) to request the pill to expand without directly moving the window
-  ipcMain.handle("pill:expand", () => {
-    try {
-      if (!state.mainWindow || state.mainWindow.isDestroyed()) {
-        createWindow();
-      }
-      if (!state.mainWindow) return { ok: false };
-
-      // Bring pill to visible top-aligned position and reveal
-      const current = state.mainWindow.getBounds();
-      const display = screen.getDisplayMatching(current);
-      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
-      const needMove = current.y !== targetY;
-      if (needMove) {
-        state.mainWindow.setBounds(
-          {
-            x: current.x,
-            y: targetY,
-            width: current.width,
-            height: current.height,
-          },
-          false,
-        );
-        if (process.platform === "darwin") state.mainWindow.invalidateShadow();
-      }
-      // Only run fade-in if currently hidden to avoid flicker
-      if (!state.mainWindow.isVisible()) {
-        smoothShow(state.mainWindow);
-      }
-
-      // Ask renderer to expand the pill UI
-      state.mainWindow.webContents.send("expand-pill");
-      return { ok: true };
-    } catch (e) {
-      console.warn("[pill:expand] Failed to expand pill:", e);
-      return { ok: false };
-    }
-  });
-
-  // Reveal the pill without expanding (used by onboarding test steps)
-  ipcMain.handle("pill:reveal", () => {
-    try {
-      if (!state.mainWindow || state.mainWindow.isDestroyed()) {
-        createWindow();
-      }
-      if (!state.mainWindow) return { ok: false };
-
-      // During onboarding, ensure pill stays hidden and below the top edge
-      if (state.pttTarget === "onboarding") {
-        const current = state.mainWindow.getBounds();
-        const display = screen.getDisplayMatching(current);
-        const hideY = display.bounds.y + ISLAND_HIDDEN_Y;
-        if (current.y !== hideY) {
-          state.mainWindow.setBounds(
-            {
-              x: current.x,
-              y: hideY,
-              width: current.width,
-              height: current.height,
-            },
-            false,
-          );
-          if (process.platform === "darwin")
-            state.mainWindow.invalidateShadow();
-        }
-        // Do not show the window while onboarding owns the flow
-        return { ok: true };
-      }
-
-      const current = state.mainWindow.getBounds();
-      const display = screen.getDisplayMatching(current);
-      const targetY = display.workArea.y + ISLAND_VISIBLE_Y;
-      const needMove = current.y !== targetY;
-      if (needMove) {
-        state.mainWindow.setBounds(
-          {
-            x: current.x,
-            y: targetY,
-            width: current.width,
-            height: current.height,
-          },
-          false,
-        );
-        if (process.platform === "darwin") state.mainWindow.invalidateShadow();
-      }
-      if (!state.mainWindow.isVisible()) {
-        smoothShow(state.mainWindow);
-      }
-      return { ok: true };
-    } catch (e) {
-      console.warn("[pill:reveal] Failed to reveal pill:", e);
-      return { ok: false };
-    }
-  });
-
   // Reveal pill specifically for onboarding test steps (compact, no expansion)
   ipcMain.handle("pill:reveal-for-test", () => {
     try {
@@ -155,15 +60,6 @@ export function registerWindowIpc(): void {
   ipcMain.on("show-pill-context-menu", () => {
     console.log("[IPC Main] Received show-pill-context-menu event");
     if (state.mainWindow) {
-      // Send refresh request to renderer processes before showing menu to ensure device list is current
-      BrowserWindow.getAllWindows().forEach((window) => {
-        console.log(
-          "[Pill Menu] Sending mic:refresh-devices to window:",
-          window.id,
-        );
-        window.webContents.send("mic:refresh-devices");
-      });
-
       const menuTemplate = buildPillContextMenu();
       const contextMenu = Menu.buildFromTemplate(menuTemplate);
       contextMenu.popup({ window: state.mainWindow });
@@ -175,24 +71,6 @@ export function registerWindowIpc(): void {
     console.log("[IPC Main] Received expand-pill event");
     if (state.mainWindow) {
       state.mainWindow.webContents.send("expand-pill");
-    }
-  });
-
-  // Removed legacy explicit show/hide handlers in favor of island-slide and state-driven visibility
-
-  ipcMain.on("island-slide", (_e, y) => {
-    if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-      const display = getActiveDisplay();
-      const current = state.mainWindow.getBounds();
-      const newY = display.bounds.y + y; // slide offset relative to target display
-      // Only change Y during slide to avoid compositor thrash; X is handled on display change/envelope resize
-      const target = {
-        x: current.x,
-        y: newY,
-        width: current.width,
-        height: current.height,
-      };
-      coalescedSetBounds(target);
     }
   });
 
@@ -288,14 +166,14 @@ export function registerWindowIpc(): void {
   );
 
   // Handle dynamic click-through control
-  ipcMain.on("set-click-through", (event, clickThrough: boolean) => {
+  ipcMain.on("set-click-through", (_event, clickThrough: boolean) => {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
       state.mainWindow.setIgnoreMouseEvents(clickThrough, { forward: true });
     }
   });
 
   // Allow renderer to toggle focusable during expanded settings mode
-  ipcMain.on("set-focusable", (event, focusable: boolean) => {
+  ipcMain.on("set-focusable", (_event, focusable: boolean) => {
     try {
       if (state.mainWindow && !state.mainWindow.isDestroyed()) {
         // setFocusable is a no-op on some platforms; call defensively

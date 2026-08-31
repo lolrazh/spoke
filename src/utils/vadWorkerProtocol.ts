@@ -10,6 +10,12 @@ export interface VadWorkerSegment {
   endMs: number;
 }
 
+export interface VadWorkerProcessResult {
+  events: VadWorkerEvent[];
+  /** The input buffer, returned after the worker no longer needs it. */
+  frame: Float32Array;
+}
+
 export type VadWorkerRequest =
   | {
       id: number;
@@ -21,7 +27,7 @@ export type VadWorkerRequest =
       id: number;
       type: "process";
       frameIndex: number;
-      frame: ArrayBuffer;
+      frame: Float32Array;
     }
   | {
       id: number;
@@ -37,6 +43,7 @@ export type VadWorkerRequest =
 
 export type VadWorkerResult =
   | undefined
+  | VadWorkerProcessResult
   | VadWorkerEvent[]
   | VadWorkerSegment[];
 

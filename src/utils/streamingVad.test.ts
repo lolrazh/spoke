@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Message } from "@ricky0123/vad-web";
 import { createStreamingVadSession } from "./streamingVad";
 import type { VadWorkerClient } from "./vadWorkerClient";
-import type { VadWorkerEvent } from "./vadWorkerProtocol";
+import type {
+  VadWorkerEvent,
+  VadWorkerProcessResult,
+} from "./vadWorkerProtocol";
 import {
   createCapturedAudio,
   pcm16ToFloat32,
@@ -77,7 +80,10 @@ function createWorkerForFrameProcessor(
           events.push({ type: "misfire", frameIndex });
         }
       });
-      return events;
+      return {
+        events,
+        frame,
+      } satisfies VadWorkerProcessResult;
     }),
     finish: vi.fn(async (frameIndex: number) => {
       const events: Array<{
@@ -145,6 +151,96 @@ describe("streamingVad", () => {
 
     expect(fp.process).toHaveBeenCalledTimes(3);
     expect(fp.process.mock.calls[2][0]).toHaveLength(1536);
+  });
+
+  it("reuses a processed model window buffer for the next window", async () => {
+    const fp = createManualFrameProcessor();
+    useFrameProcessor(fp);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+    const firstWindow = fp.process.mock.calls[0][0] as Float32Array;
+
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+    const secondWindow = fp.process.mock.calls[1][0] as Float32Array;
+
+    expect(secondWindow.buffer).toBe(firstWindow.buffer);
+    session.dispose();
+  });
+
+  it("keeps one completed window in the recycle slot", async () => {
+    const fp = createManualFrameProcessor();
+    useFrameProcessor(fp);
+
+    const session = createStreamingVadSession();
+    await flush();
+    session.pushFrame(new Int16Array(1536));
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    const internals = session as unknown as {
+      recycledWindow: Float32Array | null;
+    };
+    expect(internals.recycledWindow).toBeInstanceOf(Float32Array);
+    session.dispose();
+  });
+
+  it("releases completed window references while a backlog is still processing", async () => {
+    let processCount = 0;
+    let releaseFirst: (() => void) | undefined;
+    let releaseSecond: (() => void) | undefined;
+    const fp = createManualFrameProcessor((frame, handleEvent) => {
+      processCount += 1;
+      return new Promise<void>((resolve) => {
+        if (processCount === 1) {
+          releaseFirst = () => {
+            handleEvent({
+              msg: Message.FrameProcessed,
+              probs: { isSpeech: 0, notSpeech: 1 },
+              frame,
+            });
+            resolve();
+          };
+        } else {
+          releaseSecond = () => {
+            handleEvent({
+              msg: Message.FrameProcessed,
+              probs: { isSpeech: 0, notSpeech: 1 },
+              frame,
+            });
+            resolve();
+          };
+        }
+      });
+    });
+    useFrameProcessor(fp);
+
+    const session = createStreamingVadSession();
+    await flush();
+    session.pushFrame(new Int16Array(1536));
+    session.pushFrame(new Int16Array(1536));
+    await flush();
+
+    expect(releaseFirst).toBeTypeOf("function");
+    releaseFirst!();
+    await flush();
+
+    const internals = session as unknown as {
+      pendingWindows: Array<{ frame: Float32Array }>;
+      pendingWindowStart: number;
+    };
+    expect(internals.pendingWindowStart).toBe(2);
+    expect(internals.pendingWindows[0].frame).toHaveLength(0);
+    expect(internals.pendingWindows[1].frame).toHaveLength(1536);
+
+    expect(releaseSecond).toBeTypeOf("function");
+    releaseSecond!();
+    await flush();
+    session.dispose();
   });
 
   it("notifies boundary consumers when speech starts and ends", async () => {
@@ -319,6 +415,24 @@ describe("streamingVad", () => {
     expect(worker.dispose).toHaveBeenCalledOnce();
     await expect(session.finish(createCapturedAudio(new Int16Array(1600)))).resolves.toBeNull();
     expect(worker.finish).not.toHaveBeenCalled();
+    expect(worker.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("falls back when the worker backlog reaches its memory bound", async () => {
+    const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
+    worker.processFrame = vi.fn().mockReturnValue(
+      new Promise<VadWorkerProcessResult>(() => undefined),
+    );
+    mocks.createVadWorkerClient.mockReturnValue(worker);
+
+    const session = createStreamingVadSession();
+    await flush();
+
+    for (let i = 0; i < 65; i++) {
+      session.pushFrame(new Int16Array(1536));
+    }
+
+    expect(session.isUsable()).toBe(false);
     expect(worker.dispose).toHaveBeenCalledOnce();
   });
 

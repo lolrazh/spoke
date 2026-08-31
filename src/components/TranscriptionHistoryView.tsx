@@ -9,30 +9,31 @@ import {
 import {
   subscribeTranscriptionHistory,
   getTranscriptionHistory,
+  hasMoreTranscriptionHistory,
+  loadMoreTranscriptionHistory,
 } from "../state/transcriptionHistory";
 import type { TranscriptionItem } from "../types/shared";
 
-/** Number of items to load per batch */
-const PAGE_SIZE = 50;
+const INITIAL_ANIMATED_ITEM_COUNT = 8;
+const MONTH_LABELS = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+];
 
 // Helper function to format date as "MMM DD, YYYY" in caps
 const formatDateLabel = (timestamp: number): string => {
   const date = new Date(timestamp);
-  const months = [
-    "JAN",
-    "FEB",
-    "MAR",
-    "APR",
-    "MAY",
-    "JUN",
-    "JUL",
-    "AUG",
-    "SEP",
-    "OCT",
-    "NOV",
-    "DEC",
-  ];
-  const month = months[date.getMonth()];
+  const month = MONTH_LABELS[date.getMonth()];
   const day = date.getDate();
   const year = date.getFullYear();
   return `${month} ${day}, ${year}`;
@@ -77,10 +78,12 @@ const groupItemsByDate = (items: HistoryItemData[]) => {
       sortKey = dayStart;
     }
 
-    if (!groupMap.has(label)) {
-      groupMap.set(label, { label, items: [], sortKey });
+    let group = groupMap.get(label);
+    if (!group) {
+      group = { label, items: [], sortKey };
+      groupMap.set(label, group);
     }
-    groupMap.get(label)!.items.push(item);
+    group.items.push(item);
   });
 
   // Convert to array and sort by date (most recent first)
@@ -90,29 +93,25 @@ const groupItemsByDate = (items: HistoryItemData[]) => {
   return groups;
 };
 
-// Convert TranscriptionItem to HistoryItemData
-const toHistoryItem = (item: TranscriptionItem): HistoryItemData => ({
-  id: item.id,
-  text: item.text,
-  timestamp: item.timestamp,
-  mode: item.mode,
-});
-
 const TranscriptionHistoryView: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<TranscriptionItem[]>(() =>
     getTranscriptionHistory(),
   );
-  const [displayedCount, setDisplayedCount] = useState(PAGE_SIZE);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [copiedItemId, setCopiedItemId] = useState<string | null>(null);
+  const copiedResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
-  // Track which items were in the initial batch (for animation skipping)
+  // Animate only the first visible-range rows. The rest of the first page is
+  // already below the scroll window and should mount without motion work.
   const initialBatchIdsRef = useRef<Set<string>>(new Set());
 
   // Initialize the initial batch IDs on first render
   useEffect(() => {
     if (initialBatchIdsRef.current.size === 0 && historyItems.length > 0) {
       const initialIds = historyItems
-        .slice(0, PAGE_SIZE)
+        .slice(0, INITIAL_ANIMATED_ITEM_COUNT)
         .map((item) => item.id);
       initialBatchIdsRef.current = new Set(initialIds);
     }
@@ -126,25 +125,26 @@ const TranscriptionHistoryView: React.FC = () => {
     return unsubscribe;
   }, []);
 
-  // Map only the visible slice of items. Memoized so its identity is stable
-  // across renders where neither the list nor the paging cursor changed,
-  // which keeps the grouping memo below from recomputing needlessly.
-  const visibleItems = React.useMemo(
-    () => historyItems.slice(0, displayedCount).map(toHistoryItem),
-    [historyItems, displayedCount],
-  );
+  useEffect(() => {
+    return () => {
+      if (copiedResetTimerRef.current !== null) {
+        clearTimeout(copiedResetTimerRef.current);
+      }
+    };
+  }, []);
 
-  // Memoize grouping since it does real work (Map creation, sorting)
+  // Memoize grouping since it does real work (Map creation, sorting). The
+  // store already pages the list, so every item here is intended for display.
   const groupedItems = React.useMemo(() => {
-    return groupItemsByDate(visibleItems);
-  }, [visibleItems]);
+    return groupItemsByDate(historyItems);
+  }, [historyItems]);
 
   // Load more items when scrolling to bottom
   const loadMore = useCallback(() => {
-    setDisplayedCount((prev) =>
-      Math.min(prev + PAGE_SIZE, historyItems.length),
-    );
-  }, [historyItems.length]);
+    return loadMoreTranscriptionHistory();
+  }, []);
+
+  const hasMore = hasMoreTranscriptionHistory();
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -153,8 +153,8 @@ const TranscriptionHistoryView: React.FC = () => {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && displayedCount < historyItems.length) {
-          loadMore();
+        if (entries[0]?.isIntersecting && hasMore) {
+          void loadMore();
         }
       },
       { rootMargin: "100px" }, // Start loading 100px before reaching the bottom
@@ -162,15 +162,25 @@ const TranscriptionHistoryView: React.FC = () => {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [displayedCount, historyItems.length, loadMore]);
-
-  const hasMore = displayedCount < historyItems.length;
+  }, [hasMore, historyItems.length, loadMore]);
 
   const handleCopy = useCallback(async (item: HistoryItemData) => {
+    const markCopied = () => {
+      setCopiedItemId(item.id);
+      if (copiedResetTimerRef.current !== null) {
+        clearTimeout(copiedResetTimerRef.current);
+      }
+      copiedResetTimerRef.current = setTimeout(() => {
+        copiedResetTimerRef.current = null;
+        setCopiedItemId(null);
+      }, 1500);
+    };
+
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(item.text);
-        return true;
+        markCopied();
+        return;
       }
     } catch (error) {
       console.warn("[History] Browser clipboard write failed:", error);
@@ -178,10 +188,11 @@ const TranscriptionHistoryView: React.FC = () => {
 
     try {
       const result = await window.clipboard?.writeText?.(item.text);
-      return result?.ok === true;
+      if (result?.ok === true) {
+        markCopied();
+      }
     } catch (error) {
       console.warn("[History] Electron clipboard write failed:", error);
-      return false;
     }
   }, []);
 
@@ -218,16 +229,14 @@ const TranscriptionHistoryView: React.FC = () => {
     >
       {groupedItems.map((group) => (
         <DateGroup key={group.label} label={group.label}>
-          {group.items.map((item, index) => (
-            <div key={item.id}>
-              <HistoryItem
-                item={item}
-                onCopy={() => handleCopy(item)}
-                skipAnimation={shouldSkipAnimation(item.id)}
-              />
-              {/* Don't show border after last item */}
-              {index === group.items.length - 1 && <div className="h-0" />}
-            </div>
+          {group.items.map((item) => (
+            <HistoryItem
+              key={item.id}
+              item={item}
+              onCopy={handleCopy}
+              copied={copiedItemId === item.id}
+              skipAnimation={shouldSkipAnimation(item.id)}
+            />
           ))}
         </DateGroup>
       ))}
@@ -247,4 +256,4 @@ const TranscriptionHistoryView: React.FC = () => {
   );
 };
 
-export default TranscriptionHistoryView;
+export default React.memo(TranscriptionHistoryView);

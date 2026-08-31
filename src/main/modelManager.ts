@@ -19,7 +19,6 @@ import {
   isKnownModelId,
   LOCAL_MODEL_IDS,
   LOCAL_MODEL_MANIFEST_VERSION,
-  LOCAL_MODELS,
   resolveLocalModelId,
 } from "./localModelContract";
 import type {
@@ -75,6 +74,9 @@ const installedFiles = new Map<string, InstalledModelFile[]>();
 // In-flight installs, so a download can be cancelled. Keyed by modelId; the
 // entry is cleared in installModel's `finally`.
 const installAborts = new Map<string, AbortController>();
+// Keep high-frequency network chunks inside the main process. The renderer
+// only needs progress at a paint-friendly rate, not once per response chunk.
+const DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS = 30;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -138,16 +140,20 @@ function defaultStatus(modelId: string): ModelStatus {
 }
 
 function setStatus(modelId: string, partial: Partial<ModelStatus>): void {
-  const current = statuses.get(modelId) ?? defaultStatus(modelId);
-  const next = { ...current, ...partial };
-  statuses.set(modelId, next);
-  // The in-memory status is always kept current, but the broadcast (which fans
-  // out to every window) only fires on an actual state transition. Progress-only
-  // updates during a download flow through the throttled onDownloadProgress
-  // channel instead, avoiding thousands of redundant broadcasts per download.
-  if (next.state === current.state) return;
+  let current = statuses.get(modelId);
+  if (!current) {
+    current = defaultStatus(modelId);
+    statuses.set(modelId, current);
+  }
+  const previousState = current.state;
+  Object.assign(current, partial);
+  // Progress-only updates use the throttled download channel. Broadcast only
+  // state transitions so renderers can update without polling.
+  if (current.state === previousState) return;
   try {
-    callbacks.onStatusChange(next);
+    // Keep the internal status object private. A transition callback may be
+    // retained by an IPC layer while later download chunks mutate `current`.
+    callbacks.onStatusChange({ ...current });
   } catch {}
 }
 
@@ -577,6 +583,7 @@ export async function installModel(modelId?: string): Promise<void> {
     persistState();
 
     let totalDownloaded = 0;
+    let lastProgressEmitAt = 0;
     const completedFileBytes = new Map<string, number>();
 
     for (const file of manifest.files) {
@@ -596,9 +603,20 @@ export async function installModel(modelId?: string): Promise<void> {
             downloadedBytes: totalDownloaded,
             totalBytes: totalSize,
           });
+
+          const nextProgress = Math.min(progress, 1);
+          const now = Date.now();
+          const isEndpoint = nextProgress <= 0 || nextProgress >= 1;
+          if (
+            !isEndpoint &&
+            now - lastProgressEmitAt < DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS
+          ) {
+            return;
+          }
+          lastProgressEmitAt = now;
           callbacks.onDownloadProgress({
             modelId: id,
-            progress: Math.min(progress, 1),
+            progress: nextProgress,
             downloadedBytes: totalDownloaded,
             totalBytes: totalSize,
           });

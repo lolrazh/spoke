@@ -9,5 +9,4 @@ export interface AudioCaptureSession {
   start(stream?: MediaStream): Promise<void>;
   stop(): Promise<CapturedAudio>;
   cancel(): void;
-  discardBufferedPcm(): void;
 }

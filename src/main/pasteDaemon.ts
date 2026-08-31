@@ -80,7 +80,7 @@ export function preSpawnPasteHelper(): void {
 }
 
 /** Returns the pre-spawned helper if alive, or null */
-export function getPreSpawnedHelper(): ChildProcess | null {
+function getPreSpawnedHelper(): ChildProcess | null {
   if (preSpawnedHelper && !preSpawnedHelper.killed) {
     return preSpawnedHelper;
   }
@@ -88,14 +88,21 @@ export function getPreSpawnedHelper(): ChildProcess | null {
 }
 
 /** Wait for the daemon to signal readiness (with timeout) */
-export async function waitForReady(timeoutMs = 300): Promise<void> {
-  if (!readyPromise) return;
-  try {
-    await Promise.race([
-      readyPromise,
-      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
-    ]);
-  } catch {}
+async function waitForReady(timeoutMs = 300): Promise<void> {
+  const ready = readyPromise;
+  if (!ready) return;
+
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve();
+    };
+    const timeout = setTimeout(finish, timeoutMs);
+    ready.then(finish, finish);
+  });
 }
 
 /**
@@ -110,20 +117,24 @@ export async function pasteViaDaemon(): Promise<boolean> {
   helper.stdin?.write("paste\n");
 
   await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = (message: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      helper.stdout?.off("data", onData);
+      console.log(message);
+      resolve();
+    };
     const onData = (data: Buffer) => {
-      const output = data.toString().trim();
-      if (output === "paste-done") {
-        helper.stdout?.off("data", onData);
-        console.log(`[PasteHelper] Pre-spawned helper completed paste`);
-        resolve();
+      if (data.toString().includes("paste-done")) {
+        finish(`[PasteHelper] Pre-spawned helper completed paste`);
       }
     };
     helper.stdout?.on("data", onData);
 
-    setTimeout(() => {
-      helper.stdout?.off("data", onData);
-      console.log(`[PasteHelper] Pre-spawned helper timeout, assuming success`);
-      resolve();
+    const timeout = setTimeout(() => {
+      finish(`[PasteHelper] Pre-spawned helper timeout, assuming success`);
     }, 1000);
   });
 

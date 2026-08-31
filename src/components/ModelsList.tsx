@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useModels } from "../hooks/useModels";
 import ModelInstallCard from "./ModelInstallCard";
 
@@ -11,13 +11,24 @@ import ModelInstallCard from "./ModelInstallCard";
  * onboarding (`inGroup={false}`) each card stands alone with its own border, so
  * a parent can space them out as two distinct stacked cards.
  */
-const ModelsList: React.FC<{ enabled?: boolean; inGroup?: boolean }> = ({
-  enabled,
-  inGroup = true,
-}) => {
-  const { rows, install, remove, cancel, setActive, loaded } = useModels({
-    enabled,
-  });
+const ModelsList: React.FC<{
+  enabled?: boolean;
+  inGroup?: boolean;
+  onActiveModelReadyChange?: (ready: boolean) => void;
+}> = ({ enabled, inGroup = true, onActiveModelReadyChange }) => {
+  const {
+    rows,
+    activeStatus,
+    install,
+    remove,
+    cancel,
+    setActive,
+    loaded,
+  } = useModels({ enabled });
+
+  useEffect(() => {
+    onActiveModelReadyChange?.(activeStatus?.state === "ready");
+  }, [activeStatus?.state, onActiveModelReadyChange]);
 
   return (
     <>
@@ -28,10 +39,10 @@ const ModelsList: React.FC<{ enabled?: boolean; inGroup?: boolean }> = ({
           status={row.status}
           isActive={row.isActive}
           loaded={loaded}
-          onInstall={() => install(row.info.modelId)}
-          onRemove={() => remove(row.info.modelId)}
-          onCancel={() => cancel(row.info.modelId)}
-          onActivate={() => setActive(row.info.modelId)}
+          onInstall={install}
+          onRemove={remove}
+          onCancel={cancel}
+          onActivate={setActive}
           inGroup={inGroup}
         />
       ))}
@@ -39,4 +50,4 @@ const ModelsList: React.FC<{ enabled?: boolean; inGroup?: boolean }> = ({
   );
 };
 
-export default ModelsList;
+export default React.memo(ModelsList);

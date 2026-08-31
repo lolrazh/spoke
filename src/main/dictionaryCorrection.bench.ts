@@ -1,5 +1,4 @@
 import { bench, describe } from "vitest";
-import subtlexWords from "subtlex-word-frequencies";
 import { correctTranscript } from "./dictionaryCorrection";
 
 // correctTranscript logs every correction via console; under a benchmark that
@@ -7,12 +6,6 @@ import { correctTranscript } from "./dictionaryCorrection";
 // so silence it to measure the algorithm rather than terminal throughput.
 // eslint-disable-next-line no-console
 console.info = () => undefined;
-
-// Same skip-list correctTranscript uses internally, so generated adversarial
-// tokens can be filtered to guarantee they are NOT common words.
-const COMMON_WORDS = new Set(
-  subtlexWords.slice(0, 30000).map((e) => e.word.toLowerCase()),
-);
 
 function makeRng(seed: number): () => number {
   let a = seed >>> 0;
@@ -52,7 +45,7 @@ function genTokens(count: number, seed: number, min: number, max: number): strin
   while (tokens.length < count) {
     const len = min + Math.floor(rng() * (max - min + 1));
     const w = pronounceable(rng, len);
-    if (w.length >= 4 && !COMMON_WORDS.has(w)) tokens.push(w);
+    if (w.length >= 4) tokens.push(w);
   }
   return tokens;
 }

@@ -19,9 +19,8 @@ import { MIN_UI_SCALE, MAX_UI_SCALE } from "../constants/display";
 import { TOKENS } from "../config/uiTokens";
 import {
   PermissionsProvider,
-  usePermissionsController,
+  useMissingPermissions,
 } from "../state/permissionsContext";
-import { initTranscriptionHistory } from "../state/transcriptionHistory";
 import { usePttGestures } from "../hooks/usePttGestures";
 import {
   usePermissionNotifications,
@@ -63,7 +62,10 @@ const AppInner: React.FC = () => {
     window.electron?.bootMark?.("app-render");
   }
   const [debugInfo, setDebugInfo] = useState<PillMetrics | null>(null);
-  const [showDebug, setShowDebug] = useState(false);
+  const [showDebug] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return new URLSearchParams(window.location.search).has("debugPill");
+  });
   const [uiScale, setUiScale] = useState(1);
   const [notchWidth, setNotchWidth] = useState<number | null>(null);
   const [settingsPanelMeasured, setSettingsPanelMeasured] = useState(false);
@@ -73,12 +75,13 @@ const AppInner: React.FC = () => {
     useState(false);
   const [permissionsPanelContentHeight, setPermissionsPanelContentHeight] =
     useState(PERMISSIONS_CONTENT_HEIGHT);
-  const { missingPermissions } = usePermissionsController();
+  const missingPermissions = useMissingPermissions();
   const [panelView, setPanelView] = useState<"settings" | "permissions">(
     "settings",
   );
   const autoPermissionsRef = useRef(false);
   const lastMissingCountRef = useRef<number>(missingPermissions.length);
+  const wasProcessingRef = useRef(false);
 
   // Permission notification logic extracted into hook for cleaner callback dependencies
   const {
@@ -101,33 +104,25 @@ const AppInner: React.FC = () => {
     (height: number) => {
       if (!Number.isFinite(height) || height <= 0) return;
       const normalized = Math.round(height);
-      if (!settingsPanelMeasured) setSettingsPanelMeasured(true);
+      setSettingsPanelMeasured(true);
       setSettingsPanelContentHeight((prev) =>
         prev === normalized ? prev : normalized,
       );
     },
-    [settingsPanelMeasured],
+    [],
   );
 
   const handlePermissionsPanelHeight = useCallback(
     (height: number) => {
       if (!Number.isFinite(height) || height <= 0) return;
       const normalized = Math.round(height);
-      if (!permissionsPanelMeasured) setPermissionsPanelMeasured(true);
+      setPermissionsPanelMeasured(true);
       setPermissionsPanelContentHeight((prev) =>
         prev === normalized ? prev : normalized,
       );
     },
-    [permissionsPanelMeasured],
+    [],
   );
-
-  // Initialize always-on client state on app start
-  useEffect(() => {
-    window.electron?.bootMark?.("app-effect:init-history");
-    initTranscriptionHistory().catch(() => {
-      // Ignore initialization errors; app can function without history
-    });
-  }, []);
 
   useLayoutEffect(() => {
     window.electron?.bootMark?.("app-layout-effect");
@@ -189,9 +184,7 @@ const AppInner: React.FC = () => {
 
   // Only open mic during dictation
   const trans = useTranscription({
-    autoEnumerateDevices: true,
     autoInitStream: false,
-    requestLabelPermissionForEnumeration: false,
   });
   // Width for notification (measured offscreen)
   const [notifWidth, setNotifWidth] = useState<number | null>(null);
@@ -206,20 +199,12 @@ const AppInner: React.FC = () => {
   }>({ active: false, message: "" });
 
   const pushTrace = useCallback((msg: string) => {
+    if (!showDebug) return;
     setTrace((t) => [
       `${performance.now().toFixed(0)}: ${msg}`,
       ...t.slice(0, 15),
     ]);
-  }, []);
-
-  useEffect(() => {
-    pushTrace(`Mode: ${trans.mode}`);
-  }, [trans.mode, pushTrace]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setShowDebug(params.has("debugPill"));
-  }, []);
+  }, [showDebug]);
 
   // Listen for active display updates from main (provides computed scale and stored notch width)
   useEffect(() => {
@@ -233,8 +218,6 @@ const AppInner: React.FC = () => {
       const nextNotchWidth =
         storedWidth && storedWidth > 0 ? storedWidth : null;
       setNotchWidth(nextNotchWidth);
-
-      // Display info updated (removed noisy logging)
     });
     return unsubscribe;
   }, []);
@@ -244,6 +227,8 @@ const AppInner: React.FC = () => {
     context: pillContext,
     dispatch: pillDispatch,
   } = usePillMachine();
+  const pillStateRef = useRef(pillState);
+  pillStateRef.current = pillState;
 
   useEffect(() => {
     missingCountRef.current = missingPermissions.length;
@@ -296,14 +281,17 @@ const AppInner: React.FC = () => {
   ]);
 
   useEffect(() => {
-    if (!trans.recording && !trans.processing) {
-      pushTrace(
-        trans.text
-          ? `Transcription complete: "${trans.text}"`
-          : `Transcription finished (no text or failed fast)`,
-      );
-      pillDispatch({ type: "PROCESSING_COMPLETE" });
-    }
+    const completed =
+      wasProcessingRef.current && !trans.recording && !trans.processing;
+    wasProcessingRef.current = trans.processing;
+    if (!completed) return;
+
+    pushTrace(
+      trans.text
+        ? `Transcription complete: "${trans.text}"`
+        : `Transcription finished (no text or failed fast)`,
+    );
+    pillDispatch({ type: "PROCESSING_COMPLETE" });
   }, [pillDispatch, pushTrace, trans.processing, trans.recording, trans.text]);
 
   useEffect(() => {
@@ -331,7 +319,10 @@ const AppInner: React.FC = () => {
   useEffect(() => {
     const handleWindowShow = () => {
       // When window is shown (e.g., from tray menu), ensure pill is in clean state
-      if (pillState !== "LISTENING" && pillState !== "PROCESSING") {
+      if (
+        pillStateRef.current !== "LISTENING" &&
+        pillStateRef.current !== "PROCESSING"
+      ) {
         // Clear any pending hide state and reset to IDLE
         setPendingHideAfterCollapse({ active: false, message: "" });
         pillDispatch({ type: "DISMISS_NOTIFICATION" });
@@ -341,7 +332,7 @@ const AppInner: React.FC = () => {
     // Listen for window focus events as a proxy for window being shown
     window.addEventListener("focus", handleWindowShow);
     return () => window.removeEventListener("focus", handleWindowShow);
-  }, [pillState]);
+  }, [pillDispatch]);
 
   // Listen for expand pill requests from main process
   useEffect(() => {
@@ -427,7 +418,7 @@ const AppInner: React.FC = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pillDispatch, pushTrace, trans]);
+  }, [pillDispatch, pushTrace, trans.cancel]);
 
   // Notification duration for NOTIFICATION, and optional post-notification hide
   useEffect(() => {
@@ -648,15 +639,15 @@ const AppInner: React.FC = () => {
     [BASE_W, BASE_H, RESTING_H, EXPANDED_W, EXPANDED_H, MAX_W],
   );
 
-  useEffect(() => {
-    // Pill width computed from notch (removed noisy logging)
-  }, [BASE_W, S, notchTarget]);
-
   // Measure notification width whenever notif message changes
   useLayoutEffect(() => {
-    if (!ghostRef.current) return;
-    const el = ghostRef.current;
     const msg = pillContext.notifMsg ?? "";
+    if (!ghostRef.current || !msg) {
+      setNotifWidth(null);
+      setIsTextTruncated(false);
+      return;
+    }
+    const el = ghostRef.current;
     el.textContent = msg;
     // Force layout
     const rect = el.getBoundingClientRect();
@@ -685,12 +676,11 @@ const AppInner: React.FC = () => {
       <Pill
         pillState={pillState}
         pillContext={pillContext}
-        liveTranscript={trans.liveText}
         notifWidth={notifWidth}
         isTextTruncated={isTextTruncated}
         dims={dims}
         onHoverChange={handleHoverChange}
-        onMetrics={handlePillMetrics}
+        onMetrics={showDebug ? handlePillMetrics : undefined}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onExpand={handleExpand}

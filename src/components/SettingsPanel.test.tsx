@@ -1,4 +1,5 @@
 import React, { act } from "react";
+import { waitFor } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
@@ -54,15 +55,6 @@ describe("components/SettingsPanel", () => {
           error: null,
         },
       })),
-      devSetState: vi.fn(async () => ({
-        ok: true,
-        snapshot: {
-          status: "available",
-          version: "v0.1.7-dev",
-          readyToInstall: true,
-          error: null,
-        },
-      })),
       onStateChanged: vi.fn(() => () => {}),
     };
     // Ensure electron + mic bridges exist
@@ -85,8 +77,7 @@ describe("components/SettingsPanel", () => {
     (window as any).mic = {
       select: vi.fn(async (_id: string) => ({ ok: true })),
       getSelected: vi.fn(async () => ({ id: "default" })),
-      onSelectedChanged: (cb: (p: { id: string }) => void) => () => {},
-      onRefreshRequest: (_cb: () => void) => () => {},
+      onSelectedChanged: (_cb: (p: { id: string }) => void) => () => {},
       updateDevices: (_d: any, _s?: string) => {},
     } as any;
     const providerSettings = buildTranscriptionProviderSettingsSnapshot({
@@ -315,7 +306,10 @@ describe("components/SettingsPanel", () => {
     expect(modelsTab).toBeTruthy();
     await act(async () => {
       modelsTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(container.textContent ?? "").toContain("Cohere Transcribe 03-2026");
     });
 
     const text = container.textContent ?? "";

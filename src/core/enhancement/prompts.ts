@@ -8,10 +8,6 @@ import type { TriggerContext, TriggerType } from "./triggers";
 export interface PromptOptions {
   /** Vocabulary hint from STT (OCR-extracted proper nouns) */
   vocabulary?: string;
-  /** Model name (for potential model-specific optimizations) */
-  model?: string;
-  /** Current date for context */
-  currentDate?: string;
 }
 
 /**
@@ -181,37 +177,4 @@ export function composeDynamicPrompt(
   }
 
   return sections.join("\n");
-}
-
-/**
- * Helper to estimate token count for prompt (rough approximation)
- * Assumes ~4 characters per token on average
- */
-export function estimatePromptTokens(prompt: string): number {
-  return Math.ceil(prompt.length / 4);
-}
-
-/**
- * Get prompt statistics (for metrics and debugging)
- */
-export function getPromptStats(
-  triggerContext: TriggerContext,
-  options: PromptOptions = {},
-): {
-  dynamicPrompt: string;
-  dynamicTokens: number;
-  triggeredModules: string[];
-  hasLLMBypass: boolean;
-} {
-  const dynamicPrompt = composeDynamicPrompt(triggerContext, options);
-  const dynamicTokens = estimatePromptTokens(dynamicPrompt);
-  const triggeredModules = Array.from(triggerContext.triggers);
-  const hasLLMBypass = !triggerContext.requiresLLM;
-
-  return {
-    dynamicPrompt,
-    dynamicTokens,
-    triggeredModules,
-    hasLLMBypass,
-  };
 }

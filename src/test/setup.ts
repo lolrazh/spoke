@@ -48,12 +48,6 @@ if (!globalThis.window.update) {
       readyToInstall: false,
       error: null,
     })),
-    check: vi.fn(async () => ({
-      status: "checking",
-      version: null,
-      readyToInstall: false,
-      error: null,
-    })),
     restart: vi.fn(async () => ({ ok: true })),
     installWhenReady: vi.fn(async () => ({
       ok: true,
@@ -61,15 +55,6 @@ if (!globalThis.window.update) {
         status: "available",
         version: "v0.1.7-dev",
         readyToInstall: false,
-        error: null,
-      },
-    })),
-    devSetState: vi.fn(async () => ({
-      ok: true,
-      snapshot: {
-        status: "available",
-        version: "v0.1.7-dev",
-        readyToInstall: true,
         error: null,
       },
     })),
@@ -142,6 +127,7 @@ if (!globalThis.window.stt) {
     installModel: vi.fn(async () => {}),
     removeModel: vi.fn(async () => {}),
     onModelProgress: vi.fn(() => () => {}),
+    onModelStatusChanged: vi.fn(() => () => {}),
     enhance: vi.fn(async (payload: any) => ({
       text: payload.text,
       bypassed: true,
@@ -166,7 +152,6 @@ if (!globalThis.window.mic) {
       // return unsubscribe
       return (): undefined => undefined;
     },
-    onRefreshRequest: (_cb: () => void) => (): undefined => undefined,
   } as any;
 }
 
@@ -175,7 +160,7 @@ if (!globalThis.window.mic) {
 if (!globalThis.window.transcriptions) {
   // @ts-ignore
   globalThis.window.transcriptions = {
-    getAll: vi.fn(async () => []),
+    getPage: vi.fn(async () => ({ items: [], hasMore: false })),
     save: vi.fn(
       async (payload: {
         text: string;

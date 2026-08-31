@@ -1,7 +1,20 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type RefObject,
+} from "react";
 import { m } from "framer-motion";
 
-import FrequencyBars, { ListeningFrequencyBars } from "./FrequencyBars";
+import {
+  ListeningFrequencyBars,
+  ProcessingFrequencyBars,
+} from "./FrequencyBars";
+import {
+  getLiveTranscript,
+  subscribeLiveTranscript,
+} from "../state/liveTranscript";
 import { splitLiveTranscriptText } from "./liveTranscriptText";
 
 export const LIVE_TRANSCRIPT_CARET_IDLE_MS = 480;
@@ -11,7 +24,6 @@ export type LiveTranscriptMetrics = {
 };
 
 type LiveTranscriptProps = {
-  text: string;
   isProcessing: boolean;
   textWidth: number;
   visibleTextHeight: number;
@@ -21,44 +33,196 @@ type LiveTranscriptProps = {
   onTextMetricsChange: (metrics: LiveTranscriptMetrics) => void;
 };
 
-/** Visual-only partial transcript. Final publication remains in useTranscription. */
-export function LiveTranscript({
-  text,
+type LiveTranscriptVisualProps = LiveTranscriptProps;
+
+type LiveTranscriptRefs = {
+  committed: RefObject<HTMLSpanElement>;
+  tentative: RefObject<HTMLSpanElement>;
+  caret: RefObject<HTMLSpanElement>;
+  measure: RefObject<HTMLSpanElement>;
+};
+
+/**
+ * Store-connected leaf. Partial hypotheses update existing text nodes directly
+ * so even the live transcript leaf does not enter React's render path.
+ */
+export function LiveTranscriptFromStore(
+  props: LiveTranscriptVisualProps,
+) {
+  const committedRef = useRef<HTMLSpanElement>(null);
+  const tentativeRef = useRef<HTMLSpanElement>(null);
+  const caretRef = useRef<HTMLSpanElement>(null);
+  const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
+  const latestPropsRef = useRef(props);
+  const caretTimerRef = useRef<number | null>(null);
+  const caretLastUpdatedAtRef = useRef<number | null>(null);
+  const fallbackMeasureFrameRef = useRef<number | null>(null);
+  const lastMeasuredHeightRef = useRef<number | null>(null);
+  const committedTextRef = useRef<string | null>(null);
+  const tentativeTextRef = useRef<string | null>(null);
+  const measuredTextRef = useRef<string | null>(null);
+  const lastUpdatedTextRef = useRef<string | null>(null);
+  const lastUpdatedProcessingRef = useRef<boolean | null>(null);
+  const lastUpdatedReducedMotionRef = useRef<boolean | null>(null);
+  latestPropsRef.current = props;
+
+  const publishMeasuredHeight = useCallback((height: number) => {
+    const roundedHeight = Math.ceil(Math.max(height, 0));
+    if (lastMeasuredHeightRef.current === roundedHeight) return;
+    lastMeasuredHeightRef.current = roundedHeight;
+    latestPropsRef.current.onTextMetricsChange({
+      wrappedTextHeight: roundedHeight,
+    });
+  }, []);
+
+  const armCaretTimer = useCallback(() => {
+    if (caretTimerRef.current !== null) return;
+
+    const lastUpdatedAt = caretLastUpdatedAtRef.current;
+    const remainingMs =
+      lastUpdatedAt === null
+        ? LIVE_TRANSCRIPT_CARET_IDLE_MS
+        : Math.max(
+            0,
+            LIVE_TRANSCRIPT_CARET_IDLE_MS - (Date.now() - lastUpdatedAt),
+          );
+
+    caretTimerRef.current = window.setTimeout(() => {
+      caretTimerRef.current = null;
+      const caret = caretRef.current;
+      const latestUpdate = caretLastUpdatedAtRef.current;
+      if (!caret || latestUpdate === null) return;
+
+      const remaining =
+        LIVE_TRANSCRIPT_CARET_IDLE_MS - (Date.now() - latestUpdate);
+      if (remaining > 0) {
+        armCaretTimer();
+        return;
+      }
+      caret.classList.add("is-blinking");
+    }, remainingMs);
+  }, []);
+
+  const updateText = useCallback((text: string) => {
+    const { isProcessing, reducedMotion } = latestPropsRef.current;
+    if (
+      lastUpdatedTextRef.current === text &&
+      lastUpdatedProcessingRef.current === isProcessing &&
+      lastUpdatedReducedMotionRef.current === reducedMotion
+    ) {
+      return;
+    }
+    lastUpdatedTextRef.current = text;
+    lastUpdatedProcessingRef.current = isProcessing;
+    lastUpdatedReducedMotionRef.current = reducedMotion;
+    const displayText = splitLiveTranscriptText(text, isProcessing);
+
+    if (
+      committedRef.current &&
+      committedTextRef.current !== displayText.committed
+    ) {
+      committedRef.current.textContent = displayText.committed;
+      committedTextRef.current = displayText.committed;
+    }
+    if (
+      tentativeRef.current &&
+      tentativeTextRef.current !== displayText.tentative
+    ) {
+      tentativeRef.current.textContent = displayText.tentative;
+      tentativeTextRef.current = displayText.tentative;
+    }
+    if (
+      wrappedMeasureRef.current &&
+      measuredTextRef.current !== text
+    ) {
+      wrappedMeasureRef.current.textContent = text;
+      measuredTextRef.current = text;
+    }
+
+    const shouldBlink = !isProcessing && !reducedMotion;
+    if (!shouldBlink) {
+      caretLastUpdatedAtRef.current = null;
+      if (caretTimerRef.current !== null) {
+        window.clearTimeout(caretTimerRef.current);
+        caretTimerRef.current = null;
+      }
+    }
+    const caret = caretRef.current;
+    if (caret) {
+      caret.classList.remove("is-blinking");
+      if (shouldBlink) {
+        caretLastUpdatedAtRef.current = Date.now();
+        armCaretTimer();
+      }
+    }
+
+    if (!window.ResizeObserver && fallbackMeasureFrameRef.current === null) {
+      fallbackMeasureFrameRef.current = window.requestAnimationFrame(() => {
+        fallbackMeasureFrameRef.current = null;
+        const measure = wrappedMeasureRef.current;
+        if (measure) publishMeasuredHeight(measure.getBoundingClientRect().height);
+      });
+    }
+  }, [armCaretTimer, publishMeasuredHeight]);
+
+  useLayoutEffect(() => {
+    updateText(getLiveTranscript());
+    const unsubscribe = subscribeLiveTranscript(() => {
+      updateText(getLiveTranscript());
+    });
+
+    return () => {
+      unsubscribe();
+      if (caretTimerRef.current !== null) {
+        window.clearTimeout(caretTimerRef.current);
+        caretTimerRef.current = null;
+      }
+      caretLastUpdatedAtRef.current = null;
+      if (fallbackMeasureFrameRef.current !== null) {
+        window.cancelAnimationFrame(fallbackMeasureFrameRef.current);
+        fallbackMeasureFrameRef.current = null;
+      }
+    };
+  }, [updateText]);
+
+  useEffect(() => {
+    updateText(getLiveTranscript());
+  }, [props.isProcessing, props.reducedMotion, updateText]);
+
+  useEffect(() => {
+    const wrappedMeasure = wrappedMeasureRef.current;
+    const ResizeObserverCtor = window.ResizeObserver;
+    if (!wrappedMeasure || !ResizeObserverCtor) return;
+
+    const observer = new ResizeObserverCtor(([entry]) => {
+      publishMeasuredHeight(entry?.contentRect.height ?? 0);
+    });
+    observer.observe(wrappedMeasure);
+    return () => observer.disconnect();
+  }, [publishMeasuredHeight, props.textWidth]);
+
+  return (
+    <LiveTranscriptMarkup
+      {...props}
+      refs={{
+        committed: committedRef,
+        tentative: tentativeRef,
+        caret: caretRef,
+        measure: wrappedMeasureRef,
+      }}
+    />
+  );
+}
+
+function LiveTranscriptMarkup({
   isProcessing,
   textWidth,
   visibleTextHeight,
   railOffsetY,
   overflowing,
   reducedMotion,
-  onTextMetricsChange,
-}: LiveTranscriptProps) {
-  const wrappedMeasureRef = useRef<HTMLSpanElement>(null);
-  const [caretIdle, setCaretIdle] = useState(false);
-  const displayText = splitLiveTranscriptText(text, isProcessing);
-
-  useLayoutEffect(() => {
-    setCaretIdle(false);
-    if (isProcessing || reducedMotion) return;
-
-    const timeoutId = window.setTimeout(
-      () => setCaretIdle(true),
-      LIVE_TRANSCRIPT_CARET_IDLE_MS,
-    );
-    return () => window.clearTimeout(timeoutId);
-  }, [isProcessing, reducedMotion, text]);
-
-  useLayoutEffect(() => {
-    const wrappedMeasure = wrappedMeasureRef.current;
-    if (!wrappedMeasure) return;
-
-    wrappedMeasure.style.width = `${textWidth}px`;
-    onTextMetricsChange({
-      wrappedTextHeight: Math.ceil(
-        wrappedMeasure.getBoundingClientRect().height,
-      ),
-    });
-  }, [onTextMetricsChange, text, textWidth]);
-
+  refs,
+}: LiveTranscriptProps & { refs: LiveTranscriptRefs }) {
   return (
     <m.div
       className="live-transcript"
@@ -73,20 +237,9 @@ export function LiveTranscript({
     >
       <div className="live-transcript-activity">
         {isProcessing ? (
-          <FrequencyBars
-            audioLevel={0}
-            isListening={false}
-            isIdle={false}
-            isHovered={false}
-            isProcessing={true}
-          />
+          <ProcessingFrequencyBars />
         ) : (
-          <ListeningFrequencyBars
-            isListening={true}
-            isIdle={false}
-            isHovered={false}
-            isProcessing={false}
-          />
+          <ListeningFrequencyBars />
         )}
       </div>
 
@@ -103,11 +256,12 @@ export function LiveTranscript({
               : { duration: 0.14, ease: [0.2, 0, 0, 1] }
           }
         >
-          <span className="live-transcript-committed">
-            {displayText.committed}
-          </span>
+          <span
+            ref={refs.committed}
+            className="live-transcript-committed"
+          />
           <m.span
-            key={displayText.committed}
+            ref={refs.tentative}
             className="live-transcript-tentative"
             initial={reducedMotion ? false : { opacity: 0.72 }}
             animate={{ opacity: 1 }}
@@ -115,23 +269,21 @@ export function LiveTranscript({
               duration: reducedMotion ? 0 : 0.1,
               ease: "easeOut",
             }}
-          >
-            {displayText.tentative}
-          </m.span>
+          />
           {!isProcessing && (
             <span
-              className={`live-transcript-caret ${caretIdle ? "is-blinking" : ""}`}
+              ref={refs.caret}
+              className="live-transcript-caret"
             />
           )}
         </m.span>
       </div>
 
       <span
-        ref={wrappedMeasureRef}
+        ref={refs.measure}
         className="live-transcript-measure live-transcript-measure-wrapped"
-      >
-        {text}
-      </span>
+        style={{ width: textWidth }}
+      />
     </m.div>
   );
 }

@@ -5,6 +5,7 @@
 import type {
   SelectionInspectSnapshot,
   ActiveDisplayPayload,
+  TranscriptionHistoryPage,
   TranscriptionItem,
   LocalTranscribeResult,
 } from "./shared";
@@ -44,16 +45,10 @@ declare global {
     };
     update: {
       getState: () => Promise<UpdateSnapshot>;
-      check: () => Promise<UpdateSnapshot>;
       restart: () => Promise<{ ok: boolean }>;
       installWhenReady: () => Promise<{
         ok: boolean;
         snapshot: UpdateSnapshot;
-      }>;
-      devSetState?: (state: UpdateStatus | "ready") => Promise<{
-        ok: boolean;
-        snapshot: UpdateSnapshot;
-        error?: string;
       }>;
       onStateChanged: (cb: (snapshot: UpdateSnapshot) => void) => () => void;
     };
@@ -64,10 +59,6 @@ declare global {
     };
     contextMenu: {
       showPill: () => void;
-    };
-    transcript: {
-      update: (text: string) => void;
-      subscribe: (cb: (text: string) => void) => () => void;
     };
     clipboard: {
       insertText: (
@@ -93,11 +84,7 @@ declare global {
       onDown: (cb: () => void) => () => void;
       onUp: (cb: () => void) => () => void;
       onReady: (cb: () => void) => () => void;
-      onCancelDown: (cb: () => void) => () => void;
       onCancel: (cb: () => void) => () => void;
-    };
-    island: {
-      slideTo: (y: number) => void;
     };
     electron: {
       setClickThrough: (clickThrough: boolean) => void;
@@ -105,8 +92,6 @@ declare global {
       focusWindow: () => void;
       expandPill: (callback: () => void) => () => void;
       onPasteShortcutPressed: (callback: () => void) => () => void;
-      requestExpandPill: () => Promise<{ ok: boolean }>;
-      revealPill: () => Promise<{ ok: boolean }>;
       revealPillForTest?: () => Promise<{ ok: boolean }>;
       checkPermissions: () => Promise<{
         needAX: boolean;
@@ -114,12 +99,6 @@ declare global {
         isDev: boolean;
       }>;
       requestAccessibilityPermission: () => Promise<void>;
-      requestInputMonitoringPermission: () => Promise<{
-        success: boolean;
-        isDev: boolean;
-        alreadyGranted?: boolean;
-        error?: string;
-      }>;
       askIM: () => Promise<{
         success: boolean;
         status?: string;
@@ -152,18 +131,14 @@ declare global {
       ) => Promise<{ success: boolean }>;
       reloadApp: () => void;
       onboardingComplete: () => Promise<void>;
-      resetOnboardingFlag: () => Promise<{ ok: boolean }>;
       getOnboardingStep: () => Promise<string | null>;
       setOnboardingStep: (step: string) => Promise<{ ok: boolean }>;
-      getAppPath: () => Promise<string>;
       // Permission lifecycle helpers
       postPermissionGrant?: (
         type: "accessibility" | "microphone",
       ) => Promise<void> | void;
-      // Window controls
+      // Onboarding window control
       closeOnboarding: () => Promise<void>;
-      minimizeOnboarding: () => Promise<void>;
-      maximizeOnboarding: () => Promise<void>;
       // Floating bar visibility helpers
       isFloatingBarVisible: () => Promise<{ visible: boolean }>;
       getFloatingBarEnabled: () => Promise<{ enabled: boolean }>;
@@ -216,16 +191,6 @@ declare global {
         displayBounds?: { x: number; y: number; width: number; height: number };
         error?: string;
       }>;
-      testScreenshot: () => Promise<{
-        success: boolean;
-        metrics?: {
-          captureTimeMs: number;
-          sizeKb: number;
-          displayId: number;
-          resolution: string;
-        };
-        error?: string;
-      }>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (
@@ -234,7 +199,7 @@ declare global {
     stt: {
       transcribeLocal: (
         modelId: string,
-        pcmBuffer: ArrayBuffer,
+        pcmBuffer: ArrayBuffer | Uint8Array,
         prompt?: string,
       ) => Promise<LocalTranscribeResult>;
       cancelLocalTranscription: () => Promise<void>;
@@ -286,6 +251,9 @@ declare global {
           totalBytes: number;
         }) => void,
       ) => () => void;
+      onModelStatusChanged: (
+        cb: (status: import("./shared").ModelStatus) => void,
+      ) => () => void;
       enhance: (payload: {
         text: string;
         vocabulary?: string[];
@@ -308,7 +276,6 @@ declare global {
       select: (id: string) => Promise<{ ok: boolean }>;
       getSelected: () => Promise<{ id: string }>;
       onSelectedChanged: (cb: (payload: { id: string }) => void) => () => void;
-      onRefreshRequest: (cb: () => void) => () => void;
     };
     audioCapture?: {
       isAvailable: () => Promise<boolean>;
@@ -321,14 +288,16 @@ declare global {
       onError: (cb: (message: string) => void) => () => void;
     };
     transcriptions: {
-      getAll: () => Promise<TranscriptionItem[]>;
+      getPage: (
+        offset?: number,
+        limit?: number,
+      ) => Promise<TranscriptionHistoryPage>;
       save: (payload: {
         text: string;
         timestamp: number;
         mode: "dictation" | "edit";
       }) => Promise<TranscriptionItem>;
       delete: (id: string) => Promise<boolean>;
-      clear: () => Promise<{ ok: boolean }>;
     };
   }
 }

@@ -1,6 +1,5 @@
 import {
   createCapturedAudio,
-  concatPcm16,
   type CapturedAudio,
 } from "../core/transcription/capturedAudio";
 import {
@@ -8,6 +7,7 @@ import {
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
 import type { AudioCaptureSession } from "./audioCaptureSession";
+import { Pcm16Accumulator } from "./pcm16Accumulator";
 
 export interface PcmCaptureSessionOptions {
   targetSampleRateHz?: number;
@@ -24,24 +24,23 @@ export interface PcmCaptureSessionOptions {
   onPcmFrame?: (frame: Int16Array) => void;
   /** Set false when another consumer drains frames incrementally. */
   retainPcm?: boolean;
+  /** Return transferred worklet frames after onPcmFrame consumes them. */
+  recyclePcmFrames?: boolean;
 }
 
 type WorkletAudioMessage = {
   type: "audio";
-  samples: ArrayBuffer;
-  rate: number;
-  seq: number;
+  samples: Int16Array;
 };
 
 type WorkletFlushedMessage = {
   type: "flushed";
-  rate: number;
-  seq: number;
 };
 
 type WorkletMessage = WorkletAudioMessage | WorkletFlushedMessage;
 
 const FLUSH_TIMEOUT_MS = 500;
+const PCM16_LEVEL_GAIN = 4 / 32768;
 
 export class PcmCaptureSession implements AudioCaptureSession {
   private readonly targetSampleRateHz: number;
@@ -50,11 +49,13 @@ export class PcmCaptureSession implements AudioCaptureSession {
   private readonly onError?: (error: Error) => void;
   private readonly onPcmFrame?: (frame: Int16Array) => void;
   private readonly retainPcm: boolean;
-  private readonly chunks: Int16Array[] = [];
+  private readonly recyclePcmFrames: boolean;
+  private readonly retainedPcm = new Pcm16Accumulator();
   private audioContext: AudioContext | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private flushResolver: (() => void) | null = null;
+  private ignoreWorkletAudio = false;
   private stopped = false;
 
   constructor(options: PcmCaptureSessionOptions = {}) {
@@ -65,6 +66,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
     this.onError = options.onError;
     this.onPcmFrame = options.onPcmFrame;
     this.retainPcm = options.retainPcm ?? true;
+    this.recyclePcmFrames = options.recyclePcmFrames ?? false;
   }
 
   async start(stream?: MediaStream): Promise<void> {
@@ -109,10 +111,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
     this.stopped = true;
     await this.flush();
 
-    const pcm16 = concatPcm16(this.chunks);
-    // Drop the per-frame chunks now that they're concatenated so we don't keep
-    // a second full copy of the recording alive through cleanup() and beyond.
-    this.chunks.length = 0;
+    const pcm16 = this.retainedPcm.take();
     await this.cleanup();
 
     return createCapturedAudio(pcm16, {
@@ -122,22 +121,26 @@ export class PcmCaptureSession implements AudioCaptureSession {
 
   cancel(): void {
     this.stopped = true;
+    this.ignoreWorkletAudio = true;
     this.cleanup().catch((error) => {
       this.onError?.(asError(error));
     });
   }
 
-  /** Drop retained audio after an incremental consumer has safely sealed it. */
-  discardBufferedPcm(): void {
-    this.chunks.length = 0;
-  }
-
   private handleWorkletMessage(message: WorkletMessage): void {
     if (message.type === "audio") {
-      const frame = new Int16Array(message.samples);
-      if (this.retainPcm) this.chunks.push(frame);
-      this.onAudioLevel?.(calculatePcm16Level(frame));
-      this.onPcmFrame?.(frame);
+      const frame = message.samples;
+      if (this.ignoreWorkletAudio) {
+        this.recycleWorkletFrame(frame);
+        return;
+      }
+      if (this.retainPcm) this.retainedPcm.append(frame);
+      try {
+        this.onAudioLevel?.(calculatePcm16Level(frame));
+        this.onPcmFrame?.(frame);
+      } finally {
+        this.recycleWorkletFrame(frame);
+      }
       return;
     }
 
@@ -158,6 +161,7 @@ export class PcmCaptureSession implements AudioCaptureSession {
       const finish = () => {
         if (settled) return;
         settled = true;
+        this.ignoreWorkletAudio = true;
         window.clearTimeout(timeout);
         if (this.flushResolver === finish) {
           this.flushResolver = null;
@@ -172,10 +176,9 @@ export class PcmCaptureSession implements AudioCaptureSession {
   }
 
   private async cleanup(): Promise<void> {
-    // Release any retained capture chunks (the cancel() path never concatenates
-    // them, and stop() already did) so the recording buffer isn't held past
-    // teardown waiting on GC.
-    this.chunks.length = 0;
+    // Release the retained recording buffer so cancellation does not keep PCM
+    // alive past teardown waiting on GC.
+    this.retainedPcm.clear();
 
     if (this.flushResolver) {
       this.flushResolver();
@@ -210,6 +213,27 @@ export class PcmCaptureSession implements AudioCaptureSession {
     }
   }
 
+  private recycleWorkletFrame(frame: Int16Array): void {
+    if (!this.recyclePcmFrames || !(frame.buffer instanceof ArrayBuffer)) {
+      return;
+    }
+    if (
+      frame.byteOffset !== 0 ||
+      frame.byteLength !== frame.buffer.byteLength
+    ) {
+      return;
+    }
+
+    try {
+      this.workletNode?.port.postMessage(
+        { type: "recycle", samples: frame.buffer },
+        [frame.buffer],
+      );
+    } catch {
+      // The worklet may already be detached during cancellation.
+    }
+  }
+
   private assertLiveAudioStream(stream?: MediaStream): asserts stream is MediaStream {
     if (!stream) {
       throw new Error("A browser audio stream is required for PCM capture.");
@@ -226,18 +250,18 @@ export class PcmCaptureSession implements AudioCaptureSession {
   }
 }
 
-export function calculatePcm16Level(frame: Int16Array): number {
+function calculatePcm16Level(frame: Int16Array): number {
   if (frame.length === 0) {
     return 0;
   }
 
   let sumSquares = 0;
   for (let i = 0; i < frame.length; i++) {
-    const normalized = frame[i] / 32768;
-    sumSquares += normalized * normalized;
+    const sample = frame[i];
+    sumSquares += sample * sample;
   }
 
-  return Math.min(1, Math.sqrt(sumSquares / frame.length) * 4);
+  return Math.min(1, Math.sqrt(sumSquares / frame.length) * PCM16_LEVEL_GAIN);
 }
 
 function resolvePcmWorkletUrl(): string {

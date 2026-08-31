@@ -21,6 +21,7 @@ import { bootTimeline } from "./bootTimeline";
 export const LOCAL_STT_MAX_REQUEST_BYTES = 30 * 16_000 * 2;
 export const LOCAL_STT_MAX_STREAM_FRAME_BYTES = 1 * 16_000 * 2;
 export const LOCAL_STT_MAX_STREAM_BYTES = 5 * 60 * 16_000 * 2;
+const EMPTY_PCM_BUFFER = Buffer.alloc(0);
 
 export interface LocalStreamingSession {
   push(pcmBuffer: Buffer): Promise<void>;
@@ -40,6 +41,23 @@ let sidecarStoppingPromise: Promise<void> | null = null;
 let autoRestartEnabled = false;
 const processExitPromises = new WeakMap<object, Promise<void>>();
 const exitedProcesses = new WeakSet<object>();
+
+/** Consume complete newline-delimited records without allocating a line array. */
+function consumeLines(
+  buffer: string,
+  onLine: (line: string) => boolean,
+): string {
+  let lineStart = 0;
+  let lineEnd = buffer.indexOf("\n");
+  while (lineEnd >= 0) {
+    const line = buffer.slice(lineStart, lineEnd);
+    lineStart = lineEnd + 1;
+    if (line.trim() && !onLine(line)) break;
+    lineEnd = buffer.indexOf("\n", lineStart);
+  }
+
+  return lineStart === 0 ? buffer : buffer.slice(lineStart);
+}
 
 export const SIDECAR_STARTUP_TIMEOUT_MS = 120000;
 export const SIDECAR_SHUTDOWN_TIMEOUT_MS = 5000;
@@ -153,33 +171,33 @@ function spawnSidecarOnce(modelId: string): Promise<void> {
     let stdoutBuffer = "";
     const onData = (chunk: Buffer) => {
       stdoutBuffer += stdoutDecoder.write(chunk);
-      const lines = stdoutBuffer.split("\n");
-      stdoutBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      stdoutBuffer = consumeLines(stdoutBuffer, (line) => {
         try {
           const event = JSON.parse(line);
           if (event.type === "ready") {
             if (sidecarProcess !== proc) {
               settle(() => reject(new Error("Sidecar startup was superseded")));
-              return;
+              return false;
             }
             sidecarReady = true;
             console.log("[STT] Sidecar daemon ready");
             bootTimeline.mark("sidecar:ready");
             settle(resolve);
+            return false;
           } else if (event.type === "error") {
             const message =
               typeof event.message === "string"
                 ? event.message
                 : "Sidecar failed during startup";
             settle(() => reject(new Error(message)));
+            return false;
           }
+          return true;
         } catch {
           console.warn("[STT] Non-JSON stdout during init:", line);
+          return true;
         }
-      }
+      });
     };
 
     proc.stdout?.on("data", onData);
@@ -331,22 +349,20 @@ export function transcribeLocal(
   // cannot be consumed by the wrong in-flight caller.
   const requestGeneration = sidecarGeneration;
   const requestProcess = sidecarProcess;
-  const queued = sidecarTranscribeQueue.then(
-    () =>
-      transcribeLocalOnce(
-        pcmBuffer,
-        requestProcess,
-        requestGeneration,
-        prompt,
-      ),
-    () =>
-      transcribeLocalOnce(
-        pcmBuffer,
-        requestProcess,
-        requestGeneration,
-        prompt,
-      ),
-  );
+  const request = { pcmBuffer, prompt };
+  const run = () => {
+    const bufferedPcm = request.pcmBuffer;
+    // The active request and the child stdin own the bytes now. Do not keep
+    // queued 25-second chunks alive through the shared promise chain.
+    request.pcmBuffer = EMPTY_PCM_BUFFER;
+    return transcribeLocalOnce(
+      bufferedPcm,
+      requestProcess,
+      requestGeneration,
+      request.prompt,
+    );
+  };
+  const queued = sidecarTranscribeQueue.then(run, run);
   sidecarTranscribeQueue = queued.then(
     (): undefined => undefined,
     (): undefined => undefined,
@@ -381,30 +397,28 @@ function transcribeLocalOnce(
 
     const onData = (chunk: Buffer) => {
       stdoutBuffer += stdoutDecoder.write(chunk);
-      const lines = stdoutBuffer.split("\n");
-      stdoutBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      stdoutBuffer = consumeLines(stdoutBuffer, (line) => {
         try {
           const event: SttEvent = JSON.parse(line);
           if (event.type === "done") {
             resolved = true;
             cleanup();
             resolve({ text: event.transcript, metrics: event.metrics });
-            return;
+            return false;
           }
           if (event.type === "error") {
             resolved = true;
             cleanup();
             reject(new Error(event.message));
-            return;
+            return false;
           }
           // partials are ignored for now (no streaming UI in local mode)
+          return true;
         } catch {
           console.warn("[STT] Non-JSON stdout:", line);
+          return true;
         }
-      }
+      });
     };
 
     const onExit = () => {
@@ -529,6 +543,7 @@ async function runLocalStream(
   let totalBytes = 0;
   let finishing = false;
   let settled = false;
+  let lastPartialText: string | null = null;
   let finalTimeout: NodeJS.Timeout | null = null;
   let resolveResult!: (result: LocalTranscribeResult) => void;
   let rejectResult!: (error: Error) => void;
@@ -536,7 +551,28 @@ async function runLocalStream(
     resolveResult = resolve;
     rejectResult = reject;
   });
-  let writeQueue = Promise.resolve();
+  type PendingWrite = {
+    payload: Buffer;
+    resolve: () => void;
+    reject: (error: unknown) => void;
+  };
+  const pendingWrites: PendingWrite[] = [];
+  let pendingWriteStart = 0;
+  let writeInFlight: Promise<void> | null = null;
+  let writeIdlePromise = Promise.resolve();
+  let resolveWriteIdle: (() => void) | null = null;
+
+  const clearPendingWrites = (error: Error): void => {
+    for (let index = pendingWriteStart; index < pendingWrites.length; index++) {
+      pendingWrites[index].payload = EMPTY_PCM_BUFFER;
+      pendingWrites[index].reject(error);
+    }
+    pendingWrites.length = 0;
+    pendingWriteStart = 0;
+    const resolve = resolveWriteIdle;
+    resolveWriteIdle = null;
+    resolve?.();
+  };
 
   const cleanup = () => {
     if (finalTimeout) clearTimeout(finalTimeout);
@@ -546,69 +582,199 @@ async function runLocalStream(
   const fail = (error: Error) => {
     if (settled) return;
     settled = true;
+    clearPendingWrites(error);
     cleanup();
     rejectResult(error);
   };
   const onData = (chunk: Buffer) => {
     stdoutBuffer += stdoutDecoder.write(chunk);
-    const lines = stdoutBuffer.split("\n");
-    stdoutBuffer = lines.pop() || "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
+    stdoutBuffer = consumeLines(stdoutBuffer, (line) => {
       try {
         const event: SttEvent = JSON.parse(line);
         if (event.type === "partial") {
-          onPartial(event.text);
+          if (event.text !== lastPartialText) {
+            lastPartialText = event.text;
+            onPartial(event.text);
+          }
         } else if (event.type === "done") {
-          if (settled) return;
+          if (settled) return false;
           settled = true;
           cleanup();
           resolveResult({ text: event.transcript, metrics: event.metrics });
+          return false;
         } else if (event.type === "error") {
           fail(new Error(event.message));
+          return false;
         }
+        return true;
       } catch {
         console.warn("[STT] Non-JSON stdout during stream:", line);
+        return true;
       }
-    }
+    });
   };
   const onExit = () =>
     fail(new Error("Sidecar exited during live transcription"));
   proc.stdout?.on("data", onData);
   proc.once("exit", onExit);
 
-  const writeFrame = (payload: Buffer): Promise<void> =>
-    new Promise((resolve, reject) => {
+  const writeFrame = (payload: Buffer): void | Promise<void> =>
+    (() => {
       const stdin = proc.stdin;
       if (!stdin || stdin.destroyed) {
-        reject(new Error("Sidecar input is unavailable"));
-        return;
+        return Promise.reject(new Error("Sidecar input is unavailable"));
       }
       const header = Buffer.alloc(4);
       header.writeUInt32LE(payload.length);
-      const framed =
-        payload.length > 0 ? Buffer.concat([header, payload]) : header;
-      const onError = (error: Error) => {
-        stdin.removeListener("drain", onDrain);
-        reject(error);
-      };
-      const onDrain = () => {
-        stdin.removeListener("error", onError);
-        resolve();
-      };
-      stdin.once("error", onError);
+
+      let headerReady = false;
       try {
-        if (stdin.write(framed)) {
-          stdin.removeListener("error", onError);
-          resolve();
-        } else {
-          stdin.once("drain", onDrain);
+        // Keep the header and PCM as separate buffers. With cork/uncork the
+        // pipe can submit them together, while avoiding a new header+payload
+        // allocation for every live audio batch.
+        stdin.cork();
+        headerReady = stdin.write(header);
+        if (headerReady && (payload.length === 0 || stdin.write(payload))) {
+          // The normal pipe path completes synchronously. The caller can
+          // avoid the promise chain entirely for this common case.
+          return;
         }
       } catch (error) {
-        stdin.removeListener("error", onError);
-        reject(error);
+        return Promise.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      } finally {
+        stdin.uncork();
       }
+
+      return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const onHeaderDrain = () => {
+          stdin.removeListener("drain", onHeaderDrain);
+          writePayload();
+        };
+        const onPayloadDrain = () => {
+          stdin.removeListener("drain", onPayloadDrain);
+          settle();
+        };
+        const onError = (error: Error) => {
+          stdin.removeListener("drain", onHeaderDrain);
+          stdin.removeListener("drain", onPayloadDrain);
+          if (settled) return;
+          settled = true;
+          reject(error);
+        };
+        const settle = () => {
+          if (settled) return;
+          settled = true;
+          stdin.removeListener("error", onError);
+          resolve();
+        };
+        const writePayload = () => {
+          if (settled) return;
+          try {
+            if (payload.length === 0 || stdin.write(payload)) {
+              settle();
+            } else {
+              stdin.once("drain", onPayloadDrain);
+            }
+          } catch (error) {
+            onError(error instanceof Error ? error : new Error(String(error)));
+          }
+        };
+
+        stdin.once("error", onError);
+        if (headerReady) {
+          // The header was accepted, but the payload filled the pipe.
+          stdin.once("drain", onPayloadDrain);
+        } else {
+          // The header filled the pipe, so the payload has not been written.
+          stdin.once("drain", onHeaderDrain);
+        }
+      });
+    })();
+
+  const ensureWriteIdlePromise = (): void => {
+    if (resolveWriteIdle) return;
+    writeIdlePromise = new Promise<void>((resolve) => {
+      resolveWriteIdle = resolve;
     });
+  };
+
+  const finishWriteQueueIfIdle = (): void => {
+    if (writeInFlight || pendingWriteStart < pendingWrites.length) return;
+    pendingWrites.length = 0;
+    pendingWriteStart = 0;
+    const resolve = resolveWriteIdle;
+    resolveWriteIdle = null;
+    resolve?.();
+  };
+
+  const pumpWrites = (): void => {
+    if (writeInFlight) return;
+
+    while (pendingWriteStart < pendingWrites.length) {
+      const pending = pendingWrites[pendingWriteStart++];
+      const payload = pending.payload;
+      // The local reference below keeps the write alive. Drop the queue's
+      // reference now so a slow pipe does not retain every sent PCM frame.
+      pending.payload = EMPTY_PCM_BUFFER;
+      let writeResult: void | Promise<void>;
+      try {
+        writeResult = writeFrame(payload);
+      } catch (error) {
+        pending.reject(error);
+        continue;
+      }
+
+      if (writeResult === undefined) {
+        pending.resolve();
+        continue;
+      }
+
+      writeInFlight = writeResult;
+      void writeResult.then(pending.resolve, pending.reject).finally(() => {
+        if (writeInFlight === writeResult) writeInFlight = null;
+        pumpWrites();
+      });
+      return;
+    }
+
+    finishWriteQueueIfIdle();
+  };
+
+  const writeQueuedFrame = (payload: Buffer): Promise<void> => {
+    if (!writeInFlight && pendingWriteStart >= pendingWrites.length) {
+      let writeResult: void | Promise<void>;
+      try {
+        writeResult = writeFrame(payload);
+      } catch (error) {
+        return Promise.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+
+      if (writeResult === undefined) return Promise.resolve();
+
+      ensureWriteIdlePromise();
+      writeInFlight = writeResult;
+      void writeResult.then(
+        () => undefined,
+        () => undefined,
+      ).finally(() => {
+        if (writeInFlight === writeResult) writeInFlight = null;
+        pumpWrites();
+      });
+      return writeResult;
+    }
+
+    ensureWriteIdlePromise();
+    const queued = new Promise<void>((resolve, reject) => {
+      pendingWrites.push({ payload, resolve, reject });
+    });
+    pumpWrites();
+    return queued;
+  };
 
   const session: LocalStreamingSession = {
     push(pcmBuffer) {
@@ -625,16 +791,17 @@ async function runLocalStream(
         return Promise.reject(new Error("Live dictation exceeds the five-minute limit"));
       }
       totalBytes += pcmBuffer.length;
-      writeQueue = writeQueue.then(() => writeFrame(pcmBuffer));
-      void writeQueue.catch((error) => {
+      const pushing = writeQueuedFrame(pcmBuffer);
+      void pushing.catch((error) => {
         fail(error instanceof Error ? error : new Error(String(error)));
       });
-      return writeQueue;
+      return pushing;
     },
     async finish() {
       if (!finishing && !settled) {
         finishing = true;
-        await writeQueue;
+        await writeIdlePromise;
+        if (settled) return result;
         await writeFrame(Buffer.alloc(0));
         finalTimeout = setTimeout(() => {
           fail(new Error("Live transcription finalization timed out"));
@@ -644,6 +811,7 @@ async function runLocalStream(
       return result;
     },
     cancel() {
+      clearPendingWrites(new Error("Local streaming session was cancelled"));
       abortLocalTranscription();
     },
   };

@@ -43,8 +43,7 @@ describe("components/SettingsPanel behavior", () => {
     (window as any).mic = {
       select: vi.fn(async (_id: string) => ({ ok: true })),
       getSelected: vi.fn(async () => ({ id: "default" })),
-      onSelectedChanged: (cb: (p: { id: string }) => void) => () => {},
-      onRefreshRequest: (_cb: () => void) => () => {},
+      onSelectedChanged: (_cb: (p: { id: string }) => void) => () => {},
       updateDevices: (_d: unknown, _s?: string) => {},
     } as any;
     // Media devices
@@ -102,6 +101,30 @@ describe("components/SettingsPanel behavior", () => {
       false,
     );
 
+    unmount();
+  }, 10_000);
+
+  it("selects a microphone through the native control", async () => {
+    const SettingsPanel = (await import("./SettingsPanel")).default;
+    const { container, unmount } = render(React.createElement(SettingsPanel));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const select = container.querySelector(
+      'select[aria-label="Microphone"]',
+    ) as HTMLSelectElement | null;
+    expect(select).not.toBeNull();
+    expect(select?.options).toHaveLength(3);
+
+    await act(async () => {
+      if (!select) return;
+      select.value = "mic2";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect((window as any).mic.select).toHaveBeenCalledWith("mic2");
     unmount();
   }, 10_000);
 });

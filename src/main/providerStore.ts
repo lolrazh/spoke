@@ -176,7 +176,7 @@ export function encodeProviderSecret(apiKey: string): StoredProviderSecret {
   };
 }
 
-export function decodeProviderSecret(secret: StoredProviderSecret): string {
+function decodeProviderSecret(secret: StoredProviderSecret): string {
   if (secret.storage === "safeStorage") {
     return safeStorage.decryptString(Buffer.from(secret.value, "base64"));
   }

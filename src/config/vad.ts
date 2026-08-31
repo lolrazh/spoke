@@ -10,8 +10,8 @@ export const VAD_MIN_TIMEOUT_MS = 5_000;
 export const VAD_MAX_TIMEOUT_MS = 30_000;
 export const VAD_TIMEOUT_AUDIO_MULTIPLIER = 4;
 
-export const VAD_MODEL_URL = "/vad/silero_vad_legacy.onnx";
-export const VAD_ORT_WASM_BASE_URL = "/vad/ort-wasm/";
+const VAD_MODEL_URL = "/vad/silero_vad_legacy.onnx";
+const VAD_ORT_WASM_BASE_URL = "/vad/ort-wasm/";
 
 export function getVadModelUrl(): string {
   return resolveRendererAssetUrl(VAD_MODEL_URL);

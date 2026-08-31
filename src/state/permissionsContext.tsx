@@ -3,8 +3,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
-  useState,
 } from "react";
 import {
   usePermissions,
@@ -13,7 +11,7 @@ import {
 } from "../hooks/usePermissions";
 import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 
-type MissingPermission = keyof PermissionsState;
+export type MissingPermission = keyof PermissionsState;
 
 type PermissionsControllerContext = {
   permissions: PermissionsState;
@@ -24,11 +22,13 @@ type PermissionsControllerContext = {
   requestAccessibility: () => Promise<void>;
   requestInputMonitoring: () => Promise<void>;
   missingPermissions: MissingPermission[];
-  lastSnapshotAt: number | null;
   permissionsLoaded: boolean;
 };
 
 const PermissionsContext = createContext<PermissionsControllerContext | null>(
+  null,
+);
+const MissingPermissionsContext = createContext<MissingPermission[] | null>(
   null,
 );
 
@@ -46,12 +46,8 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
     requestInputMonitoring,
   } = usePermissions(undefined, {
     pollIntervalMs: 1000,
-    deepLinkGraceMs: 4000,
     includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
-
-  const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null);
-  const lastPermissionsRef = useRef<PermissionsState | null>(null);
 
   useEffect(() => {
     const runInit = async () => {
@@ -83,24 +79,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
     // eslint-disable-next-line
   }, []);
 
-  useEffect(() => {
-    const previous = lastPermissionsRef.current;
-    if (!previous) {
-      setLastSnapshotAt(Date.now());
-      lastPermissionsRef.current = permissions;
-      return;
-    }
-    if (
-      previous.microphone !== permissions.microphone ||
-      previous.screenRecording !== permissions.screenRecording ||
-      previous.inputMonitoring !== permissions.inputMonitoring ||
-      previous.accessibility !== permissions.accessibility
-    ) {
-      setLastSnapshotAt(Date.now());
-    }
-    lastPermissionsRef.current = permissions;
-  }, [permissions]);
-
   const missingPermissions = useMemo<MissingPermission[]>(() => {
     const missing: MissingPermission[] = [];
     if (!permissions.microphone) missing.push("microphone");
@@ -122,7 +100,6 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       requestAccessibility,
       requestInputMonitoring,
       missingPermissions,
-      lastSnapshotAt,
       permissionsLoaded,
     }),
     [
@@ -134,15 +111,16 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({
       requestAccessibility,
       requestInputMonitoring,
       missingPermissions,
-      lastSnapshotAt,
       permissionsLoaded,
     ],
   );
 
   return (
-    <PermissionsContext.Provider value={contextValue}>
-      {children}
-    </PermissionsContext.Provider>
+    <MissingPermissionsContext.Provider value={missingPermissions}>
+      <PermissionsContext.Provider value={contextValue}>
+        {children}
+      </PermissionsContext.Provider>
+    </MissingPermissionsContext.Provider>
   );
 };
 
@@ -151,6 +129,16 @@ export function usePermissionsController(): PermissionsControllerContext {
   if (!ctx) {
     throw new Error(
       "usePermissionsController must be used within a PermissionsProvider",
+    );
+  }
+  return ctx;
+}
+
+export function useMissingPermissions(): MissingPermission[] {
+  const ctx = useContext(MissingPermissionsContext);
+  if (!ctx) {
+    throw new Error(
+      "useMissingPermissions must be used within a PermissionsProvider",
     );
   }
   return ctx;

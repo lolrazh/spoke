@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { splitLiveTranscriptText } from "./liveTranscriptText";
+import {
+  boundLiveTranscriptText,
+  MAX_LIVE_TRANSCRIPT_DOM_CHARS,
+  splitLiveTranscriptText,
+} from "./liveTranscriptText";
+
+describe("boundLiveTranscriptText", () => {
+  it("keeps only a recent word-aligned tail", () => {
+    const text = Array.from({ length: 500 }, () => "word").join(" ");
+    const bounded = boundLiveTranscriptText(text);
+
+    expect(bounded.length).toBeLessThanOrEqual(MAX_LIVE_TRANSCRIPT_DOM_CHARS);
+    expect(bounded).toMatch(/^word(?: word)*$/);
+    expect(bounded).toBe(text.slice(text.length - bounded.length));
+  });
+});
 
 describe("splitLiveTranscriptText", () => {
   it("keeps completed words stable and isolates the live tail", () => {
@@ -28,6 +43,14 @@ describe("splitLiveTranscriptText", () => {
     expect(splitLiveTranscriptText("नमस्ते दुनिया", false)).toEqual({
       committed: "नमस्ते ",
       tentative: "दुनिया",
+    });
+  });
+
+  it("segments only the recent tail of a long non-plain-ASCII snapshot", () => {
+    const prefix = Array.from({ length: 180 }, () => "don't").join(" ");
+    expect(splitLiveTranscriptText(`${prefix} final`, false)).toEqual({
+      committed: `${prefix} `,
+      tentative: "final",
     });
   });
 

@@ -1,5 +1,4 @@
 import {
-  concatPcm16,
   createCapturedAudio,
   type CapturedAudio,
 } from "../core/transcription/capturedAudio";
@@ -7,11 +6,16 @@ import {
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
 import type { AudioCaptureSession } from "./audioCaptureSession";
+import { Pcm16Accumulator } from "./pcm16Accumulator";
 
 // Native AVAudioEngine capture bypasses the browser's WebRTC auto-gain control.
 // Keep the PCM sent to STT untouched, but calibrate the pill-only meter so a
 // normal unprocessed speaking level has comparable visual intensity.
 const NATIVE_VISUAL_LEVEL_GAIN = 3;
+const PCM16_LEVEL_GAIN = 4 / 32768;
+const HOST_IS_LITTLE_ENDIAN = new Uint8Array(
+  new Uint16Array([1]).buffer,
+)[0] === 1;
 
 export interface NativePcmCaptureSessionOptions {
   targetSampleRateHz?: number;
@@ -27,7 +31,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   private readonly onError?: (error: Error) => void;
   private readonly onPcmFrame?: (frame: Int16Array) => void;
   private readonly retainPcm: boolean;
-  private readonly chunks: Int16Array[] = [];
+  private readonly retainedPcm = new Pcm16Accumulator();
   private readonly removeFrameListener: () => void;
   private readonly removeStoppedListener: () => void;
   private readonly removeErrorListener: () => void;
@@ -104,8 +108,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
       this.removeListeners();
     }
 
-    const pcm16 = concatPcm16(this.chunks);
-    this.chunks.length = 0;
+    const pcm16 = this.retainedPcm.take();
     return createCapturedAudio(pcm16, {
       sampleRateHz: this.targetSampleRateHz,
     });
@@ -118,12 +121,8 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
     this.stopResolver = null;
     this.stopRejecter = null;
     this.removeListeners();
-    this.chunks.length = 0;
+    this.retainedPcm.clear();
     void window.audioCapture?.cancel();
-  }
-
-  discardBufferedPcm(): void {
-    this.chunks.length = 0;
   }
 
   private handleFrame(payload: Uint8Array | ArrayBuffer): void {
@@ -135,13 +134,9 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
       return;
     }
 
-    const pcm16 = new Int16Array(bytes.byteLength / 2);
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    for (let index = 0; index < pcm16.length; index++) {
-      pcm16[index] = view.getInt16(index * 2, true);
-    }
+    const pcm16 = decodePcm16(bytes);
 
-    if (this.retainPcm) this.chunks.push(pcm16);
+    if (this.retainPcm) this.retainedPcm.append(pcm16);
     this.onAudioLevel?.(
       Math.min(1, calculatePcm16Level(pcm16) * NATIVE_VISUAL_LEVEL_GAIN),
     );
@@ -155,13 +150,33 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   }
 }
 
+/**
+ * Native capture is little-endian PCM16. On the macOS targets we can expose
+ * the IPC byte payload as a typed view without copying or decoding each
+ * sample. Keep a DataView fallback for unusual unaligned or big-endian
+ * payloads so the bridge remains correct outside the normal path.
+ */
+function decodePcm16(bytes: Uint8Array): Int16Array {
+  const sampleCount = bytes.byteLength / 2;
+  if (HOST_IS_LITTLE_ENDIAN && bytes.byteOffset % 2 === 0) {
+    return new Int16Array(bytes.buffer, bytes.byteOffset, sampleCount);
+  }
+
+  const pcm16 = new Int16Array(sampleCount);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let index = 0; index < sampleCount; index++) {
+    pcm16[index] = view.getInt16(index * 2, true);
+  }
+  return pcm16;
+}
+
 function calculatePcm16Level(frame: Int16Array): number {
   if (frame.length === 0) return 0;
 
   let sumSquares = 0;
   for (let index = 0; index < frame.length; index++) {
-    const normalized = frame[index] / 32768;
-    sumSquares += normalized * normalized;
+    const sample = frame[index];
+    sumSquares += sample * sample;
   }
-  return Math.min(1, Math.sqrt(sumSquares / frame.length) * 4);
+  return Math.min(1, Math.sqrt(sumSquares / frame.length) * PCM16_LEVEL_GAIN);
 }

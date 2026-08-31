@@ -14,7 +14,28 @@
  */
 
 import { app, autoUpdater as nativeSquirrelUpdater } from "electron";
-import { autoUpdater } from "electron-updater";
+
+type ElectronUpdater = typeof import("electron-updater").autoUpdater;
+
+let autoUpdater: ElectronUpdater | null = null;
+let autoUpdaterLoadPromise: Promise<ElectronUpdater> | null = null;
+
+/** Load the heavy updater package only when an update operation needs it. */
+async function loadAutoUpdater(): Promise<ElectronUpdater> {
+  if (autoUpdater) return autoUpdater;
+  if (!autoUpdaterLoadPromise) {
+    autoUpdaterLoadPromise = import("electron-updater")
+      .then(({ autoUpdater: loadedUpdater }) => {
+        autoUpdater = loadedUpdater;
+        return loadedUpdater;
+      })
+      .catch((error) => {
+        autoUpdaterLoadPromise = null;
+        throw error;
+      });
+  }
+  return autoUpdaterLoadPromise;
+}
 
 // ── Config ─────────────────────────────────────────────────────────────
 
@@ -29,6 +50,9 @@ const UPDATE_DOWNLOAD_STALL_TIMEOUT_MS = 90_000;
 // After quitAndInstall() the native updater should begin the update quit
 // sequence promptly. If it does not, keep the app alive and let the user retry.
 const UPDATE_INSTALL_HANDOFF_TIMEOUT_MS = 120_000;
+// Progress events can arrive faster than the tray and renderer need to update.
+// Keep the authoritative percentage current, but publish at most 20 times/sec.
+const UPDATE_PROGRESS_PUBLISH_INTERVAL_MS = 50;
 // Long-lived menu-bar app: re-check on a slow cadence so a build released while
 // the app stays open eventually gets picked up without a restart.
 const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -58,8 +82,6 @@ export interface UpdateSnapshot {
   downloadPercent: number | null;
 }
 
-export type DevUpdateState = UpdateStatus | "ready";
-
 // ── Internal state ─────────────────────────────────────────────────────
 
 let updateStatus: UpdateStatus = "idle";
@@ -88,6 +110,12 @@ let updateDownloadWatchdog: NodeJS.Timeout | null = null;
 let quitAndInstallInvoked = false;
 let updateInstallHandoffWatchdog: NodeJS.Timeout | null = null;
 let updateInstallHandoffListener: (() => void) | null = null;
+let pendingUpdateStatePublishTimer: NodeJS.Timeout | null = null;
+let publishedUpdateStatus: UpdateStatus | null = null;
+let publishedUpdateVersion: string | null = null;
+let publishedUpdateReadyToInstall = false;
+let publishedUpdateError: string | null = null;
+let publishedUpdateDownloadPercent: number | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -108,16 +136,8 @@ export function getUpdateStatus(): UpdateStatus {
   return updateStatus;
 }
 
-export function getUpdateAvailableVersion(): string | null {
-  return updateAvailableVersion;
-}
-
 export function isUpdateReadyToInstall(): boolean {
   return updateReadyToInstall;
-}
-
-export function getUpdateError(): string | null {
-  return updateError;
 }
 
 export function getUpdateSnapshot(): UpdateSnapshot {
@@ -132,20 +152,73 @@ export function getUpdateSnapshot(): UpdateSnapshot {
 
 // ── State management ───────────────────────────────────────────────────
 
-function setUpdateState(
-  next: UpdateStatus,
-  opts?: { version?: string; error?: string },
-) {
-  updateStatus = next;
-  updateAvailableVersion = opts?.version ?? updateAvailableVersion;
-  updateError =
-    opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
+function publishUpdateState() {
+  if (
+    publishedUpdateStatus === updateStatus &&
+    publishedUpdateVersion === updateAvailableVersion &&
+    publishedUpdateReadyToInstall === updateReadyToInstall &&
+    publishedUpdateError === updateError &&
+    publishedUpdateDownloadPercent === updateDownloadPercent
+  ) {
+    return;
+  }
+  publishedUpdateStatus = updateStatus;
+  publishedUpdateVersion = updateAvailableVersion;
+  publishedUpdateReadyToInstall = updateReadyToInstall;
+  publishedUpdateError = updateError;
+  publishedUpdateDownloadPercent = updateDownloadPercent;
   try {
     callbacks.rebuildTrayMenu();
   } catch {}
   try {
     callbacks.onStateChange?.(getUpdateSnapshot());
   } catch {}
+}
+
+function clearPendingUpdateStatePublish() {
+  if (!pendingUpdateStatePublishTimer) return;
+  try {
+    clearTimeout(pendingUpdateStatePublishTimer);
+  } catch {}
+  pendingUpdateStatePublishTimer = null;
+}
+
+function scheduleUpdateStatePublish() {
+  if (pendingUpdateStatePublishTimer) return;
+  pendingUpdateStatePublishTimer = setTimeout(() => {
+    pendingUpdateStatePublishTimer = null;
+    publishUpdateState();
+  }, UPDATE_PROGRESS_PUBLISH_INTERVAL_MS);
+  pendingUpdateStatePublishTimer.unref?.();
+}
+
+function setUpdateState(
+  next: UpdateStatus,
+  opts?: { version?: string; error?: string },
+  publication: "immediate" | "coalesced" = "immediate",
+) {
+  const nextVersion = opts?.version ?? updateAvailableVersion;
+  const nextError =
+    opts?.error ?? (next === "error" ? opts?.error || "Unknown error" : null);
+  updateStatus = next;
+  updateAvailableVersion = nextVersion;
+  updateError = nextError;
+  const hasUnpublishedState =
+    publishedUpdateStatus !== updateStatus ||
+    publishedUpdateVersion !== updateAvailableVersion ||
+    publishedUpdateReadyToInstall !== updateReadyToInstall ||
+    publishedUpdateError !== updateError ||
+    publishedUpdateDownloadPercent !== updateDownloadPercent;
+  if (!hasUnpublishedState) {
+    clearPendingUpdateStatePublish();
+    return;
+  }
+  if (publication === "coalesced") {
+    scheduleUpdateStatePublish();
+    return;
+  }
+  clearPendingUpdateStatePublish();
+  publishUpdateState();
 }
 
 // ── Watchdogs ──────────────────────────────────────────────────────────
@@ -255,7 +328,7 @@ function startUpdateInstallHandoffWatchdog() {
 
 // ── Utilities ──────────────────────────────────────────────────────────
 
-function ensureFeedConfigured(): boolean {
+function ensureFeedConfigured(updater: ElectronUpdater): boolean {
   if (feedConfigured) return true;
   try {
     // No app-update.yml under Forge, so point the GitHub provider at the repo
@@ -264,7 +337,7 @@ function ensureFeedConfigured(): boolean {
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO,
     });
-    autoUpdater.setFeedURL({
+    updater.setFeedURL({
       provider: "github",
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO,
@@ -300,24 +373,25 @@ function notifyUpdateAvailable() {
 
 // ── Updater event bridge ───────────────────────────────────────────────
 
-function initUpdaterEventBridgeOnce() {
-  if (updaterListenersInitialized) return;
+async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
+  const updater = await loadAutoUpdater();
+  if (updaterListenersInitialized) return updater;
   updaterListenersInitialized = true;
 
   // The download is driven by a user action (the "available" capsule / tray
   // item calls downloadUpdate), not started automatically, so the available
   // state is a real beat the user taps. autoInstallOnAppQuit still applies a
   // finished download on the next quit.
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  updater.autoDownload = false;
+  updater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on("checking-for-update", () => {
+  updater.on("checking-for-update", () => {
     console.log("[auto-update] checking-for-update");
     if (updateStatus !== "available" && updateStatus !== "downloading")
       setUpdateState("checking");
   });
 
-  autoUpdater.on("update-available", (info) => {
+  updater.on("update-available", (info) => {
     console.log("[auto-update] update-available:", info?.version);
     clearUpdateCheckWatchdog();
     updateReadyToInstall = false;
@@ -338,15 +412,15 @@ function initUpdaterEventBridgeOnce() {
     manualUpdateCheckInFlight = false;
   });
 
-  autoUpdater.on("download-progress", (progress) => {
+  updater.on("download-progress", (progress) => {
     const raw = typeof progress?.percent === "number" ? progress.percent : 0;
     updateDownloadPercent = Math.max(0, Math.min(100, Math.round(raw)));
     // Re-arm the stall watchdog on every chunk so it only fires on real stalls.
     startUpdateDownloadWatchdog();
-    setUpdateState("downloading");
+    setUpdateState("downloading", undefined, "coalesced");
   });
 
-  autoUpdater.on("update-not-available", () => {
+  updater.on("update-not-available", () => {
     console.log("[auto-update] update-not-available");
     clearAllWatchdogs();
     updateDownloadPercent = null;
@@ -356,7 +430,7 @@ function initUpdaterEventBridgeOnce() {
     manualUpdateCheckInFlight = false;
   });
 
-  autoUpdater.on("error", (err: Error) => {
+  updater.on("error", (err: Error) => {
     clearAllWatchdogs();
     const failedDownload = downloadInFlight;
     downloadInFlight = false;
@@ -375,7 +449,7 @@ function initUpdaterEventBridgeOnce() {
     manualUpdateCheckInFlight = false;
   });
 
-  autoUpdater.on("update-downloaded", (info) => {
+  updater.on("update-downloaded", (info) => {
     console.log("[auto-update] update-downloaded:", info?.version);
     clearAllWatchdogs();
     downloadInFlight = false;
@@ -388,6 +462,8 @@ function initUpdaterEventBridgeOnce() {
     callbacks.sendNotify("Update ready. Restart to update");
     manualUpdateCheckInFlight = false;
   });
+
+  return updater;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -415,8 +491,17 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     return;
   }
 
-  initUpdaterEventBridgeOnce();
-  if (!ensureFeedConfigured()) {
+  let updater: ElectronUpdater;
+  try {
+    updater = await initUpdaterEventBridgeOnce();
+  } catch (err: unknown) {
+    const msg = getErrorMessage(err, "Could not load updater");
+    setUpdateState("error", { error: msg });
+    if (!silent) callbacks.sendNotify(`Update check failed: ${msg}`);
+    return;
+  }
+
+  if (!ensureFeedConfigured(updater)) {
     setUpdateState("error", { error: "Could not configure update feed" });
     if (!silent) callbacks.sendNotify("Update check failed.");
     return;
@@ -443,7 +528,7 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     // need its return value; events are the source of truth. Errors surface via
     // the "error" event; the catch below is only a backstop for a
     // synchronous/rejecting throw with no event.
-    await autoUpdater.checkForUpdates();
+    await updater.checkForUpdates();
   } catch (err: unknown) {
     if (updateStatus === "error") return;
     clearAllWatchdogs();
@@ -468,6 +553,8 @@ export function downloadUpdate(): void {
     lastFailedPhase === "download" &&
     updateAvailableVersion != null;
   if (updateStatus !== "available" && !resumableAfterError) return;
+  const updater = autoUpdater;
+  if (!updater) return;
 
   const failDownload = (err: unknown) => {
     downloadInFlight = false;
@@ -487,7 +574,7 @@ export function downloadUpdate(): void {
     // failure it both emits "error" and rejects this promise; the rejection
     // handler is only the backstop for a failure that never emitted (the
     // in-flight flag keeps the two paths from double-reporting).
-    Promise.resolve(autoUpdater.downloadUpdate()).catch((err: unknown) => {
+    Promise.resolve(updater.downloadUpdate()).catch((err: unknown) => {
       if (!downloadInFlight) return;
       failDownload(err);
     });
@@ -496,39 +583,7 @@ export function downloadUpdate(): void {
   }
 }
 
-export function setDevUpdateStateForTesting(
-  next: DevUpdateState,
-): { ok: boolean; snapshot: UpdateSnapshot; error?: string } {
-  if (app.isPackaged) {
-    return {
-      ok: false,
-      snapshot: getUpdateSnapshot(),
-      error: "Dev update state is unavailable in packaged builds",
-    };
-  }
-
-  updateReadyToInstall = next === "ready";
-  updateAvailableVersion =
-    next === "available" || next === "ready" || next === "downloading"
-      ? `v${app.getVersion()}-dev`
-      : null;
-  lastNotifiedAvailableVersion =
-    next === "available" ? updateAvailableVersion : null;
-  updateDownloadPercent =
-    next === "ready" ? 100 : next === "downloading" ? 42 : null;
-
-  if (next === "ready") {
-    setUpdateState("available");
-  } else if (next === "error") {
-    setUpdateState("error", { error: "Dev update preview" });
-  } else {
-    setUpdateState(next);
-  }
-
-  return { ok: true, snapshot: getUpdateSnapshot() };
-}
-
-export function quitAndInstallUpdate(): void {
+function quitAndInstallWithUpdater(updater: ElectronUpdater): void {
   // A second tap during the native handoff must not stack another install
   // attempt on top of the first.
   if (quitAndInstallInvoked) {
@@ -561,7 +616,7 @@ export function quitAndInstallUpdate(): void {
     // early forced exit can kill the updater handoff.
     // isSilent=false (show the installer UX), isForceRunAfter=true (relaunch
     // the new build once installed instead of just quitting).
-    autoUpdater.quitAndInstall(false, true);
+    updater.quitAndInstall(false, true);
   } catch (e) {
     quitAndInstallInvoked = false;
     clearUpdateInstallHandoffTracking();
@@ -577,6 +632,21 @@ export function quitAndInstallUpdate(): void {
     }
     return;
   }
+}
+
+export function quitAndInstallUpdate(): void {
+  if (autoUpdater) {
+    quitAndInstallWithUpdater(autoUpdater);
+    return;
+  }
+
+  void loadAutoUpdater()
+    .then((updater) => {
+      if (!quitAndInstallInvoked) quitAndInstallWithUpdater(updater);
+    })
+    .catch((error) => {
+      console.warn("[Updater] Failed to load updater:", error);
+    });
 }
 
 export function scheduleUpdateCheck(

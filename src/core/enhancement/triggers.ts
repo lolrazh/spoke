@@ -366,10 +366,3 @@ export function detectTriggers(text: string): TriggerContext {
     requiresLLM,
   };
 }
-
-/**
- * Helper to get human-readable trigger names for logging
- */
-export function getTriggerNames(context: TriggerContext): string[] {
-  return Array.from(context.triggers);
-}

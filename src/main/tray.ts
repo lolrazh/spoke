@@ -9,7 +9,6 @@
 
 import {
   app,
-  BrowserWindow,
   Menu,
   nativeImage,
   Tray,
@@ -54,7 +53,7 @@ let tray: Tray | null = null;
 
 // ── Floating bar submenu ───────────────────────────────────────────────
 
-export function buildFloatingBarMenuItems(): MenuItemConstructorOptions[] {
+function buildFloatingBarMenuItems(): MenuItemConstructorOptions[] {
   if (!state.mainWindow) {
     return [];
   }
@@ -131,7 +130,7 @@ export function buildFloatingBarMenuItems(): MenuItemConstructorOptions[] {
 
 // ── Menu builders ───────────────────────────────────────────────────────
 
-export function buildTrayMenu(): MenuItemConstructorOptions[] {
+function buildTrayMenu(): MenuItemConstructorOptions[] {
   console.log(
     "[Tray Menu] Building tray menu with",
     getMicDevices().length,
@@ -365,16 +364,6 @@ export const createTray = () => {
     console.log("[Tray] Building context menu...");
     const menuTemplate = buildTrayMenu();
     const contextMenu = Menu.buildFromTemplate(menuTemplate);
-
-    // Add event listener for when tray menu is about to open
-    tray.on("click", () => {
-      console.log("[Tray] 🎯 Tray menu opening - requesting device refresh");
-      // Send refresh request to renderer processes before showing menu
-      BrowserWindow.getAllWindows().forEach((window) => {
-        console.log("[Tray] Sending mic:refresh-devices to window:", window.id);
-        window.webContents.send("mic:refresh-devices");
-      });
-    });
 
     // Set the native context menu
     console.log("[Tray] Setting context menu...");

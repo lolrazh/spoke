@@ -3,7 +3,7 @@ import CoreAudio
 import Foundation
 
 private let targetSampleRate = 16_000.0
-private let outputFrameSamples = 480
+private let outputFrameSamples = 1_536
 private let tapBufferSize: AVAudioFrameCount = 1_024
 private let ringBufferSeconds = 2.0
 
@@ -19,15 +19,30 @@ private final class EventEmitter {
     private let lock = NSLock()
     private let output = FileHandle.standardOutput
     private let errorOutput = FileHandle.standardError
+    private var packet = Data()
 
     func emit(_ type: AudioEventType, payload: Data = Data()) {
+        payload.withUnsafeBytes { rawBuffer in
+            emitRaw(type, payload: rawBuffer)
+        }
+    }
+
+    func emitRaw(_ type: AudioEventType, payload: UnsafeRawBufferPointer) {
         var length = UInt32(payload.count + 1).bigEndian
-        var packet = Data(bytes: &length, count: MemoryLayout<UInt32>.size)
-        packet.append(type.rawValue)
-        packet.append(payload)
 
         lock.lock()
         defer { lock.unlock() }
+
+        // FileHandle.write is synchronous, so the packet storage can be
+        // reused after each write. This avoids one heap allocation per 96 ms
+        // audio frame while keeping the wire format unchanged.
+        packet.removeAll(keepingCapacity: true)
+        packet.reserveCapacity(MemoryLayout<UInt32>.size + 1 + payload.count)
+        withUnsafeBytes(of: &length) { header in
+            packet.append(contentsOf: header)
+        }
+        packet.append(type.rawValue)
+        packet.append(contentsOf: payload)
         output.write(packet)
     }
 
@@ -69,34 +84,82 @@ private final class FloatRingBuffer {
             return false
         }
 
-        for sample in samples {
-            storage[writeIndex] = sample
-            writeIndex = (writeIndex + 1) % capacity
+        let firstCount = min(samples.count, capacity - writeIndex)
+        let secondCount = samples.count - firstCount
+        storage.withUnsafeMutableBufferPointer { destination in
+            guard let sourceBase = samples.baseAddress,
+                  let destinationBase = destination.baseAddress else {
+                return
+            }
+            destinationBase.advanced(by: writeIndex).update(
+                from: sourceBase,
+                count: firstCount
+            )
+            if secondCount > 0 {
+                destinationBase.update(
+                    from: sourceBase.advanced(by: firstCount),
+                    count: secondCount
+                )
+            }
+        }
+        writeIndex += samples.count
+        if writeIndex >= capacity {
+            writeIndex -= capacity
         }
         count += samples.count
         return true
     }
 
-    func drain() -> [Float] {
-        lock.lock()
-        defer { lock.unlock() }
-
-        guard count > 0 else { return [] }
-
-        var result = Array(repeating: Float.zero, count: count)
-        for index in 0..<count {
-            result[index] = storage[readIndex]
-            readIndex = (readIndex + 1) % capacity
-        }
-        count = 0
-        return result
-    }
-
-    var availableSamples: Int {
+    var availableCount: Int {
         lock.lock()
         defer { lock.unlock() }
         return count
     }
+
+    func drain(into destination: UnsafeMutableBufferPointer<Float>) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let drainCount = min(count, destination.count)
+        guard drainCount > 0, let destinationBase = destination.baseAddress else {
+            return 0
+        }
+
+        let firstCount = min(drainCount, capacity - readIndex)
+        let secondCount = drainCount - firstCount
+        let copied = storage.withUnsafeBufferPointer { source in
+            guard let sourceBase = source.baseAddress else {
+                return false
+            }
+            destinationBase.update(
+                from: sourceBase.advanced(by: readIndex),
+                count: firstCount
+            )
+            if secondCount > 0 {
+                destinationBase.advanced(by: firstCount).update(
+                    from: sourceBase,
+                    count: secondCount
+                )
+            }
+            return true
+        }
+        guard copied else { return 0 }
+
+        readIndex += drainCount
+        if readIndex >= capacity {
+            readIndex -= capacity
+        }
+        count -= drainCount
+        return drainCount
+    }
+
+    func discard() {
+        lock.lock()
+        defer { lock.unlock() }
+        count = 0
+        readIndex = writeIndex
+    }
+
 }
 
 private struct AudioDeviceInfo: Codable {
@@ -118,16 +181,27 @@ private struct Command: Codable {
 private final class AudioCaptureController {
     private let emitter: EventEmitter
     private let converterQueue = DispatchQueue(label: "com.spoke.audio.converter", qos: .userInitiated)
+    private let conversionScheduleLock = NSLock()
 
     private var engine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
     private var converter: AVAudioConverter?
     private var sourceFormat: AVAudioFormat?
     private var targetFormat: AVAudioFormat?
+    private var converterInputBuffer: AVAudioPCMBuffer?
+    private var converterInputCapacity: AVAudioFrameCount = 0
+    private var converterOutputBuffer: AVAudioPCMBuffer?
+    private var converterOutputCapacity: AVAudioFrameCount = 0
     private var ringBuffer: FloatRingBuffer?
-    private var pendingPcm16: [Int16] = []
+    private var monoMixBuffer: [Float] = []
+    // EventEmitter.emitRaw writes synchronously, so one fixed output frame is
+    // enough. Reusing it avoids growing and compacting an intermediate array
+    // while the converter produces samples.
+    private var pendingPcm16 = [Int16](repeating: 0, count: outputFrameSamples)
+    private var pendingPcm16Count = 0
     private var isCapturing = false
     private var inputOverflowReported = false
+    private var conversionScheduled = false
 
     init(emitter: EventEmitter) {
         self.emitter = emitter
@@ -181,7 +255,7 @@ private final class AudioCaptureController {
             self.sourceFormat = sourceFormat
             self.targetFormat = targetFormat
             self.ringBuffer = ringBuffer
-            self.pendingPcm16.removeAll(keepingCapacity: true)
+            self.pendingPcm16Count = 0
             self.inputOverflowReported = false
             self.isCapturing = true
 
@@ -242,8 +316,8 @@ private final class AudioCaptureController {
         inputNode?.removeTap(onBus: 0)
         engine?.stop()
         converterQueue.sync {
-            pendingPcm16.removeAll(keepingCapacity: true)
-            _ = ringBuffer?.drain()
+            pendingPcm16Count = 0
+            ringBuffer?.discard()
         }
         resetState()
     }
@@ -263,33 +337,11 @@ private final class AudioCaptureController {
         let channelCount = Int(buffer.format.channelCount)
         guard channelCount > 0 else { return }
 
-        var mono = Array(repeating: Float.zero, count: frameCount)
-        if buffer.format.isInterleaved {
-            guard let audioBuffer = buffer.audioBufferList.pointee.mBuffers.mData else {
-                return
-            }
-            let interleaved = audioBuffer.assumingMemoryBound(to: Float.self)
-            for frame in 0..<frameCount {
-                var sum = Float.zero
-                for channel in 0..<channelCount {
-                    sum += interleaved[frame * channelCount + channel]
-                }
-                mono[frame] = sum / Float(channelCount)
-            }
-        } else {
-            guard let channels = buffer.floatChannelData else { return }
-            for frame in 0..<frameCount {
-                var sum = Float.zero
-                for channel in 0..<channelCount {
-                    sum += channels[channel][frame]
-                }
-                mono[frame] = sum / Float(channelCount)
-            }
-        }
-
-        let appended = mono.withUnsafeBufferPointer { samples in
-            ringBuffer?.append(samples) ?? false
-        }
+        let appended = appendInputToRingBuffer(
+            buffer,
+            frameCount: frameCount,
+            channelCount: channelCount
+        )
         guard appended else {
             if !inputOverflowReported {
                 inputOverflowReported = true
@@ -300,41 +352,84 @@ private final class AudioCaptureController {
             return
         }
 
+        scheduleConversion()
+    }
+
+    private func scheduleConversion() {
+        conversionScheduleLock.lock()
+        guard !conversionScheduled else {
+            conversionScheduleLock.unlock()
+            return
+        }
+        conversionScheduled = true
+        conversionScheduleLock.unlock()
+
         converterQueue.async { [weak self] in
-            self?.drainAndConvert()
+            self?.drainScheduledConversion()
+        }
+    }
+
+    private func drainScheduledConversion() {
+        while true {
+            drainAndConvert()
+
+            // Keep one conversion task alive while the ring still has work.
+            // This coalesces callbacks when conversion falls behind instead of
+            // allocating one queued closure per audio tap callback.
+            conversionScheduleLock.lock()
+            let hasPendingSamples = (ringBuffer?.availableCount ?? 0) > 0
+            if !hasPendingSamples {
+                conversionScheduled = false
+                conversionScheduleLock.unlock()
+                return
+            }
+            conversionScheduleLock.unlock()
         }
     }
 
     private func drainAndConvert() {
-        guard let samples = ringBuffer?.drain(), !samples.isEmpty else { return }
-        guard let sourceFormat, let targetFormat, let converter else { return }
+        guard let ringBuffer else { return }
+        guard let sourceFormat, let targetFormat, let converter else {
+            ringBuffer.discard()
+            return
+        }
 
-        guard let inputBuffer = AVAudioPCMBuffer(
-            pcmFormat: sourceFormat,
-            frameCapacity: AVAudioFrameCount(samples.count)
+        let availableSamples = ringBuffer.availableCount
+        guard availableSamples > 0 else { return }
+
+        guard let inputBuffer = ensureConverterInputBuffer(
+            frameCapacity: AVAudioFrameCount(availableSamples),
+            format: sourceFormat
         ) else {
+            ringBuffer.discard()
             emitter.emitError("Could not allocate the native audio converter input buffer.")
             return
         }
-        inputBuffer.frameLength = AVAudioFrameCount(samples.count)
-        samples.withUnsafeBufferPointer { source in
-            guard let baseAddress = source.baseAddress,
-                  let destination = inputBuffer.floatChannelData?[0] else {
-                return
-            }
-            destination.update(from: baseAddress, count: samples.count)
+        guard let destination = inputBuffer.floatChannelData?[0] else {
+            ringBuffer.discard()
+            emitter.emitError("Native audio converter input buffer has no channel data.")
+            return
         }
+        let sampleCount = ringBuffer.drain(
+            into: UnsafeMutableBufferPointer(
+                start: destination,
+                count: availableSamples
+            )
+        )
+        guard sampleCount > 0 else { return }
+        inputBuffer.frameLength = AVAudioFrameCount(sampleCount)
 
         let outputCapacity = AVAudioFrameCount(
-            max(1, Int(ceil(Double(samples.count) * targetSampleRate / sourceFormat.sampleRate)) + 64)
+            max(1, Int(ceil(Double(sampleCount) * targetSampleRate / sourceFormat.sampleRate)) + 64)
         )
-        guard let outputBuffer = AVAudioPCMBuffer(
-            pcmFormat: targetFormat,
-            frameCapacity: outputCapacity
+        guard let outputBuffer = ensureConverterOutputBuffer(
+            frameCapacity: outputCapacity,
+            format: targetFormat
         ) else {
             emitter.emitError("Could not allocate the native audio converter output buffer.")
             return
         }
+        outputBuffer.frameLength = 0
 
         var suppliedInput = false
         var conversionError: NSError?
@@ -366,13 +461,14 @@ private final class AudioCaptureController {
         var endOfStreamSignalled = false
         var shouldContinue = true
         while shouldContinue {
-            guard let outputBuffer = AVAudioPCMBuffer(
-                pcmFormat: targetFormat,
-                frameCapacity: AVAudioFrameCount(outputFrameSamples * 2)
+            guard let outputBuffer = ensureConverterOutputBuffer(
+                frameCapacity: AVAudioFrameCount(outputFrameSamples * 2),
+                format: targetFormat
             ) else {
                 emitter.emitError("Could not allocate the native converter flush buffer.")
                 return
             }
+            outputBuffer.frameLength = 0
 
             var conversionError: NSError?
             let status = converter.convert(to: outputBuffer, error: &conversionError) { _, inputStatus in
@@ -399,25 +495,98 @@ private final class AudioCaptureController {
         guard buffer.frameLength > 0, let samples = buffer.floatChannelData?[0] else { return }
 
         for index in 0..<Int(buffer.frameLength) {
-            pendingPcm16.append(floatToPcm16(samples[index]))
-        }
-
-        while pendingPcm16.count >= outputFrameSamples {
-            let frame = Array(pendingPcm16.prefix(outputFrameSamples))
-            pendingPcm16.removeFirst(outputFrameSamples)
-            emitFrame(frame)
+            pendingPcm16[pendingPcm16Count] = floatToPcm16(samples[index])
+            pendingPcm16Count += 1
+            if pendingPcm16Count == outputFrameSamples {
+                emitFrame(count: outputFrameSamples)
+                pendingPcm16Count = 0
+            }
         }
     }
 
     private func emitPendingFrame(final: Bool) {
-        guard final, !pendingPcm16.isEmpty else { return }
-        emitFrame(pendingPcm16)
-        pendingPcm16.removeAll(keepingCapacity: true)
+        let pendingCount = pendingPcm16Count
+        guard final, pendingCount > 0 else { return }
+        emitFrame(count: pendingCount)
+        pendingPcm16Count = 0
     }
 
-    private func emitFrame(_ samples: [Int16]) {
-        let payload = samples.withUnsafeBytes { Data($0) }
-        emitter.emit(.frame, payload: payload)
+    private func emitFrame(count: Int) {
+        pendingPcm16.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return }
+            let byteCount = count * MemoryLayout<Int16>.stride
+            emitter.emitRaw(
+                .frame,
+                payload: UnsafeRawBufferPointer(
+                    start: baseAddress,
+                    count: byteCount
+                )
+            )
+        }
+    }
+
+    private func appendInputToRingBuffer(
+        _ buffer: AVAudioPCMBuffer,
+        frameCount: Int,
+        channelCount: Int
+    ) -> Bool {
+        guard let ringBuffer else { return false }
+
+        // The normal macOS input path is mono, non-interleaved Float32. Copy
+        // directly from the tap buffer while it is valid instead of creating
+        // a temporary mono Array for every audio callback.
+        if channelCount == 1 {
+            if buffer.format.isInterleaved {
+                guard let audioBuffer = buffer.audioBufferList.pointee.mBuffers.mData else {
+                    return false
+                }
+                let samples = audioBuffer.assumingMemoryBound(to: Float.self)
+                return ringBuffer.append(
+                    UnsafeBufferPointer(start: samples, count: frameCount)
+                )
+            }
+
+            guard let channels = buffer.floatChannelData else { return false }
+            return ringBuffer.append(
+                UnsafeBufferPointer(start: channels[0], count: frameCount)
+            )
+        }
+
+        // Preserve the existing downmix behavior for multi-channel devices.
+        if monoMixBuffer.count < frameCount {
+            monoMixBuffer = Array(repeating: Float.zero, count: frameCount)
+        }
+        if buffer.format.isInterleaved {
+            guard let audioBuffer = buffer.audioBufferList.pointee.mBuffers.mData else {
+                return false
+            }
+            let interleaved = audioBuffer.assumingMemoryBound(to: Float.self)
+            for frame in 0..<frameCount {
+                var sum = Float.zero
+                for channel in 0..<channelCount {
+                    sum += interleaved[frame * channelCount + channel]
+                }
+                monoMixBuffer[frame] = sum / Float(channelCount)
+            }
+        } else {
+            guard let channels = buffer.floatChannelData else { return false }
+            for frame in 0..<frameCount {
+                var sum = Float.zero
+                for channel in 0..<channelCount {
+                    sum += channels[channel][frame]
+                }
+                monoMixBuffer[frame] = sum / Float(channelCount)
+            }
+        }
+
+        return monoMixBuffer.withUnsafeBufferPointer { samples in
+            ringBuffer.append(
+                UnsafeBufferPointer(
+                    start: samples.baseAddress,
+                    count: frameCount
+                )
+            )
+        }
     }
 
     private func selectInputDevice(_ deviceId: String, on inputNode: AVAudioInputNode) throws {
@@ -449,9 +618,54 @@ private final class AudioCaptureController {
         converter = nil
         sourceFormat = nil
         targetFormat = nil
+        converterInputBuffer = nil
+        converterInputCapacity = 0
+        converterOutputBuffer = nil
+        converterOutputCapacity = 0
         ringBuffer = nil
-        pendingPcm16.removeAll(keepingCapacity: true)
+        pendingPcm16Count = 0
         inputOverflowReported = false
+        conversionScheduleLock.lock()
+        conversionScheduled = false
+        conversionScheduleLock.unlock()
+    }
+
+    private func ensureConverterInputBuffer(
+        frameCapacity: AVAudioFrameCount,
+        format: AVAudioFormat
+    ) -> AVAudioPCMBuffer? {
+        if let converterInputBuffer, converterInputCapacity >= frameCapacity {
+            return converterInputBuffer
+        }
+
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: frameCapacity
+        ) else {
+            return nil
+        }
+        converterInputBuffer = buffer
+        converterInputCapacity = frameCapacity
+        return buffer
+    }
+
+    private func ensureConverterOutputBuffer(
+        frameCapacity: AVAudioFrameCount,
+        format: AVAudioFormat
+    ) -> AVAudioPCMBuffer? {
+        if let converterOutputBuffer, converterOutputCapacity >= frameCapacity {
+            return converterOutputBuffer
+        }
+
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: frameCapacity
+        ) else {
+            return nil
+        }
+        converterOutputBuffer = buffer
+        converterOutputCapacity = frameCapacity
+        return buffer
     }
 }
 

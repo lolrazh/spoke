@@ -1,20 +1,21 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { AnimatePresence, m } from "framer-motion";
 import { Switch } from "./ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "./ui/select";
+import { NativeSelect } from "./ui/native-select";
 import SettingsCard from "./SettingsCard";
-import ModelsList from "./ModelsList";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
 import ProgressRing from "./ui/ProgressRing";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
-import TranscriptionHistoryView from "./TranscriptionHistoryView";
-import DictionaryView from "./DictionaryView";
+import { SectionSeparator } from "./SectionSeparator";
+import DownloadGlyph from "./DownloadGlyph";
 import {
   panelCascadeContainer,
   panelCascadeItem,
@@ -30,7 +31,17 @@ type SettingsPanelInitialTab = Extract<
   "settings" | "history"
 >;
 
+const ModelsList = lazy(() => import("./ModelsList"));
+const DictionaryView = lazy(() => import("./DictionaryView"));
+const TranscriptionHistoryView = lazy(() => import("./TranscriptionHistoryView"));
+
 const DEFAULT_MIC_DEVICE = DEFAULT_MICROPHONE;
+
+const TabLoadingFallback: React.FC = () => (
+  <div className="flex justify-center py-8 text-[13px] text-primary/50">
+    Loading…
+  </div>
+);
 
 type UpdatePanelState = {
   status:
@@ -46,6 +57,21 @@ type UpdatePanelState = {
   // 0..100 while downloading, 100 when ready, null otherwise.
   downloadPercent: number | null;
 };
+
+function sameUpdatePanelState(
+  previous: UpdatePanelState | null,
+  next: UpdatePanelState | null,
+): boolean {
+  if (previous === next) return true;
+  if (!previous || !next) return previous === next;
+  return (
+    previous.status === next.status &&
+    previous.version === next.version &&
+    previous.readyToInstall === next.readyToInstall &&
+    previous.error === next.error &&
+    previous.downloadPercent === next.downloadPercent
+  );
+}
 
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
@@ -85,10 +111,6 @@ const SelectField: React.FC<{
   inGroup?: boolean;
   icon?: React.ReactNode;
 }> = ({ value, onChange, options, label, description, inGroup, icon }) => {
-  const selectedLabel =
-    options.find((option) => option.value === value)?.label ??
-    (value === DEFAULT_MIC_DEVICE.id ? DEFAULT_MIC_DEVICE.label : "Select…");
-
   return (
     <SettingsCard
       title={label}
@@ -104,46 +126,18 @@ const SelectField: React.FC<{
       }
       inGroup={inGroup}
     >
-      <div className="ml-2">
-        <Select value={value} onValueChange={onChange}>
-          <SelectTrigger className="w-48">
-            <span className="block truncate">{selectedLabel}</span>
-          </SelectTrigger>
-          <SelectContent>
-            {options.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <NativeSelect
+        aria-label={label}
+        value={value}
+        onValueChange={onChange}
+        options={options}
+        className="ml-2 w-48"
+      />
     </SettingsCard>
   );
 };
 
 // Cleaned out legacy row components; cards are now the single layout primitive
-
-export const SectionSeparator: React.FC<{
-  title: string;
-  className?: string;
-  style?: React.CSSProperties;
-}> = ({ title, className = "mt-0", style }) => (
-  <div
-    className={`relative ${className}`}
-    style={{
-      marginBottom: "var(--panel-heading-gap)",
-      ...(style ?? {}),
-    }}
-  >
-    <div className="border-b-2 border-border/40" />
-    <div className="absolute inset-0 flex items-center justify-center">
-      <span className="bg-background px-3 text-[10px] font-medium text-muted-foreground tracking-wider uppercase">
-        {title}
-      </span>
-    </div>
-  </div>
-);
 
 const TabButton: React.FC<{
   active: boolean;
@@ -259,28 +253,6 @@ const UPDATE_INTERACTIVE_MODES = new Set<UpdateCapsuleMode>([
   "ready",
   "error",
 ]);
-
-// Download glyph for the resting affordance — hand-rolled to match the stroke
-// language of the install checkmark (no SF symbol exists for this). Exported so
-// the Models install card reuses the exact same download affordance.
-export const DownloadGlyph: React.FC<{ size?: number }> = ({ size = 12 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="shrink-0"
-    aria-hidden
-  >
-    <path d="M12 4v10" />
-    <path d="M7.5 10.5 12 15l4.5-4.5" />
-    <path d="M5 19.5h14" />
-  </svg>
-);
 
 // Draw-on checkmark — the exact path/animation the Models card uses for its
 // "ready" state, so the update's completion reads as the same moment.
@@ -465,10 +437,189 @@ const UpdateCapsule: React.FC<{
   );
 };
 
+const UpdateCapsuleRow: React.FC<{ appVersion: string }> = React.memo(
+  ({ appVersion }) => {
+    const [updateState, setUpdateState] = useState<UpdatePanelState | null>(
+      null,
+    );
+    const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
+    const [capsuleHovered, setCapsuleHovered] = useState(false);
+    const capsuleHoverTimers = useRef<{
+      open: ReturnType<typeof setTimeout> | null;
+      close: ReturnType<typeof setTimeout> | null;
+    }>({ open: null, close: null });
+    const pendingStateRef = useRef<UpdatePanelState | null>(null);
+    const scheduledStateFrameRef = useRef<number | null>(null);
+    const scheduledWithRafRef = useRef(false);
+
+    const capsuleMode = deriveUpdateCapsuleMode(updateState);
+
+    const handleCapsuleHoverEnter = () => {
+      const timers = capsuleHoverTimers.current;
+      if (timers.close) clearTimeout(timers.close);
+      if (timers.open) clearTimeout(timers.open);
+      timers.close = null;
+      timers.open = setTimeout(() => setCapsuleHovered(true), 150);
+    };
+
+    const handleCapsuleHoverLeave = () => {
+      const timers = capsuleHoverTimers.current;
+      if (timers.open) clearTimeout(timers.open);
+      timers.open = null;
+      timers.close = setTimeout(() => setCapsuleHovered(false), 100);
+    };
+
+    useEffect(
+      () => () => {
+        const timers = capsuleHoverTimers.current;
+        if (timers.open) clearTimeout(timers.open);
+        if (timers.close) clearTimeout(timers.close);
+      },
+      [],
+    );
+
+    useEffect(() => {
+      const timer = setTimeout(() => setShowUpdateCapsule(true), 520);
+      return () => clearTimeout(timer);
+    }, []);
+
+    const commitUpdateState = (next: UpdatePanelState | null) => {
+      setUpdateState((previous) =>
+        sameUpdatePanelState(previous, next) ? previous : next,
+      );
+    };
+
+    const handleInstallUpdate = () => {
+      window.update
+        ?.installWhenReady?.()
+        .then((result) => {
+          if (result?.snapshot) commitUpdateState(result.snapshot);
+        })
+        .catch(() => {
+          // ignore. The engine keeps broadcasting the authoritative state.
+        });
+    };
+
+    useEffect(() => {
+      let isMounted = true;
+
+      const flushPendingState = () => {
+        scheduledStateFrameRef.current = null;
+        const pending = pendingStateRef.current;
+        pendingStateRef.current = null;
+        if (isMounted && pending) commitUpdateState(pending);
+      };
+
+      const cancelPendingFrame = () => {
+        const scheduled = scheduledStateFrameRef.current;
+        if (scheduled === null) return;
+        if (scheduledWithRafRef.current) {
+          window.cancelAnimationFrame(scheduled);
+        } else {
+          window.clearTimeout(scheduled);
+        }
+        scheduledStateFrameRef.current = null;
+      };
+
+      const scheduleProgressState = (state: UpdatePanelState) => {
+        pendingStateRef.current = state;
+        if (scheduledStateFrameRef.current !== null) return;
+        if (typeof window.requestAnimationFrame === "function") {
+          scheduledWithRafRef.current = true;
+          scheduledStateFrameRef.current = window.requestAnimationFrame(
+            flushPendingState,
+          );
+        } else {
+          scheduledWithRafRef.current = false;
+          scheduledStateFrameRef.current = window.setTimeout(
+            flushPendingState,
+            0,
+          );
+        }
+      };
+
+      const applyBroadcastState = (state: UpdatePanelState) => {
+        // Progress is the only high-frequency update. Keep its latest value
+        // for the next paint, but apply phase changes immediately so a
+        // completed or failed update cannot wait behind a queued frame.
+        if (state.status === "downloading" && !state.readyToInstall) {
+          scheduleProgressState(state);
+          return;
+        }
+        pendingStateRef.current = null;
+        cancelPendingFrame();
+        if (isMounted) commitUpdateState(state);
+      };
+
+      window.update
+        ?.getState?.()
+        .then((state) => {
+          if (isMounted) commitUpdateState(state);
+        })
+        .catch(() => {
+          if (isMounted) commitUpdateState(null);
+        });
+
+      const unsubscribe = window.update?.onStateChanged?.((state) => {
+        applyBroadcastState(state as UpdatePanelState);
+      });
+
+      return () => {
+        isMounted = false;
+        pendingStateRef.current = null;
+        cancelPendingFrame();
+        unsubscribe?.();
+      };
+    }, []);
+
+    if (!appVersion) return null;
+
+    return (
+      <div
+        className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
+        onMouseEnter={handleCapsuleHoverEnter}
+        onMouseLeave={handleCapsuleHoverLeave}
+      >
+        {/* Reserve the capsule slot immediately; only the version text shifts
+            when the update affordance is visually revealed. */}
+        <m.a
+          initial={false}
+          animate={{ x: capsuleMode && !showUpdateCapsule ? 40 : 0 }}
+          transition={{
+            x: showUpdateCapsule ? UPDATE_CAPSULE_POP : { duration: 0 },
+          }}
+          href="https://spoke.so/changelog"
+          onClick={(e) => {
+            e.preventDefault();
+            window.electron?.openExternal?.("https://spoke.so/changelog");
+          }}
+          className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          Spoke v{appVersion}
+        </m.a>
+        <AnimatePresence initial={false}>
+          {capsuleMode && (
+            <UpdateCapsule
+              key="update-capsule"
+              mode={capsuleMode}
+              downloadPercent={updateState?.downloadPercent ?? null}
+              revealed={showUpdateCapsule}
+              hovered={capsuleHovered}
+              onInstall={handleInstallUpdate}
+              onRestart={() => window.update?.restart?.()}
+              onRetry={handleInstallUpdate}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  },
+);
+
 // --- Main Component --- //
 interface SettingsPanelProps {
   embeddedMode?: boolean; // When true, removes drag region and adjusts layout for pill
-  onRequestCollapse?: () => void; // Ask parent to collapse (so system sheets are visible)
   onToggleFloatingBar?: (enabled: boolean) => void;
   onHeightChange?: (height: number) => void;
   initialTab?: SettingsPanelInitialTab; // Initial tab to show (for paste-shortcut → history UX)
@@ -500,172 +651,65 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [showInDock, setShowInDock] = useState<boolean | null>(null);
   const [autoSpace, setAutoSpace] = useState<boolean | null>(null);
   const [appVersion, setAppVersion] = useState<string>("");
-  const [updateState, setUpdateState] = useState<UpdatePanelState | null>(null);
-  const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
 
-  const capsuleMode = deriveUpdateCapsuleMode(updateState);
-  // Hover spans the whole version+capsule row so the expanded label doesn't
-  // collapse as the cursor crosses from the capsule onto the version.
-  const [capsuleHovered, setCapsuleHovered] = useState(false);
-  // Hover *intent*: require a brief dwell before opening (so an incidental
-  // brush or edge-graze never triggers it) and a short grace before closing
-  // (so a momentary dip out doesn't make it flicker).
-  const capsuleHoverTimers = useRef<{
-    open: ReturnType<typeof setTimeout> | null;
-    close: ReturnType<typeof setTimeout> | null;
-  }>({ open: null, close: null });
-  const handleCapsuleHoverEnter = () => {
-    const t = capsuleHoverTimers.current;
-    if (t.close) clearTimeout(t.close);
-    if (t.open) clearTimeout(t.open);
-    t.close = null;
-    t.open = setTimeout(() => setCapsuleHovered(true), 150);
-  };
-  const handleCapsuleHoverLeave = () => {
-    const t = capsuleHoverTimers.current;
-    if (t.open) clearTimeout(t.open);
-    t.open = null;
-    t.close = setTimeout(() => setCapsuleHovered(false), 100);
-  };
-  useEffect(
-    () => () => {
-      const t = capsuleHoverTimers.current;
-      if (t.open) clearTimeout(t.open);
-      if (t.close) clearTimeout(t.close);
-    },
-    [],
-  );
-
-  // Load app version from main via preload bridge
-  useEffect(() => {
-    (async () => {
-      try {
-        const v = await window.app?.getVersion?.();
-        if (v && typeof v === "string") setAppVersion(v);
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!embeddedMode) {
-      setShowUpdateCapsule(false);
-      return;
-    }
-    const timer = setTimeout(() => setShowUpdateCapsule(true), 520);
-    return () => clearTimeout(timer);
-  }, [embeddedMode]);
-
-  // Start or resume the update download. The engine broadcasts the real status
-  // + percent, so the renderer never fakes a downloading state; it just records
-  // the latest snapshot. Once the download is ready, the explicit Restart
-  // action is the only path that asks the main process to quit and install.
-  const handleInstallUpdate = () => {
-    window.update
-      ?.installWhenReady?.()
-      .then((result) => {
-        if (result?.snapshot) setUpdateState(result.snapshot);
-      })
-      .catch(() => {
-        // ignore. The engine keeps broadcasting the authoritative state.
-      });
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    window.update
-      ?.getState?.()
-      .then((state) => {
-        if (isMounted) setUpdateState(state);
-      })
-      .catch(() => {
-        setUpdateState(null);
-      });
-
-    const unsubscribe = window.update?.onStateChanged?.((state) => {
-      setUpdateState(state);
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe?.();
-    };
-  }, []);
-
-  // Initialize from main visibility state (source of truth)
+  // Load independent startup settings together so their async results commit
+  // in one React update instead of causing a render per bridge response.
   useEffect(() => {
     let isMounted = true;
 
-    (async () => {
-      try {
-        // Prefer persisted intent if available; fallback to current visibility
-        const pref = await window.electron?.getFloatingBarEnabled?.();
-        if (pref && typeof pref.enabled === "boolean") {
-          if (isMounted) setShowFloatingBar(pref.enabled);
-          return;
-        }
-        const vis = await window.electron?.isFloatingBarVisible?.();
-        if (isMounted) {
-          setShowFloatingBar(
-            vis && typeof vis.visible === "boolean" ? vis.visible : true,
-          );
-        }
-      } catch {
-        // Resolve to a value so the toggle never sticks on the placeholder.
-        if (isMounted) setShowFloatingBar(true);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Initialize dock visibility from main process
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const result = await window.electron?.getDockVisible?.();
-        if (isMounted) {
-          setShowInDock(
-            result && typeof result.visible === "boolean"
+    const loadInitialSettings = async () => {
+      const [version, floatingBar, dock, autoSpaceEnabled] = await Promise.all([
+        (async () => {
+          try {
+            const value = await window.app?.getVersion?.();
+            return value && typeof value === "string" ? value : "";
+          } catch {
+            return "";
+          }
+        })(),
+        (async () => {
+          try {
+            // Prefer persisted intent if available; fallback to current visibility.
+            const pref = await window.electron?.getFloatingBarEnabled?.();
+            if (pref && typeof pref.enabled === "boolean") {
+              return pref.enabled;
+            }
+            const vis = await window.electron?.isFloatingBarVisible?.();
+            return vis && typeof vis.visible === "boolean" ? vis.visible : true;
+          } catch {
+            return true;
+          }
+        })(),
+        (async () => {
+          try {
+            const result = await window.electron?.getDockVisible?.();
+            return result && typeof result.visible === "boolean"
               ? result.visible
-              : true,
-          );
-        }
-      } catch {
-        // Resolve to a value so the toggle never sticks on the placeholder.
-        if (isMounted) setShowInDock(true);
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Initialize auto-space preference from main process
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const result = await window.electron?.getAutoSpaceEnabled?.();
-        if (isMounted) {
-          setAutoSpace(
-            result && typeof result.enabled === "boolean"
+              : true;
+          } catch {
+            return true;
+          }
+        })(),
+        (async () => {
+          try {
+            const result = await window.electron?.getAutoSpaceEnabled?.();
+            return result && typeof result.enabled === "boolean"
               ? result.enabled
-              : true,
-          );
-        }
-      } catch {
-        // Resolve to a value so the toggle never sticks on the placeholder.
-        if (isMounted) setAutoSpace(true);
-      }
-    })();
+              : true;
+          } catch {
+            return true;
+          }
+        })(),
+      ]);
+
+      if (!isMounted) return;
+      setAppVersion(version);
+      setShowFloatingBar(floatingBar);
+      setShowInDock(dock);
+      setAutoSpace(autoSpaceEnabled);
+    };
+
+    void loadInitialSettings();
 
     return () => {
       isMounted = false;
@@ -792,51 +836,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       className={`${embeddedMode ? "min-h-0" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
       {/* Version + update capsule on bottom-right (embedded mode) */}
-      {embeddedMode && appVersion && (
-        <div
-          className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
-          onMouseEnter={handleCapsuleHoverEnter}
-          onMouseLeave={handleCapsuleHoverLeave}
-        >
-          {/* The capsule reserves its slot the moment an update exists, which
-              would normally push the version left immediately. We cancel that
-              with an equal-and-opposite x offset (applied instantly) so the
-              version stays flush-right — then, on reveal, animate x to 0 so it
-              springs left in sync with the icon blooming. */}
-          <m.a
-            initial={false}
-            animate={{ x: capsuleMode && !showUpdateCapsule ? 40 : 0 }}
-            transition={{
-              x: showUpdateCapsule ? UPDATE_CAPSULE_POP : { duration: 0 },
-            }}
-            href="https://spoke.so/changelog"
-            onClick={(e) => {
-              e.preventDefault();
-              window.electron?.openExternal?.("https://spoke.so/changelog");
-            }}
-            className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            Spoke v{appVersion}
-          </m.a>
-          {/* Mounted as soon as an update exists (reserving the slot); the
-              entrance delay only gates the visual reveal, not the layout. */}
-          <AnimatePresence initial={false}>
-            {capsuleMode && (
-              <UpdateCapsule
-                key="update-capsule"
-                mode={capsuleMode}
-                downloadPercent={updateState?.downloadPercent ?? null}
-                revealed={showUpdateCapsule}
-                hovered={capsuleHovered}
-                onInstall={handleInstallUpdate}
-                onRestart={() => window.update?.restart?.()}
-                onRetry={handleInstallUpdate}
-              />
-            )}
-          </AnimatePresence>
-        </div>
-      )}
+      {embeddedMode && <UpdateCapsuleRow appVersion={appVersion} />}
 
       {/* Draggable Header - only show in standalone mode */}
       {!embeddedMode && (
@@ -1026,14 +1026,20 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
                       <SectionSeparator title="Transcription" />
                     </m.div>
                     <div className="border border-white/[0.08] rounded-lg overflow-hidden bg-background no-drag [&>*:last-child]:border-b-0">
-                      <ModelsList enabled={activeTab === "models"} />
+                      <Suspense fallback={<TabLoadingFallback />}>
+                        <ModelsList enabled={activeTab === "models"} />
+                      </Suspense>
                     </div>
                   </m.section>
                 </m.div>
               ) : activeTab === "dictionary" ? (
-                <DictionaryView />
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <DictionaryView />
+                </Suspense>
               ) : (
-                <TranscriptionHistoryView />
+                <Suspense fallback={<TabLoadingFallback />}>
+                  <TranscriptionHistoryView />
+                </Suspense>
               )}
             </div>
           </div>

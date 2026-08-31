@@ -163,4 +163,4 @@ const DictionaryView: React.FC = () => {
   );
 };
 
-export default DictionaryView;
+export default React.memo(DictionaryView);

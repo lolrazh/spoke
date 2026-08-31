@@ -12,6 +12,7 @@ const FUZZY_THRESHOLD = 0.85;
 const PHRASE_FUZZY_THRESHOLD = 0.95;
 const TIE_MARGIN = 0.05;
 const MAX_PHRASE_TOKENS = 4;
+const EMPTY_KEYS: readonly string[] = [];
 
 // subtlex is pre-sorted by descending spoken-English frequency, so the head of
 // the list is the highest-value skip-list of everyday words.
@@ -20,31 +21,18 @@ const COMMON_WORDS = new Set(
     .slice(0, COMMON_WORD_LIMIT)
     .map((entry) => entry.word.toLowerCase()),
 );
+// The correction path only needs the common-word skip list. Drop the imported
+// frequency table so all entry objects can be reclaimed after initialization.
+subtlexWords.length = 0;
 
 const WORD_SPAN = /[\p{L}\p{N}']+/gu;
 const PHRASE_GAP = /^[\p{Zs}\t&+/-]*$/u;
 
 type PhraseKey = { entry: string; key: string };
 
-function expandEntries(dictionary: readonly string[]): string[] {
-  // The dictionary comes from a JSON prefs file that is loaded without shape
-  // validation, so junk here must degrade to "no correction", not break
-  // transcription.
-  if (!Array.isArray(dictionary)) return [];
-  const words: string[] = [];
-  for (const entry of dictionary) {
-    if (typeof entry !== "string") continue;
-    for (const part of entry.split(/\s+/)) {
-      if (part) words.push(part);
-    }
-  }
-  return words;
-}
-
 type Index = {
   canonical: Map<string, string>;
   phonetic: Map<string, string[]>;
-  words: string[];
   phraseCanonical: Map<string, PhraseKey[]>;
   phrasePhonetic: Map<string, PhraseKey[]>;
   phraseKeys: PhraseKey[];
@@ -96,16 +84,30 @@ function buildIndex(dictionary: readonly string[]): Index {
   const phraseCanonical = new Map<string, PhraseKey[]>();
   const phrasePhonetic = new Map<string, PhraseKey[]>();
   const indexedPhraseKeys: PhraseKey[] = [];
-  for (const word of expandEntries(dictionary)) {
-    const lower = word.toLowerCase();
-    if (canonical.has(lower)) continue;
-    canonical.set(lower, word);
-    const [primary, secondary] = doubleMetaphone(word);
-    for (const code of [primary, secondary]) {
-      if (!code) continue;
-      const bucket = phonetic.get(code);
-      if (bucket) bucket.push(word);
-      else phonetic.set(code, [word]);
+  // The dictionary comes from a JSON prefs file that is loaded without shape
+  // validation, so junk here must degrade to "no correction", not break
+  // transcription. Expand one raw entry at a time so index construction does
+  // not retain a second full word array while the maps are being built.
+  if (Array.isArray(dictionary)) {
+    for (const rawEntry of dictionary) {
+      if (typeof rawEntry !== "string") continue;
+      for (const word of rawEntry.split(/\s+/)) {
+        if (!word) continue;
+        const lower = word.toLowerCase();
+        if (canonical.has(lower)) continue;
+        canonical.set(lower, word);
+        const [primary, secondary] = doubleMetaphone(word);
+        if (primary) {
+          const bucket = phonetic.get(primary);
+          if (bucket) bucket.push(lower);
+          else phonetic.set(primary, [lower]);
+        }
+        if (secondary && secondary !== primary) {
+          const bucket = phonetic.get(secondary);
+          if (bucket) bucket.push(lower);
+          else phonetic.set(secondary, [lower]);
+        }
+      }
     }
   }
 
@@ -133,7 +135,6 @@ function buildIndex(dictionary: readonly string[]): Index {
   return {
     canonical,
     phonetic,
-    words: [...canonical.values()],
     phraseCanonical,
     phrasePhonetic,
     phraseKeys: indexedPhraseKeys,
@@ -161,24 +162,37 @@ function similarity(a: string, b: string): number {
   return 1 - distance(a, b) / max;
 }
 
-type Scored = { word: string; sim: number };
+type Scored = { key: string; sim: number };
 
 function bestFrom(
-  candidates: string[],
+  candidates: Iterable<string>,
   lower: string,
   threshold: number,
+  additionalCandidates?: Iterable<string>,
 ): Scored[] {
-  const seen = new Set<string>();
-  const scored: Scored[] = [];
-  for (const word of candidates) {
-    const key = word.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const sim = similarity(lower, key);
-    if (sim >= threshold) scored.push({ word, sim });
-  }
-  scored.sort((a, b) => b.sim - a.sim);
-  return scored;
+  const minLength = Math.ceil(lower.length * threshold);
+  const maxLength = Math.floor(lower.length / threshold);
+  let best: Scored | null = null;
+  let secondBest: Scored | null = null;
+
+  const scan = (keys: Iterable<string>) => {
+    for (const key of keys) {
+      if (key.length < minLength || key.length > maxLength) continue;
+      const sim = similarity(lower, key);
+      if (sim < threshold) continue;
+      const scored = { key, sim };
+      if (!best || sim > best.sim) {
+        secondBest = best;
+        best = scored;
+      } else if (!secondBest || sim > secondBest.sim) {
+        secondBest = scored;
+      }
+    }
+  };
+
+  scan(candidates);
+  if (additionalCandidates) scan(additionalCandidates);
+  return best ? (secondBest ? [best, secondBest] : [best]) : [];
 }
 
 // An entry with intentional casing (Sandheep, iPhone) always wins. An
@@ -201,12 +215,14 @@ type PhraseMatch = {
   path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase";
 };
 
+type ScoredPhrase = { candidate: PhraseKey; sim: number };
+
 function scorePhraseCandidates(
   candidates: PhraseKey[],
   key: string,
   threshold: number,
-): Array<{ candidate: PhraseKey; sim: number }> {
-  const bestByEntry = new Map<string, { candidate: PhraseKey; sim: number }>();
+): ScoredPhrase[] {
+  const bestByEntry = new Map<string, ScoredPhrase>();
   for (const candidate of candidates) {
     const sim = similarity(key, candidate.key);
     if (sim < threshold) continue;
@@ -216,11 +232,25 @@ function scorePhraseCandidates(
       bestByEntry.set(entryKey, { candidate, sim });
     }
   }
-  return [...bestByEntry.values()].sort((a, b) => b.sim - a.sim);
+
+  // Callers only need the winner and runner-up to reject near ties. Avoid
+  // materializing and sorting every unique entry in the candidate bucket.
+  let best: ScoredPhrase | null = null;
+  let secondBest: ScoredPhrase | null = null;
+  for (const scored of bestByEntry.values()) {
+    if (!best || scored.sim > best.sim) {
+      secondBest = best;
+      best = scored;
+    } else if (!secondBest || scored.sim > secondBest.sim) {
+      secondBest = scored;
+    }
+  }
+
+  return best ? (secondBest ? [best, secondBest] : [best]) : [];
 }
 
 function unambiguousPhrase(
-  scored: Array<{ candidate: PhraseKey; sim: number }>,
+  scored: ScoredPhrase[],
   path: PhraseMatch["path"],
 ): PhraseMatch | null {
   if (scored.length === 0) return null;
@@ -266,17 +296,25 @@ function findPhraseMatch(key: string, index: Index): PhraseMatch | null {
 
 function findMatch(stem: string, lower: string, index: Index): Match | null {
   const [primary, secondary] = doubleMetaphone(stem);
-  const candidates: string[] = [];
-  for (const code of [primary, secondary]) {
-    if (!code) continue;
-    const bucket = index.phonetic.get(code);
-    if (bucket) candidates.push(...bucket);
-  }
+  const primaryCandidates = primary
+    ? index.phonetic.get(primary)
+    : undefined;
+  const secondaryCandidates =
+    secondary && secondary !== primary
+      ? index.phonetic.get(secondary)
+      : undefined;
 
-  let scored = bestFrom(candidates, lower, PHONETIC_THRESHOLD);
+  let scored = bestFrom(
+    primaryCandidates ?? EMPTY_KEYS,
+    lower,
+    PHONETIC_THRESHOLD,
+    secondaryCandidates,
+  );
   let path: Match["path"] = "phonetic";
   if (scored.length === 0) {
-    scored = bestFrom(index.words, lower, FUZZY_THRESHOLD);
+    // Canonical keys are unique and already lowercase, so the fuzzy fallback
+    // can iterate them directly without another array or de-duplication Set.
+    scored = bestFrom(index.canonical.keys(), lower, FUZZY_THRESHOLD);
     path = "fuzzy";
   }
   if (scored.length === 0) return null;
@@ -285,7 +323,9 @@ function findMatch(stem: string, lower: string, index: Index): Match | null {
   if (scored.length >= 2 && scored[0].sim - scored[1].sim < TIE_MARGIN) {
     return null;
   }
-  return { word: scored[0].word, sim: scored[0].sim, path };
+  const word = index.canonical.get(scored[0].key);
+  if (word === undefined) return null;
+  return { word, sim: scored[0].sim, path };
 }
 
 export function correctTranscript(
@@ -393,14 +433,4 @@ export function correctTranscript(
   }
 
   return output + text.slice(cursor);
-}
-
-export function isDictionaryWord(
-  word: string,
-  dictionary: readonly string[],
-): boolean {
-  // Short-circuit before touching the cache so a transient empty array (the
-  // formatter's `?? []` default) can't evict a warm index.
-  if (!Array.isArray(dictionary) || dictionary.length === 0) return false;
-  return getIndex(dictionary).canonical.has(word.toLowerCase());
 }

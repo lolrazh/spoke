@@ -1,9 +1,9 @@
 import {
-  concatPcm16,
   createCapturedAudio,
   type CapturedAudio,
 } from "./capturedAudio";
 import type { TranscriptionResult } from "./sessionTypes";
+import { Pcm16Accumulator } from "../../utils/pcm16Accumulator";
 
 export interface LocalChunkedDictationOptions {
   sampleRateHz: number;
@@ -23,7 +23,7 @@ export interface LocalChunkedDictationOptions {
  * enormous renderer buffer or one unbounded sidecar inference.
  */
 export class LocalChunkedDictation {
-  private readonly chunks: Int16Array[] = [];
+  private readonly pendingPcm = new Pcm16Accumulator();
   private readonly chunkTasks: Promise<
     { result: TranscriptionResult } | { error: unknown }
   >[] = [];
@@ -36,40 +36,52 @@ export class LocalChunkedDictation {
   private limitReached = false;
   private finished = false;
   private dispatchedChunkCount = 0;
+  private readonly maxSamples: number;
+  private readonly minNaturalChunkSamples: number;
+  private readonly naturalChunkingStartSamples: number;
+  private readonly forcedChunkSamples: number;
 
-  constructor(private readonly options: LocalChunkedDictationOptions) {}
+  constructor(private readonly options: LocalChunkedDictationOptions) {
+    const samplesPerMs = options.sampleRateHz / 1000;
+    this.maxSamples = Math.round(
+      (options.maxDurationMs * options.sampleRateHz) / 1000,
+    );
+    this.minNaturalChunkSamples = Math.ceil(
+      options.minNaturalChunkMs * samplesPerMs,
+    );
+    this.naturalChunkingStartSamples = Math.ceil(
+      (options.naturalChunkingStartMs ?? 0) * samplesPerMs,
+    );
+    this.forcedChunkSamples = Math.ceil(
+      options.forcedChunkMs * samplesPerMs,
+    );
+  }
 
   pushFrame(frame: Int16Array): void {
     if (this.finished || frame.length === 0) return;
 
-    const maxSamples = Math.round(
-      (this.options.maxDurationMs * this.options.sampleRateHz) / 1000,
-    );
-    const remainingSamples = maxSamples - this.totalSamples;
+    const remainingSamples = this.maxSamples - this.totalSamples;
     if (remainingSamples <= 0) return;
 
     const acceptedFrame =
       frame.length <= remainingSamples
         ? frame
-        : frame.slice(0, remainingSamples);
-    this.chunks.push(acceptedFrame);
+        : frame.subarray(0, remainingSamples);
+    this.pendingPcm.append(acceptedFrame);
     this.pendingSamples += acceptedFrame.length;
     this.freshSamples += acceptedFrame.length;
     this.totalSamples += acceptedFrame.length;
 
-    if (
-      !this.limitReached &&
-      this.totalDurationMs() >= this.options.maxDurationMs
-    ) {
+    if (!this.limitReached && this.totalSamples >= this.maxSamples) {
       this.limitReached = true;
       this.options.onLimitReached();
     }
 
-    if (this.pendingDurationMs() >= this.options.forcedChunkMs) {
+    if (this.pendingSamples >= this.forcedChunkSamples) {
       this.seal();
     } else if (
       this.naturalBoundaryReady &&
-      this.pendingDurationMs() >= this.options.minNaturalChunkMs
+      this.pendingSamples >= this.minNaturalChunkSamples
     ) {
       this.seal();
     }
@@ -79,7 +91,7 @@ export class LocalChunkedDictation {
   requestNaturalBoundary(): void {
     if (
       this.finished ||
-      this.totalDurationMs() < (this.options.naturalChunkingStartMs ?? 0)
+      this.totalSamples < this.naturalChunkingStartSamples
     ) {
       return;
     }
@@ -115,9 +127,31 @@ export class LocalChunkedDictation {
     this.clearNaturalBoundaryTimer();
     this.naturalBoundaryRequested = false;
     this.naturalBoundaryReady = false;
-    this.chunks.length = 0;
+    this.pendingPcm.clear();
     this.pendingSamples = 0;
     this.freshSamples = 0;
+  }
+
+  /**
+   * Transfer audio that was never sealed into a bounded request. This keeps a
+   * short recording on the normal post-hoc VAD path without making the capture
+   * session retain a second copy of the same frames.
+   */
+  takePendingAudio(): CapturedAudio {
+    if (this.dispatchedChunkCount > 0) {
+      throw new Error("Cannot take audio after local chunks were dispatched.");
+    }
+
+    this.finished = true;
+    this.clearNaturalBoundaryTimer();
+    this.naturalBoundaryRequested = false;
+    this.naturalBoundaryReady = false;
+    this.pendingSamples = 0;
+    this.freshSamples = 0;
+
+    return createCapturedAudio(this.pendingPcm.take(), {
+      sampleRateHz: this.options.sampleRateHz,
+    });
   }
 
   async finish(): Promise<TranscriptionResult[]> {
@@ -139,7 +173,7 @@ export class LocalChunkedDictation {
   }
 
   get durationMs(): number {
-    return this.totalDurationMs();
+    return (this.totalSamples / this.options.sampleRateHz) * 1000;
   }
 
   /** Whether recording has already moved onto the bounded streaming path. */
@@ -151,14 +185,17 @@ export class LocalChunkedDictation {
     if (this.freshSamples === 0) return;
 
     this.clearNaturalBoundaryTimer();
-    const pcm16 = concatPcm16(this.chunks);
+    const pcm16 = this.pendingPcm.take();
     const overlapSamples = Math.min(
       pcm16.length,
       Math.round((this.options.overlapMs * this.options.sampleRateHz) / 1000),
     );
-    const overlap = overlapSamples > 0 ? pcm16.slice(-overlapSamples) : null;
-    this.chunks.length = 0;
-    if (overlap && overlap.length > 0) this.chunks.push(overlap);
+    // Keep the overlap as a view. The next accumulator copies it into its own
+    // storage, so allocating a separate sliced buffer here only adds one
+    // temporary allocation and copy per sealed chunk.
+    const overlap =
+      overlapSamples > 0 ? pcm16.subarray(-overlapSamples) : null;
+    if (overlap && overlap.length > 0) this.pendingPcm.append(overlap);
     this.pendingSamples = overlap?.length ?? 0;
     this.freshSamples = 0;
     this.naturalBoundaryRequested = false;
@@ -183,7 +220,7 @@ export class LocalChunkedDictation {
     if (
       !this.finished &&
       this.naturalBoundaryReady &&
-      this.pendingDurationMs() >= this.options.minNaturalChunkMs
+      this.pendingSamples >= this.minNaturalChunkSamples
     ) {
       this.seal();
     }
@@ -196,34 +233,36 @@ export class LocalChunkedDictation {
     }
   }
 
-  private pendingDurationMs(): number {
-    return (this.pendingSamples / this.options.sampleRateHz) * 1000;
-  }
-
-  private totalDurationMs(): number {
-    return (this.totalSamples / this.options.sampleRateHz) * 1000;
-  }
 }
 
 /** Join chunk results without repeating words generated from the overlap. */
 export function mergeLocalChunkTexts(
   results: readonly TranscriptionResult[],
 ): string {
-  let merged: string[] = [];
+  const merged: string[] = [];
   for (const result of results) {
-    const next = result.text.trim().split(/\s+/).filter(Boolean);
-    if (next.length === 0) continue;
+    const trimmed = result.text.trim();
+    if (trimmed.length === 0) continue;
+    const next = trimmed.split(/\s+/);
     const maxOverlap = Math.min(12, merged.length, next.length);
     let overlap = 0;
     for (let size = maxOverlap; size > 0; size--) {
-      const previousTail = merged.slice(-size).map(normalizeWord);
-      const nextHead = next.slice(0, size).map(normalizeWord);
-      if (previousTail.every((word, index) => word === nextHead[index])) {
+      let matches = true;
+      for (let index = 0; index < size; index++) {
+        const previousWord = normalizeWord(merged[merged.length - size + index]);
+        if (previousWord !== normalizeWord(next[index])) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
         overlap = size;
         break;
       }
     }
-    merged = merged.concat(next.slice(overlap));
+    for (let index = overlap; index < next.length; index++) {
+      merged.push(next[index]);
+    }
   }
   return merged.join(" ");
 }

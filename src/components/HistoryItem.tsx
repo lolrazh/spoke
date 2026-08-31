@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { m, AnimatePresence } from "framer-motion";
+import React from "react";
+import { m } from "framer-motion";
 import SfIcon from "./icons/SfIcon";
 import IconButton from "./ui/IconButton";
 import { panelCascadeItem } from "./shared/panelMotion";
@@ -8,12 +8,12 @@ export interface HistoryItemData {
   id: string;
   text: string;
   timestamp: number; // Unix timestamp in ms
-  mode?: "dictation" | "edit";
 }
 
 interface HistoryItemProps {
   item: HistoryItemData;
-  onCopy: () => void | boolean | Promise<void | boolean>;
+  onCopy: (item: HistoryItemData) => void | Promise<void>;
+  copied: boolean;
   skipAnimation?: boolean;
 }
 
@@ -30,25 +30,13 @@ const formatTime = (timestamp: number): string => {
 const HistoryItemInner: React.FC<HistoryItemProps> = ({
   item,
   onCopy,
+  copied,
   skipAnimation = false,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const handleCopy = () => void onCopy(item);
 
-  const handleCopy = async () => {
-    const result = await onCopy();
-    if (result === false) return;
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
-  return (
-    <m.div
-      initial={skipAnimation ? false : "hidden"}
-      animate="visible"
-      exit="exit"
-      variants={panelCascadeItem}
-      className="group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default"
-    >
+  const content = (
+    <>
       {/* Text - left side with max width */}
       <div className="flex-1 p-3 pr-2">
         <p className="text-xs text-foreground/80 leading-relaxed font-normal">
@@ -74,53 +62,36 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
               copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             }
           >
-            <AnimatePresence mode="wait">
-              {copied ? (
-                <m.svg
-                  key="check"
-                  width={14}
-                  height={14}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="text-foreground"
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.6, opacity: 0 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 600,
-                    damping: 15,
-                    mass: 0.5,
-                  }}
-                >
-                  <m.path
-                    d="M4 12l5 5L20 6"
-                    initial={{ pathLength: 0 }}
-                    animate={{ pathLength: 1 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                  />
-                </m.svg>
-              ) : (
-                <m.div
-                  key="copy"
-                  initial={{ scale: 0.6, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0.6, opacity: 0 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 600,
-                    damping: 15,
-                    mass: 0.5,
-                  }}
-                >
-                  <SfIcon name="document.on.document" size={14} />
-                </m.div>
-              )}
-            </AnimatePresence>
+            {copied ? (
+              <m.svg
+                width={14}
+                height={14}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-foreground"
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 600,
+                  damping: 15,
+                  mass: 0.5,
+                }}
+              >
+                <m.path
+                  d="M4 12l5 5L20 6"
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                />
+              </m.svg>
+            ) : (
+              <SfIcon name="document.on.document" size={14} />
+            )}
           </IconButton>
         </div>
         {/* Time - anchored at bottom */}
@@ -128,6 +99,25 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
           {formatTime(item.timestamp)}
         </span>
       </div>
+    </>
+  );
+
+  const className =
+    "history-row group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default";
+
+  if (skipAnimation) {
+    return <div className={className}>{content}</div>;
+  }
+
+  return (
+    <m.div
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      variants={panelCascadeItem}
+      className={className}
+    >
+      {content}
     </m.div>
   );
 };
@@ -139,6 +129,7 @@ const HistoryItem = React.memo(HistoryItemInner, (prev, next) => {
     prev.item.id === next.item.id &&
     prev.item.text === next.item.text &&
     prev.item.timestamp === next.item.timestamp &&
+    prev.copied === next.copied &&
     prev.skipAnimation === next.skipAnimation
   );
 });

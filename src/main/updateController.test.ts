@@ -110,7 +110,7 @@ describe("updateController", () => {
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
 
     expect(controller.getUpdateStatus()).toBe("available");
-    expect(controller.getUpdateAvailableVersion()).toBe("0.1.7");
+    expect(controller.getUpdateSnapshot().version).toBe("0.1.7");
     expect(controller.isUpdateReadyToInstall()).toBe(false);
     expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
       "Update available",
@@ -160,6 +160,40 @@ describe("updateController", () => {
     expect(controller.getUpdateSnapshot().downloadPercent).toBe(99);
   });
 
+  it("coalesces burst download progress publications", async () => {
+    const { controller, electron, onStateChange, rebuildTrayMenu } =
+      await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    onStateChange.mockClear();
+    rebuildTrayMenu.mockClear();
+
+    electron.autoUpdater.emit("download-progress", { percent: 10 });
+    electron.autoUpdater.emit("download-progress", { percent: 20 });
+    electron.autoUpdater.emit("download-progress", { percent: 30 });
+
+    // The authoritative snapshot is current before the deferred publication.
+    expect(controller.getUpdateSnapshot().downloadPercent).toBe(30);
+    expect(onStateChange).not.toHaveBeenCalled();
+    expect(rebuildTrayMenu).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(onStateChange).toHaveBeenCalledTimes(1);
+    expect(onStateChange.mock.calls[0]?.[0]).toMatchObject({
+      status: "downloading",
+      downloadPercent: 30,
+    });
+    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+
+    electron.autoUpdater.emit("download-progress", { percent: 30 });
+    await vi.advanceTimersByTimeAsync(50);
+
+    expect(onStateChange).toHaveBeenCalledTimes(1);
+    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+  });
+
   it("marks the update ready once it finishes downloading", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
@@ -170,7 +204,7 @@ describe("updateController", () => {
 
     expect(controller.getUpdateStatus()).toBe("available");
     expect(controller.isUpdateReadyToInstall()).toBe(true);
-    expect(controller.getUpdateAvailableVersion()).toBe("0.1.5");
+    expect(controller.getUpdateSnapshot().version).toBe("0.1.5");
     expect(controller.getUpdateSnapshot().downloadPercent).toBe(100);
     expect(sendNotify).toHaveBeenCalledWith("Update ready. Restart to update");
     expect(electron.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
@@ -208,7 +242,7 @@ describe("updateController", () => {
     await vi.advanceTimersByTimeAsync(60_000);
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toContain("No updater response");
+    expect(controller.getUpdateSnapshot().error).toContain("No updater response");
     expect(sendNotify).toHaveBeenCalledWith(
       "Update check timed out. Try again in a moment.",
     );
@@ -229,7 +263,7 @@ describe("updateController", () => {
     // ...but once progress truly stops, the stall watchdog trips.
     await vi.advanceTimersByTimeAsync(90_000);
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toContain("stalled");
+    expect(controller.getUpdateSnapshot().error).toContain("stalled");
     expect(sendNotify).toHaveBeenCalledWith(
       "Update download stalled. Try again in a moment.",
     );
@@ -245,7 +279,7 @@ describe("updateController", () => {
     );
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toBe(
+    expect(controller.getUpdateSnapshot().error).toBe(
       "The command is disabled and cannot be executed",
     );
     expect(sendNotify).toHaveBeenCalledWith(
@@ -282,7 +316,7 @@ describe("updateController", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toBe("boom");
+    expect(controller.getUpdateSnapshot().error).toBe("boom");
     expect(sendNotify).toHaveBeenCalledWith("Update download failed: boom");
   });
 
@@ -337,48 +371,6 @@ describe("updateController", () => {
     ).toHaveLength(2);
   });
 
-  it("previews the ready state only in development builds", async () => {
-    const packaged = await loadController({ packaged: true });
-    expect(packaged.controller.setDevUpdateStateForTesting("ready")).toEqual({
-      ok: false,
-      snapshot: {
-        status: "idle",
-        version: null,
-        readyToInstall: false,
-        error: null,
-        downloadPercent: null,
-      },
-      error: "Dev update state is unavailable in packaged builds",
-    });
-
-    const dev = await loadController({ packaged: false, version: "0.1.7" });
-    const result = dev.controller.setDevUpdateStateForTesting("ready");
-
-    expect(result.ok).toBe(true);
-    expect(result.snapshot).toEqual({
-      status: "available",
-      version: "v0.1.7-dev",
-      readyToInstall: true,
-      error: null,
-      downloadPercent: 100,
-    });
-    expect(dev.rebuildTrayMenu).toHaveBeenCalled();
-  });
-
-  it("previews the downloading state with a percent", async () => {
-    const dev = await loadController({ packaged: false, version: "0.1.7" });
-    const result = dev.controller.setDevUpdateStateForTesting("downloading");
-
-    expect(result.ok).toBe(true);
-    expect(result.snapshot).toEqual({
-      status: "downloading",
-      version: "v0.1.7-dev",
-      readyToInstall: false,
-      error: null,
-      downloadPercent: 42,
-    });
-  });
-
   it("only reports ready to install after the download completes (restart guard)", async () => {
     const { controller, electron } = await loadController();
 
@@ -398,7 +390,12 @@ describe("updateController", () => {
 
     controller.quitAndInstallUpdate();
 
-    expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    await vi.waitFor(() =>
+      expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledWith(
+        false,
+        true,
+      ),
+    );
     // Native quitAndInstall closes windows and quits the app itself. Forcing
     // either path here can abort the updater handoff.
     electron.nativeSquirrelUpdater.emit("before-quit-for-update");
@@ -430,7 +427,9 @@ describe("updateController", () => {
     controller.quitAndInstallUpdate();
     controller.quitAndInstallUpdate();
 
-    expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() =>
+      expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1),
+    );
   });
 
   it("resets the quitAndInstall latch if the native handoff never begins", async () => {
@@ -440,7 +439,7 @@ describe("updateController", () => {
     await vi.advanceTimersByTimeAsync(120_000);
 
     expect(controller.getUpdateStatus()).toBe("error");
-    expect(controller.getUpdateError()).toContain("Install handoff");
+    expect(controller.getUpdateSnapshot().error).toContain("Install handoff");
     expect(sendNotify).toHaveBeenCalledWith(
       "Update install did not start. Try again.",
     );

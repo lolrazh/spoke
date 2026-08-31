@@ -83,18 +83,6 @@
     );
   }
 
-  .sf-intro-particles {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  /* Controls that must appear above the intro overlay (e.g., speaker toggle) */
-  .sf-intro-controls {
-    z-index: 10001; /* one above .sf-intro-overlay */
-  }
-
   .sf-grid-background {
     position: absolute;
     inset: 0;
@@ -135,26 +123,6 @@
     user-select: none;
   }
 
-  .sf-intro-tagline {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .sf-intro-heading {
-    font-family: "Instrument Serif", Georgia, serif;
-    font-size: clamp(30px, 7.2vw, 60px);
-    line-height: 1.25;
-    letter-spacing: -0.01em;
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 1) 0%,
-      rgba(255, 255, 255, 0.85) 100%
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
   .sf-intro-sub {
     font-family:
       "Lexend Deca",
@@ -185,19 +153,6 @@
   .sf-intro-cta:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.2);
     outline-offset: 2px;
-  }
-
-  .sf-intro-skip {
-    position: absolute;
-    top: 18px;
-    right: 18px;
-    padding: 6px 10px;
-    background: rgba(255, 255, 255, 0.06);
-    color: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 999px;
-    font-size: 12px;
-    backdrop-filter: blur(8px);
   }
 
   /* The main container for the app, which also acts as the hover hot-zone */
@@ -240,10 +195,17 @@
     /* Smooth shadow transitions for hover/state changes */
     transition: box-shadow var(--duration-fast) var(--ease-standard);
     /* Performance: avoid flicker by promoting and isolating */
-    will-change: transform, opacity, filter;
+    will-change: transform;
     transform: translateZ(0);
     backface-visibility: hidden;
     contain: paint;
+  }
+
+  /* Keep long history lists cheap to lay out and paint outside the scrollport.
+     The intrinsic size keeps the scroll range stable before a row is visited. */
+  .history-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 72px;
   }
 
   /* Show hand cursor when pill is clickable (non-expanded) */
@@ -369,11 +331,6 @@
   /* Show fade when text is truncated */
   .notification-text.truncated::after {
     opacity: 1;
-  }
-
-  .pill-icon {
-    opacity: 0.9;
-    box-shadow: 0 0 1px rgba(0, 0, 0, 0.12);
   }
 
   /* Common container for dots and bars */
@@ -528,9 +485,6 @@
   .frequency-element {
     background: #c0c0c0;
     box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
-    will-change: height, opacity, border-radius;
-    backface-visibility: hidden;
-    transform: translateZ(0);
   }
 
   .frequency-element.as-dot {
@@ -542,256 +496,27 @@
     min-width: 2px;
   }
 
-  /* Dot styling - used in all states */
-  .dot {
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background: #c0c0c0;
-    opacity: 1;
-    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-    box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
+  /* Processing bars animate on the compositor. The old implementation woke
+     the renderer every 33 ms to calculate 72 sine values and write 18 style
+     transforms; the bars only need a visual pulse, not JavaScript state. */
+  .processing-frequency-element {
+    animation: processing-frequency-wave 1.2s ease-in-out infinite;
   }
 
-  /* Animated dots for processing state */
-  .dot.animated {
-    /* Faster but still smooth pulse for loading state */
-    animation: loading-pulse 480ms infinite ease-in-out;
-    will-change: transform, opacity;
-    backface-visibility: hidden;
-    transform: translateZ(0);
-    box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
-  }
-
-  .dot.animated:nth-child(2n) {
-    animation-delay: 60ms;
-  }
-
-  .dot.animated:nth-child(3n) {
-    animation-delay: 120ms;
-  }
-
-  .dot.animated:nth-child(4n) {
-    animation-delay: 180ms;
-  }
-
-  .dot.animated:nth-child(5n) {
-    animation-delay: 240ms;
-  }
-
-  @keyframes loading-pulse {
+  @keyframes processing-frequency-wave {
     0%,
     100% {
-      transform: scale(1);
-      opacity: 0.6;
+      transform: scaleY(var(--processing-min-scale, 0.1666666667));
     }
     50% {
-      transform: scale(1.4);
-      opacity: 1;
+      transform: scaleY(var(--processing-max-scale, 0.75));
     }
   }
 
-  /* Frequency bars for active state */
-  .waveform-bar {
-    width: 3px;
-    border-radius: 1px;
-    animation: pill-wave 600ms infinite ease-in-out;
-    will-change: height, opacity;
-    background: #c0c0c0;
-    opacity: 1;
-    box-shadow: 0 0 2px rgba(0, 0, 0, 0.15);
-  }
-
-  @keyframes pill-wave {
-    0%,
-    100% {
-      height: 5px;
-      opacity: 0.7;
+  @media (prefers-reduced-motion: reduce) {
+    .processing-frequency-element {
+      animation: none;
     }
-    50% {
-      height: 10px;
-      opacity: 1;
-    }
-  }
-
-  @keyframes strikethrough-sync {
-    0% {
-      color: rgba(255, 255, 255, 1);
-      background-position: 0% 50%;
-      background-size: 0% 2px;
-    }
-    100% {
-      color: rgba(255, 255, 255, 0.6);
-      background-position: 0% 50%;
-      background-size: 100% 2px;
-    }
-  }
-
-  .strikethrough-animate {
-    background-repeat: no-repeat;
-    background-image: linear-gradient(
-      to right,
-      rgba(255, 255, 255, 0.6) 0%,
-      rgba(255, 255, 255, 0.6) 100%
-    );
-    background-position: 0% 50%;
-    background-size: 0% 2px;
-    animation: strikethrough-sync 0.25s ease-out forwards;
-  }
-
-  @keyframes disappear-reverse {
-    0% {
-      color: rgba(255, 255, 255, 0.6);
-      clip-path: inset(0 0 0 0);
-      background-repeat: no-repeat;
-      background-image: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0.6) 0%,
-        rgba(255, 255, 255, 0.6) 100%
-      );
-      background-position: 0% 50%;
-      background-size: 100% 2px;
-    }
-    100% {
-      color: rgba(255, 255, 255, 0.6);
-      clip-path: inset(0 100% 0 0);
-      background-repeat: no-repeat;
-      background-image: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0.6) 0%,
-        rgba(255, 255, 255, 0.6) 100%
-      );
-      background-position: 0% 50%;
-      background-size: 100% 2px;
-    }
-  }
-
-  .disappear-reverse {
-    animation: disappear-reverse 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  }
-
-  /* Segment collapsing for layout-based text movement */
-  .segment-collapsing {
-    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  }
-
-  /* Success container glow - slow and passionate */
-  @keyframes success-container-glow {
-    0% {
-      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-    }
-    50% {
-      box-shadow:
-        0 1px 6px rgba(0, 0, 0, 0.35),
-        0 0 0 2px rgba(255, 255, 255, 0.12),
-        0 0 12px 2px rgba(255, 255, 255, 0.25);
-    }
-    100% {
-      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-    }
-  }
-
-  .success-container-glow {
-    /* Slow, passionate ease-out */
-    animation: success-container-glow 1s ease-out forwards;
-  }
-
-  /* Character replacement animations */
-  @keyframes replacement-fade-out {
-    0% {
-      opacity: 1;
-      color: rgba(255, 255, 255, 0.6);
-      background-repeat: no-repeat;
-      background-image: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0.6) 0%,
-        rgba(255, 255, 255, 0.6) 100%
-      );
-      background-position: 0% 50%;
-      background-size: 100% 2px;
-    }
-    100% {
-      opacity: 0;
-      color: rgba(255, 255, 255, 0.6);
-      background-repeat: no-repeat;
-      background-image: linear-gradient(
-        to right,
-        rgba(255, 255, 255, 0.6) 0%,
-        rgba(255, 255, 255, 0.6) 100%
-      );
-      background-position: 0% 50%;
-      background-size: 100% 2px;
-    }
-  }
-
-  @keyframes replacement-fade-in {
-    0% {
-      opacity: 0;
-    }
-    100% {
-      opacity: 1;
-    }
-  }
-
-  .replacement-fade-out {
-    animation: replacement-fade-out 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-    display: inline-block;
-  }
-
-  .replacement-fade-in {
-    animation: replacement-fade-in 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-    display: inline-block;
-  }
-
-  /* Segment width transition for replacements */
-  .segment-replacing {
-    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  }
-
-  /* Insertion animations - materialize from nothing */
-  @keyframes insertion-fade-in {
-    0% {
-      opacity: 0;
-    }
-    100% {
-      opacity: 1;
-    }
-  }
-
-  .insertion-fade-in {
-    animation: insertion-fade-in 1s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-    display: inline-block;
-  }
-
-  /* Segment width transition for insertions */
-  .segment-inserting {
-    transition: width 1s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  }
-
-  /* Collapsed state dots - smaller size but maintain the same spacing */
-  .dot.collapsed {
-    width: 2px;
-    height: 2px;
-    opacity: 0.95;
-    background: #c0c0c0;
-    box-shadow: 0 0 1px rgba(0, 0, 0, 0.12);
-  }
-
-  /* Loading spinner */
-  .loading-spinner {
-    width: 12px;
-    height: 12px;
-    position: relative;
-  }
-
-  .spinner {
-    width: 100%;
-    height: 100%;
-    border: 2px solid rgba(160, 160, 160, 0.2);
-    border-top-color: #a0a0a0;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    will-change: transform;
   }
 
   /* Define BOTH endpoints with the same transform function list (translateZ
@@ -819,48 +544,10 @@
 
   /* Respect reduced motion preferences */
   @media (prefers-reduced-motion: reduce) {
-    .dot.animated,
-    .waveform-bar,
-    .spinner,
     .animate-spin {
       animation: none !important;
       transition: none !important;
     }
-  }
-
-  /* Animation transitions */
-  .fade-enter {
-    opacity: 0;
-  }
-
-  .fade-enter-active {
-    opacity: 1;
-    transition: opacity 300ms;
-  }
-
-  .fade-exit {
-    opacity: 1;
-  }
-
-  .fade-exit-active {
-    opacity: 0;
-    transition: opacity 300ms;
-  }
-
-  /* Draggable header for frameless window */
-  .header-bar {
-    -webkit-app-region: drag;
-  }
-
-  /* Make sure interactive elements within the header are not draggable */
-  .header-bar button,
-  .header-bar input,
-  .header-bar a,
-  .header-bar [role="button"],
-  .header-bar select,
-  .header-bar textarea,
-  .header-bar .non-draggable {
-    -webkit-app-region: no-drag;
   }
 }
 
@@ -894,28 +581,12 @@ body {
 }
 
 /* Font family utilities */
-.font-sans {
-  font-family:
-    "Lexend Deca",
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 /* Onboarding window - solid surface to match pill */
 .onboarding-window {
   background: var(--surface-solid);
   border: 1px solid var(--stroke-fg);
   border-radius: var(--radius-window);
   box-sizing: border-box;
-  /* Resize performance optimization */
-  will-change: transform;
   contain: layout style paint;
   position: relative;
   /* Initial opacity to prevent flash of content */
@@ -952,17 +623,6 @@ body {
   left: 80px; /* Leave first 80px alone for native traffic lights (3 buttons × 12px + 6px gutter on each side) */
   right: 80px; /* Leave last 80px alone for top-right controls (speaker, etc.) */
   height: 32px;
-  z-index: 1000;
-}
-
-/* Small draggable area on the left - below the native traffic lights */
-.onboarding-header-left {
-  -webkit-app-region: drag;
-  position: absolute;
-  top: 40px; /* Below the native traffic lights area */
-  left: 0;
-  width: 80px; /* Same width as excluded area above */
-  height: 20px;
   z-index: 1000;
 }
 
@@ -1091,29 +751,6 @@ body {
     --ease-standard: cubic-bezier(0.25, 0.8, 0.25, 1);
     --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .dark {
-    /* Same values for dark mode since this is inherently a dark theme */
-    --background: 0 0% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --radius: 0.5rem;
-  }
 }
 
 @layer base {
@@ -1143,54 +780,12 @@ body {
   .onboarding-section {
     margin-block: var(--onboarding-section-gap);
   }
-  .onboarding-hint {
-    font-size: 0.8125rem; /* 13px */
-    line-height: 1.5;
-    font-weight: 300;
-  }
-  .onboarding-hint-before {
-    display: block;
-    padding-bottom: var(--onboarding-section-gap);
-  }
-  .onboarding-hint-centered {
-    display: block;
-    text-align: center !important;
-    padding-bottom: calc(var(--onboarding-section-gap) * 0.5);
-    margin-inline: auto;
-  }
   .onboarding-permission-desc {
     font-size: 0.6875rem; /* 11px */
     line-height: 1.5;
     font-weight: 300;
     display: block;
     padding-top: calc(var(--spacing-xs) / 2);
-  }
-
-  /* Onboarding Card and UI Utilities */
-  .onboarding-card {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
-    backdrop-filter: blur(var(--blur-md));
-    border: 1px solid var(--stroke-fg-mid);
-    border-radius: var(--radius-window);
-    box-shadow: var(--shadow-elevated);
-    transition:
-      background-color var(--duration-standard) var(--ease-standard),
-      border-color var(--duration-standard) var(--ease-standard),
-      box-shadow var(--duration-standard) var(--ease-standard);
-  }
-
-  .onboarding-card:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
-    border-color: var(--stroke-fg-strong);
-  }
-
-  .onboarding-row {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
-    border: 1px solid var(--stroke-fg);
-    border-radius: var(--radius);
-    backdrop-filter: blur(var(--blur-md));
-    box-shadow: var(--shadow-floating);
   }
 
   /* Textarea-specific styling without backdrop-filter to prevent timing issues */
@@ -1300,14 +895,6 @@ body {
     height: 84px;
     padding: 0;
   }
-  .keycap-wide {
-    width: 111px;
-  }
-  .keycap-label {
-    position: absolute;
-    bottom: 9px;
-    right: 12px;
-  }
   /* Legends for Option keycap: symbol on top, label on bottom */
   .keycap-legend-top {
     position: absolute;
@@ -1344,39 +931,6 @@ body {
       sans-serif;
   }
 
-  .onboarding-close {
-    width: 28px;
-    height: 28px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 9999px;
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-    border: 1px solid var(--stroke-fg);
-    backdrop-filter: blur(var(--blur-md));
-    box-shadow: var(--shadow-floating);
-    color: rgba(255, 255, 255, 0.8);
-    transition: all var(--duration-standard) var(--ease-standard);
-  }
-  .onboarding-close:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    color: rgba(255, 255, 255, 0.95);
-    border-color: var(--stroke-fg-strong);
-  }
-
-  /* Clean section separators */
-  .section-separator {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  /* Frosted Glass with Noise elevation system - cleaner for native vibrancy */
-  .card-elevated {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    border: 1px solid var(--stroke-fg);
-    box-shadow: var(--shadow-elevated); /* gentler shadow */
-  }
-
   /* Primary cards - clean styling without shadows */
   .card-primary {
     background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-md));
@@ -1396,43 +950,6 @@ body {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
     border: 1px solid var(--stroke-fg);
     box-shadow: var(--shadow-floating); /* gentler shadow for vibrancy */
-  }
-
-  /* Interactive card with hover effects */
-  .card-interactive {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xxs));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url('%23noiseFilter')' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(var(--blur-md));
-    border: 1px solid var(--stroke-fg);
-    box-shadow: var(--shadow-interactive);
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    position: relative;
-  }
-
-  .card-interactive::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image: radial-gradient(
-      400px circle at var(--mouse-x) var(--mouse-y),
-      rgba(255, 255, 255, 0.04),
-      transparent 70%
-    );
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: 1;
-  }
-
-  .card-interactive:hover::before {
-    opacity: 1;
-  }
-
-  .card-interactive:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-xs));
-    border: 1px solid var(--stroke-fg-strong);
-    box-shadow: var(--shadow-interactive-hover);
-    transform: translateY(-2px);
   }
 
   /* Typography enhancements */
@@ -1501,7 +1018,6 @@ body {
       background-color 260ms var(--ease-emphasized),
       height 260ms var(--ease-emphasized),
       opacity 260ms var(--ease-emphasized);
-    will-change: transform, flex-grow;
   }
   .onboarding-progress-bar.grow-active {
     flex-grow: 6;
@@ -1528,54 +1044,6 @@ body {
 
   .text-dimmed {
     color: rgba(255, 255, 255, 0.4);
-  }
-
-  /* Tricks Component Styles */
-  .meta-directive-tag {
-    /* Base styling from btn-secondary */
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-sm));
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 250 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%' height='100%' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E");
-    backdrop-filter: blur(var(--blur-md));
-    border: 1px solid var(--stroke-fg);
-    color: rgba(255, 255, 255, 0.6);
-
-    /* Use same border radius as buttons */
-    border-radius: var(--radius-lg);
-
-    /* Smaller size - more compact than buttons */
-    padding: 4px 8px;
-    height: auto;
-    min-height: 24px;
-    font-size: 12px;
-    font-weight: 500;
-
-    /* Button-like behavior */
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    white-space: nowrap;
-    position: relative;
-    overflow: hidden;
-    transition: all var(--duration-standard) var(--ease-standard);
-  }
-
-  .meta-directive-tag-inactive {
-    opacity: 0.6;
-    filter: blur(0.3px);
-    transition: all var(--duration-standard) var(--ease-standard);
-  }
-
-  .meta-directive-tag-active,
-  .meta-directive-tag:hover,
-  .meta-directive-tag:focus-visible,
-  .meta-directive-tag-inactive:hover {
-    background-color: rgba(var(--surface-base-rgb), var(--surface-alpha-lg));
-    border: 1px solid var(--stroke-fg-xstrong);
-    color: rgba(255, 255, 255, 0.9);
-    opacity: 1;
-    filter: blur(0px);
-    transform: translateY(-1px);
   }
 
   /* Button enhancements - remove bloom, add crisp edges, fix vibrancy artifacts */
@@ -1646,61 +1114,6 @@ body {
 
   .shimmer:hover::before {
     left: 150%;
-  }
-
-  /* Faster shimmer for smaller buttons */
-  .shimmer-fast::before {
-    content: "";
-    position: absolute;
-    z-index: 1;
-    top: 0;
-    left: -150%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      110deg,
-      transparent 25%,
-      rgba(255, 255, 255, 0.08) 50%,
-      transparent 75%
-    );
-    transform: skewX(-25deg);
-    transition: left 0.4s ease-in-out;
-  }
-
-  .shimmer-fast:hover::before {
-    left: 150%;
-  }
-
-  /* The Radix select portal only needs a small local enter/exit transition.
-     Keep it independent from the app-wide Framer Motion choreography. */
-  .select-content-motion[data-state="open"] {
-    animation: select-content-in 150ms var(--ease-standard) both;
-  }
-
-  .select-content-motion[data-state="closed"] {
-    animation: select-content-out 100ms var(--ease-standard) both;
-  }
-
-  @keyframes select-content-in {
-    from {
-      opacity: 0;
-      transform: scale(0.96);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  @keyframes select-content-out {
-    from {
-      opacity: 1;
-      transform: scale(1);
-    }
-    to {
-      opacity: 0;
-      transform: scale(0.96);
-    }
   }
 
   /* Switch (glass-aligned) */
@@ -1808,12 +1221,6 @@ body {
     will-change: transform;
     backface-visibility: hidden;
     transform: translateZ(0);
-  }
-  .will-change-opacity {
-    will-change: opacity;
-  }
-  .will-change-bg-pos {
-    will-change: background-position;
   }
 
   /* Ensure native traffic lights work properly */

@@ -1,22 +1,20 @@
 /**
  * Transcript IPC
  *
- * Paste-at-cursor orchestration plus the last-transcript broadcast and the
- * transcription history CRUD handlers backed by lib/transcriptionStorage.
+ * Paste-at-cursor orchestration plus transcription history CRUD handlers
+ * backed by lib/transcriptionStorage.
  */
 
 import {
-  BrowserWindow,
   clipboard,
   ipcMain,
   type IpcMainInvokeEvent,
 } from "electron";
 
 import {
-  getTranscriptions,
+  getTranscriptionsPage,
   saveTranscription,
   deleteTranscription,
-  clearTranscriptions,
 } from "../../lib/transcriptionStorage";
 import { bootTimeline } from "../bootTimeline";
 import { insertTextAtCursor } from "../pasteOrchestrator";
@@ -48,17 +46,6 @@ export function registerTranscriptIpc(): void {
     } catch (error) {
       return { ok: false, error: (error as Error).message };
     }
-  });
-
-  // Handle last transcript updates from renderer
-  ipcMain.on("transcript:update", (_event, text: string) => {
-    console.log(`[IPC] Received transcript update (${text.length} chars)`);
-    state.lastTranscript = text;
-    BrowserWindow.getAllWindows().forEach((window) => {
-      try {
-        window.webContents.send("transcript:updated", text);
-      } catch {}
-    });
   });
 
   // Auto-space preference (trailing space appended after inserted dictation)
@@ -100,11 +87,14 @@ export function registerTranscriptIpc(): void {
   );
 
   // Transcription history storage handlers
-  ipcMain.handle("transcriptions:get-all", () => {
-    return bootTimeline.measureSync("ipc:transcriptions:get-all", () =>
-      getTranscriptions(),
-    );
-  });
+  ipcMain.handle(
+    "transcriptions:get-page",
+    (_event, payload?: { offset?: number; limit?: number }) => {
+      return bootTimeline.measureSync("ipc:transcriptions:get-page", () =>
+        getTranscriptionsPage(payload?.offset, payload?.limit),
+      );
+    },
+  );
 
   ipcMain.handle(
     "transcriptions:save",
@@ -120,8 +110,4 @@ export function registerTranscriptIpc(): void {
     return deleteTranscription(payload.id);
   });
 
-  ipcMain.handle("transcriptions:clear", () => {
-    clearTranscriptions();
-    return { ok: true };
-  });
 }

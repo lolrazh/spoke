@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type SetStateAction,
+} from "react";
 
 export type PermissionProvider = {
   checkPermissions: () => Promise<{
@@ -50,11 +57,39 @@ export type PermissionUiState = {
   accessibility: { loading: boolean; justGranted: boolean };
 };
 
+const DEFAULT_PERMISSIONS: PermissionsState = {
+  microphone: false,
+  screenRecording: false,
+  inputMonitoring: false,
+  accessibility: false,
+};
+
+const DEFAULT_PERMISSION_UI: PermissionUiState = {
+  microphone: { loading: false, justGranted: false },
+  screenRecording: { loading: false, justGranted: false },
+  inputMonitoring: { loading: false, justGranted: false },
+  accessibility: { loading: false, justGranted: false },
+};
+
+function samePermissions(
+  previous: PermissionsState | null,
+  next: PermissionsState,
+): boolean {
+  return (
+    previous !== null &&
+    previous.microphone === next.microphone &&
+    previous.screenRecording === next.screenRecording &&
+    previous.inputMonitoring === next.inputMonitoring &&
+    previous.accessibility === next.accessibility
+  );
+}
+
 type Options = {
   pollIntervalMs?: number;
-  deepLinkGraceMs?: number;
   includeScreenRecording?: boolean;
 };
+
+type PermissionTimerKey = "mic" | "sr" | "im" | "ax";
 
 const debugPermLog = (...args: unknown[]) => {
   if (typeof window === "undefined") return;
@@ -164,23 +199,18 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
   const pollMs = opts?.pollIntervalMs ?? 1000;
   const includeScreenRecording = opts?.includeScreenRecording ?? true;
 
-  const [permissions, setPermissions] = useState<PermissionsState>({
-    microphone: false,
-    screenRecording: false,
-    inputMonitoring: false,
-    accessibility: false,
-  });
-  const [ui, setUi] = useState<PermissionUiState>({
-    microphone: { loading: false, justGranted: false },
-    screenRecording: { loading: false, justGranted: false },
-    inputMonitoring: { loading: false, justGranted: false },
-    accessibility: { loading: false, justGranted: false },
-  });
+  const [permissions, setPermissionsState] = useState<PermissionsState>(
+    DEFAULT_PERMISSIONS,
+  );
+  const [ui, setUi] = useState<PermissionUiState>(DEFAULT_PERMISSION_UI);
   // False until the first init() resolves, so consumers can avoid rendering
   // the default (all-denied) state before the real one is known.
   const [loaded, setLoaded] = useState(false);
 
+  const permissionsRef = useRef(DEFAULT_PERMISSIONS);
+  const loadedRef = useRef(false);
   const prevPermissionsRef = useRef<PermissionsState | null>(null);
+  const initPromiseRef = useRef<Promise<void> | null>(null);
   const timersRef = useRef<{
     mic: ReturnType<typeof setInterval> | null;
     sr: ReturnType<typeof setInterval> | null;
@@ -188,6 +218,57 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     ax: ReturnType<typeof setInterval> | null;
   }>({ mic: null, sr: null, im: null, ax: null });
   const mountedRef = useRef(true);
+
+  const updatePermissions = useCallback(
+    (nextOrUpdater: SetStateAction<PermissionsState>) => {
+      const nextPermissions =
+        typeof nextOrUpdater === "function"
+          ? nextOrUpdater(permissionsRef.current)
+          : nextOrUpdater;
+      if (samePermissions(permissionsRef.current, nextPermissions)) return;
+      permissionsRef.current = nextPermissions;
+      setPermissionsState(nextPermissions);
+    },
+    [],
+  );
+
+  const startPermissionPoll = (
+    key: PermissionTimerKey,
+    check: () => Promise<boolean>,
+    onGranted: () => void | Promise<void>,
+  ): void => {
+    const previousTimer = timersRef.current[key];
+    if (previousTimer) clearInterval(previousTimer);
+
+    let inFlight = false;
+    const poll = () => {
+      if (inFlight || !mountedRef.current) return;
+      inFlight = true;
+      void check()
+        .then((granted) => {
+          if (
+            !granted ||
+            !mountedRef.current ||
+            timersRef.current[key] !== timer
+          ) {
+            return;
+          }
+          clearInterval(timer);
+          timersRef.current[key] = null;
+          return onGranted();
+        })
+        .catch(() => {
+          // Keep polling after transient permission-provider failures.
+        })
+        .finally(() => {
+          inFlight = false;
+        });
+    };
+
+    const timer = setInterval(poll, pollMs);
+    timersRef.current[key] = timer;
+  };
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -201,37 +282,51 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
     };
   }, []);
 
-  const init = async () => {
-    try {
-      const [sys, mic, sr] = await Promise.all([
-        p.checkPermissions(),
-        p.checkMicrophonePermission(),
-        includeScreenRecording
-          ? p.checkScreenRecordingPermission()
-          : Promise.resolve({ granted: false, status: "disabled" }),
-      ]);
-      if (!mountedRef.current) return;
-      const nextPermissions: PermissionsState = {
-        microphone: !!mic?.granted,
-        screenRecording: includeScreenRecording ? !!sr?.granted : false,
-        inputMonitoring: !(sys?.needIM ?? true),
-        accessibility: !(sys?.needAX ?? true),
-      };
-      setPermissions(nextPermissions);
-      debugPermLog("init:snapshot", {
-        needAX: sys?.needAX ?? true,
-        needIM: sys?.needIM ?? true,
-        micStatus: mic?.status ?? "unknown",
-        screenRecordingStatus: sr?.status ?? "unknown",
-        permissions: nextPermissions,
-      });
-    } catch {
-      // ignore; pollers/focus retries will recover
-    } finally {
-      // Mark loaded after the first attempt (success or failure) so the UI
-      // doesn't sit on a placeholder forever.
-      if (mountedRef.current) setLoaded(true);
-    }
+  const init = () => {
+    if (initPromiseRef.current) return initPromiseRef.current;
+
+    const promise = (async () => {
+      try {
+        const [sys, mic, sr] = await Promise.all([
+          p.checkPermissions(),
+          p.checkMicrophonePermission(),
+          includeScreenRecording
+            ? p.checkScreenRecordingPermission()
+            : Promise.resolve({ granted: false, status: "disabled" }),
+        ]);
+        if (!mountedRef.current) return;
+        const nextPermissions: PermissionsState = {
+          microphone: !!mic?.granted,
+          screenRecording: includeScreenRecording ? !!sr?.granted : false,
+          inputMonitoring: !(sys?.needIM ?? true),
+          accessibility: !(sys?.needAX ?? true),
+        };
+        updatePermissions(nextPermissions);
+        debugPermLog("init:snapshot", {
+          needAX: sys?.needAX ?? true,
+          needIM: sys?.needIM ?? true,
+          micStatus: mic?.status ?? "unknown",
+          screenRecordingStatus: sr?.status ?? "unknown",
+          permissions: nextPermissions,
+        });
+      } catch {
+        // ignore; pollers/focus retries will recover
+      } finally {
+        // Mark loaded after the first attempt (success or failure) so the UI
+        // doesn't sit on a placeholder forever.
+        if (mountedRef.current && !loadedRef.current) {
+          loadedRef.current = true;
+          setLoaded(true);
+        }
+      }
+    })().finally(() => {
+      if (initPromiseRef.current === promise) {
+        initPromiseRef.current = null;
+      }
+    });
+
+    initPromiseRef.current = promise;
+    return promise;
   };
 
   const requestMicrophone = async () => {
@@ -243,7 +338,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       debugPermLog("request:microphone:start");
       const res = await p.requestMicrophonePermission();
       if (res?.success && res?.granted) {
-        setPermissions((prev) => ({ ...prev, microphone: true }));
+        updatePermissions((prev) => ({ ...prev, microphone: true }));
         setUi((prev) => ({
           ...prev,
           microphone: { loading: false, justGranted: true },
@@ -266,13 +361,14 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         p.openSystemPreferences("microphone");
       } catch {}
       debugPermLog("request:microphone:polling");
-      if (timersRef.current.mic) clearInterval(timersRef.current.mic);
-      const micTimer = setInterval(async () => {
-        const status = await p.checkMicrophonePermission();
-        if (status?.granted) {
-          clearInterval(micTimer);
-          timersRef.current.mic = null;
-          setPermissions((prev) => ({ ...prev, microphone: true }));
+      startPermissionPoll(
+        "mic",
+        async () => {
+          const status = await p.checkMicrophonePermission();
+          return !!status?.granted;
+        },
+        async () => {
+          updatePermissions((prev) => ({ ...prev, microphone: true }));
           setUi((prev) => ({
             ...prev,
             microphone: { loading: false, justGranted: true },
@@ -288,9 +384,8 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
               microphone: { ...prev.microphone, justGranted: false },
             }));
           }, 800);
-        }
-      }, pollMs);
-      timersRef.current.mic = micTimer;
+        },
+      );
       setUi((prev) => ({
         ...prev,
         microphone: { ...prev.microphone, loading: false },
@@ -313,7 +408,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       debugPermLog("request:screen-recording:start");
       const res = await p.requestScreenRecordingPermission();
       if (res?.success && res?.granted) {
-        setPermissions((prev) => ({ ...prev, screenRecording: true }));
+        updatePermissions((prev) => ({ ...prev, screenRecording: true }));
         setUi((prev) => ({
           ...prev,
           screenRecording: { loading: false, justGranted: true },
@@ -333,13 +428,14 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         p.openSystemPreferences("screen-recording");
       } catch {}
       debugPermLog("request:screen-recording:polling");
-      if (timersRef.current.sr) clearInterval(timersRef.current.sr);
-      const srTimer = setInterval(async () => {
-        const status = await p.checkScreenRecordingPermission();
-        if (status?.granted) {
-          clearInterval(srTimer);
-          timersRef.current.sr = null;
-          setPermissions((prev) => ({ ...prev, screenRecording: true }));
+      startPermissionPoll(
+        "sr",
+        async () => {
+          const status = await p.checkScreenRecordingPermission();
+          return !!status?.granted;
+        },
+        () => {
+          updatePermissions((prev) => ({ ...prev, screenRecording: true }));
           setUi((prev) => ({
             ...prev,
             screenRecording: { loading: false, justGranted: true },
@@ -352,9 +448,8 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
               screenRecording: { ...prev.screenRecording, justGranted: false },
             }));
           }, 800);
-        }
-      }, pollMs);
-      timersRef.current.sr = srTimer;
+        },
+      );
       setUi((prev) => ({
         ...prev,
         screenRecording: { ...prev.screenRecording, loading: false },
@@ -376,7 +471,7 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       debugPermLog("request:input-monitoring:start");
       const out = await p.askIM();
       if (out?.success && out.status === "authorized") {
-        setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
+        updatePermissions((prev) => ({ ...prev, inputMonitoring: true }));
         setUi((prev) => ({
           ...prev,
           inputMonitoring: { loading: false, justGranted: true },
@@ -395,13 +490,14 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
         p.openSystemPreferences("input-monitoring");
       } catch {}
       debugPermLog("request:input-monitoring:polling");
-      if (timersRef.current.im) clearInterval(timersRef.current.im);
-      const imTimer = setInterval(async () => {
-        const sys = await p.checkPermissions();
-        if (sys && !sys.needIM) {
-          clearInterval(imTimer);
-          timersRef.current.im = null;
-          setPermissions((prev) => ({ ...prev, inputMonitoring: true }));
+      startPermissionPoll(
+        "im",
+        async () => {
+          const sys = await p.checkPermissions();
+          return !!sys && !sys.needIM;
+        },
+        () => {
+          updatePermissions((prev) => ({ ...prev, inputMonitoring: true }));
           setUi((prev) => ({
             ...prev,
             inputMonitoring: { loading: false, justGranted: true },
@@ -414,9 +510,8 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
               inputMonitoring: { ...prev.inputMonitoring, justGranted: false },
             }));
           }, 800);
-        }
-      }, pollMs);
-      timersRef.current.im = imTimer;
+        },
+      );
       setUi((prev) => ({
         ...prev,
         inputMonitoring: { ...prev.inputMonitoring, loading: false },
@@ -440,13 +535,14 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       if (out?.success) {
         // Will still require user to toggle in System Settings; start polling
       }
-      if (timersRef.current.ax) clearInterval(timersRef.current.ax);
-      const axTimer = setInterval(async () => {
-        const sys = await p.checkPermissions();
-        if (sys && !sys.needAX) {
-          clearInterval(axTimer);
-          timersRef.current.ax = null;
-          setPermissions((prev) => ({ ...prev, accessibility: true }));
+      startPermissionPoll(
+        "ax",
+        async () => {
+          const sys = await p.checkPermissions();
+          return !!sys && !sys.needAX;
+        },
+        async () => {
+          updatePermissions((prev) => ({ ...prev, accessibility: true }));
           setUi((prev) => ({
             ...prev,
             accessibility: { loading: false, justGranted: true },
@@ -462,9 +558,8 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
               accessibility: { ...prev.accessibility, justGranted: false },
             }));
           }, 800);
-        }
-      }, pollMs);
-      timersRef.current.ax = axTimer;
+        },
+      );
       setUi((prev) => ({
         ...prev,
         accessibility: { ...prev.accessibility, loading: false },
@@ -507,8 +602,8 @@ export function usePermissions(provider?: PermissionProvider, opts?: Options) {
       requestScreenRecording,
       requestInputMonitoring,
       requestAccessibility,
-      setPermissions, // exposed for dev overlays/tests
+      setPermissions: updatePermissions, // exposed for dev overlays/tests
     }),
-    [permissions, ui, loaded],
+    [permissions, ui, loaded, updatePermissions],
   );
 }

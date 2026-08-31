@@ -6,12 +6,15 @@ import type {
 
 import type { LocalTranscribeResult } from "../../types/shared";
 import type { ManagedLocalStreamingSession } from "../localSttLifecycle";
+import { boundLiveTranscriptText } from "../../utils/liveTranscriptText";
 
 type BeginLocalStream = (
   modelId: string,
   onPartial: (text: string) => void,
   signal: AbortSignal,
 ) => Promise<ManagedLocalStreamingSession>;
+
+type PcmPayload = Uint8Array | ArrayBuffer;
 
 type StreamRecord = {
   id: string;
@@ -63,13 +66,17 @@ export class LocalStreamIpcController {
     record.removeOwnerListeners = this.watchOwner(record);
 
     try {
+      let lastVisiblePartial: string | null = null;
       const session = await this.begin(
         modelId,
         (text) => {
           if (this.current !== record || owner.isDestroyed()) return;
+          const visibleText = boundLiveTranscriptText(text);
+          if (visibleText === lastVisiblePartial) return;
+          lastVisiblePartial = visibleText;
           owner.send("stt:local-stream-partial", {
             sessionId: record.id,
-            text,
+            text: visibleText,
           });
         },
         record.abortController.signal,
@@ -93,12 +100,14 @@ export class LocalStreamIpcController {
   async push(
     owner: WebContents,
     sessionId: string,
-    pcmBytes: Uint8Array,
+    pcmBytes: PcmPayload,
   ): Promise<void> {
     const { record, session } = this.requireSession(owner, sessionId);
+    const bytes =
+      pcmBytes instanceof Uint8Array ? pcmBytes : new Uint8Array(pcmBytes);
     try {
       await session.push(
-        Buffer.from(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.byteLength),
+        Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength),
       );
     } catch (error) {
       this.cancelRecord(record);

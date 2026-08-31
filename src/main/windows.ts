@@ -74,12 +74,13 @@ let followCursorInterval: NodeJS.Timeout | null = null;
 let followCursorActive = false;
 let coalesceTimer: NodeJS.Timeout | null = null;
 let pendingBounds: Rectangle | null = null;
+let lastFollowCursorPoint: Point | null = null;
 
-export function getDisplayForPoint(point: Point): Display {
+function getDisplayForPoint(point: Point): Display {
   return screen.getDisplayNearestPoint(point);
 }
 
-export function getActiveDisplay(): Display {
+function getActiveDisplay(): Display {
   if (state.activeDisplayId != null) {
     const existing = screen
       .getAllDisplays()
@@ -103,27 +104,6 @@ export function getDisplayForWindow(): Display {
   return screen.getDisplayNearestPoint({ x: cx, y: cy });
 }
 
-function centerWindowOnDisplay(
-  display: Display,
-  preserveRelativeY = true,
-): void {
-  if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
-  const currentBounds = state.mainWindow.getBounds();
-  const newX =
-    display.bounds.x +
-    Math.round((display.size.width - currentBounds.width) / 2);
-  // Always snap to safe top of target display to keep pill flush to menu bar/notch
-  const newY = display.workArea.y + ISLAND_VISIBLE_Y;
-  if (currentBounds.x !== newX || currentBounds.y !== newY) {
-    coalescedSetBounds({
-      x: newX,
-      y: newY,
-      width: currentBounds.width,
-      height: currentBounds.height,
-    });
-  }
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -135,7 +115,7 @@ export function computeScaleForDisplay(display: Display): number {
   return clamp(raw, MIN_UI_SCALE, MAX_UI_SCALE);
 }
 
-export function ensureEnvelopeForDisplay(
+function ensureEnvelopeForDisplay(
   display: Display,
 ): { scale: number; width: number; height: number } | null {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return null;
@@ -203,7 +183,7 @@ export function emitActiveDisplayInfo(display: Display, scale: number): void {
 }
 
 // After refreshing notch info, also update the renderer with new display data
-export async function refreshNotchInfoAndEmit(reason: string): Promise<void> {
+async function refreshNotchInfoAndEmit(reason: string): Promise<void> {
   await refreshNotchInfo(reason);
   try {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
@@ -275,10 +255,18 @@ function runFollowCursorInterval(): void {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
   }
+  lastFollowCursorPoint = null;
   // 5 Hz polling to reduce CPU usage while still tracking display changes
   followCursorInterval = setInterval(() => {
     try {
       const point = screen.getCursorScreenPoint();
+      if (
+        lastFollowCursorPoint?.x === point.x &&
+        lastFollowCursorPoint?.y === point.y
+      ) {
+        return;
+      }
+      lastFollowCursorPoint = point;
       const display = getDisplayForPoint(point);
       if (display.id !== state.activeDisplayId) {
         state.activeDisplayId = display.id;
@@ -299,6 +287,7 @@ function pauseFollowCursorInterval(): void {
     clearInterval(followCursorInterval);
     followCursorInterval = null;
   }
+  lastFollowCursorPoint = null;
 }
 
 export function startFollowCursor(): void {
@@ -321,7 +310,7 @@ export function stopFollowCursor(): void {
 function resumeFollowCursorOnShow(): void {
   if (!followCursorActive) return;
   // Land the pill on the display it should be on before polling resumes.
-  syncToCurrentDisplay("window-shown");
+  syncToCurrentDisplay();
   runFollowCursorInterval();
 }
 
@@ -331,8 +320,9 @@ function pauseFollowCursorOnHide(): void {
   pauseFollowCursorInterval();
 }
 
-export function syncToCurrentDisplay(reason: string): void {
+function syncToCurrentDisplay(): void {
   try {
+    lastFollowCursorPoint = null;
     // On OS display changes, select display based on current window location
     const display = getDisplayForWindow();
     state.activeDisplayId = display.id;
@@ -344,7 +334,7 @@ export function syncToCurrentDisplay(reason: string): void {
   }
 }
 
-export function coalescedSetBounds(bounds: Rectangle): void {
+function coalescedSetBounds(bounds: Rectangle): void {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
   const current = state.mainWindow.getBounds();
   // Skip if identical
@@ -392,20 +382,20 @@ function debouncedRefreshNotchInfoAndEmit(reason: string): void {
 // React to OS display changes to keep the pill consistent
 export function registerDisplayChangeListeners(): void {
   screen.on("display-added", () => {
-    syncToCurrentDisplay("display-added");
+    syncToCurrentDisplay();
     debouncedRefreshNotchInfoAndEmit("display-added");
   });
   screen.on("display-removed", () => {
-    syncToCurrentDisplay("display-removed");
+    syncToCurrentDisplay();
     debouncedRefreshNotchInfoAndEmit("display-removed");
   });
   screen.on("display-metrics-changed", () => {
-    syncToCurrentDisplay("display-metrics-changed");
+    syncToCurrentDisplay();
     debouncedRefreshNotchInfoAndEmit("display-metrics-changed");
   });
 }
 
-export function getRendererEntryUrl(hash?: string): string {
+function getRendererEntryUrl(hash?: string): string {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     if (hash) url.hash = hash;
@@ -433,7 +423,7 @@ export function scheduleLocalSidecarPrewarm(
   timer.unref?.();
 }
 
-export function scheduleMainWindowPostReadyWork(): void {
+function scheduleMainWindowPostReadyWork(): void {
   if (state.mainWindowPostReadyWorkScheduled) return;
   state.mainWindowPostReadyWorkScheduled = true;
 
@@ -442,7 +432,6 @@ export function scheduleMainWindowPostReadyWork(): void {
   }, 50);
   trayTimer.unref?.();
 
-  scheduleLocalSidecarPrewarm("renderer-ready", 250);
 }
 
 export const createWindow = () => {
@@ -832,7 +821,7 @@ export function createOnboardingWindow() {
   // Add comprehensive error handling
   state.onboardingWindow.webContents.on(
     "did-fail-load",
-    (event, errorCode, errorDescription, validatedURL) => {
+    (_event, errorCode, errorDescription, validatedURL) => {
       console.error(
         "[Onboarding] Failed to load:",
         errorCode,

@@ -13,7 +13,7 @@ import {
   type FrameProcessorOptions,
 } from "@ricky0123/vad-web";
 
-export const FAKE_VAD_FRAME_PROCESSOR_OPTIONS: FrameProcessorOptions = {
+const FAKE_VAD_FRAME_PROCESSOR_OPTIONS: FrameProcessorOptions = {
   positiveSpeechThreshold: 0.35,
   negativeSpeechThreshold: 0.25,
   minSpeechMs: 120,

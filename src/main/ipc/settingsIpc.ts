@@ -3,8 +3,8 @@
  *
  * Onboarding orchestration (helper/pill prepare steps, completion,
  * step/flag persistence), the miscellaneous app-control handlers
- * (open-external, reload, app path/version), permission post-grant
- * follow-ups, onboarding window controls, and the updater handlers.
+ * (open-external, reload, and app version), permission post-grant
+ * follow-ups, and the updater handlers.
  *
  * The onboarding prefs (`onboarding.json`) are read/written with raw
  * `fs`/JSON calls here rather than through src/main/preferences.ts: that
@@ -30,7 +30,6 @@ import {
   getDisplayForWindow,
   computeScaleForDisplay,
   emitActiveDisplayInfo,
-  scheduleLocalSidecarPrewarm,
 } from "../windows";
 import { createTray } from "../tray";
 import { startFnListener, startHelperIfIMGranted } from "../fnListener";
@@ -43,7 +42,6 @@ import {
   getUpdateStatus,
   isUpdateReadyToInstall,
   getUpdateSnapshot,
-  setDevUpdateStateForTesting,
   quitAndInstallUpdate,
   downloadUpdate,
   jitterMs,
@@ -162,22 +160,7 @@ export function registerSettingsIpc(): void {
 
     // Schedule background update check ~60s after onboarding completes (with jitter)
     scheduleUpdateCheck(jitterMs(60_000, 0.2), "post-onboarding", true);
-    scheduleLocalSidecarPrewarm("post-onboarding", 250);
-
     // Renderer will show any post-sign-in notification; keep main focused on window.
-  });
-
-  // Reset local onboarding flag for dev testing
-  ipcMain.handle("onboarding:reset-local-flag", () => {
-    try {
-      state.onboardingPrefs = { ...state.onboardingPrefs, done: false };
-      persistOnboardingPrefs();
-      console.log("[IPC] Local onboarding flag reset to false");
-      return { ok: true };
-    } catch (error) {
-      console.error("[IPC] Failed to reset local onboarding flag:", error);
-      return { ok: false };
-    }
   });
 
   // Get saved onboarding step
@@ -208,10 +191,6 @@ export function registerSettingsIpc(): void {
           return { ok: true };
         }
         if (type === "microphone") {
-          // Ask pill to refresh devices list to ensure clean state
-          try {
-            state.mainWindow?.webContents.send("mic:refresh-devices");
-          } catch {}
           return { ok: true };
         }
         return { ok: false, error: "Unknown type" };
@@ -228,29 +207,9 @@ export function registerSettingsIpc(): void {
     }
   });
 
-  ipcMain.handle("minimize-onboarding", () => {
-    if (state.onboardingWindow) {
-      state.onboardingWindow.minimize();
-    }
-  });
-
-  ipcMain.handle("maximize-onboarding", () => {
-    if (state.onboardingWindow) {
-      if (state.onboardingWindow.isMaximized()) {
-        state.onboardingWindow.unmaximize();
-      } else {
-        state.onboardingWindow.maximize();
-      }
-    }
-  });
-
   ipcMain.handle("reload-app", () => {
     app.relaunch();
     app.exit(0);
-  });
-
-  ipcMain.handle("get-app-path", () => {
-    return app.getAppPath();
   });
 
   // Provide application version to renderer via preload bridge
@@ -263,11 +222,6 @@ export function registerSettingsIpc(): void {
   });
 
   ipcMain.handle("update:get-state", () => getUpdateSnapshot());
-
-  ipcMain.handle("update:check", async () => {
-    await manualCheckForUpdates(false);
-    return getUpdateSnapshot();
-  });
 
   ipcMain.handle("update:restart", () => {
     // Guard: a stray call must not quit-to-same-version. Only install when a
@@ -302,23 +256,5 @@ export function registerSettingsIpc(): void {
     }
 
     return { ok: true, snapshot: getUpdateSnapshot() };
-  });
-
-  ipcMain.handle("update:dev-set-state", (_event, devState: unknown) => {
-    if (
-      devState !== "idle" &&
-      devState !== "checking" &&
-      devState !== "available" &&
-      devState !== "not-available" &&
-      devState !== "error" &&
-      devState !== "ready"
-    ) {
-      return {
-        ok: false,
-        snapshot: getUpdateSnapshot(),
-        error: "Invalid dev update state",
-      };
-    }
-    return setDevUpdateStateForTesting(devState);
   });
 }

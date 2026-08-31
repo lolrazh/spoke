@@ -93,16 +93,19 @@ export const localSttProvider: TranscriptionProvider = {
 
     // The trimmed VAD output is normally a tight, exact-length Int16Array
     // (trimPcm16 -> Int16Array.prototype.slice), so its backing ArrayBuffer can
-    // be handed to the bridge as-is. Only copy into a fresh buffer when the
-    // view is a partial window over a larger buffer (byteOffset/length differ).
+    // be handed to the bridge as-is. Chunked capture can instead provide a
+    // bounded view over a larger backing buffer; pass that view directly so the
+    // renderer does not copy the whole chunk before IPC.
     const { pcm16 } = audio;
     const isExact =
       pcm16.byteOffset === 0 &&
       pcm16.byteLength === pcm16.buffer.byteLength;
     // Captured PCM is always backed by a plain ArrayBuffer (never a
     // SharedArrayBuffer), so this cast is safe.
-    const pcmBuffer = (isExact ? pcm16.buffer : pcm16.slice().buffer) as ArrayBuffer;
+    const pcmPayload = isExact
+      ? (pcm16.buffer as ArrayBuffer)
+      : new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
 
-    return window.stt.transcribeLocal(modelId, pcmBuffer, context?.sttPrompt);
+    return window.stt.transcribeLocal(modelId, pcmPayload, context?.sttPrompt);
   },
 };

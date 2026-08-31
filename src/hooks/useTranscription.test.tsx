@@ -1,4 +1,3 @@
-import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useTranscription } from "./useTranscription";
@@ -10,6 +9,7 @@ import { trimCapturedAudioWithVad } from "../utils/vadTrimmer";
 import { addTranscription } from "../state/transcriptionHistory";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import type { VadAudioResult } from "../utils/vadTrimmer";
+import type { StreamingVadSessionOptions } from "../utils/streamingVad";
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -24,15 +24,15 @@ vi.mock("../utils/vadTrimmer", () => ({
   trimCapturedAudioWithVad: vi.fn(),
 }));
 
-// By default the streaming VAD session reports itself as unusable so every
-// existing test exercises the exact same fixed-post-roll +
-// trimCapturedAudioWithVad fallback path that ran before streaming VAD was
-// introduced. Tests that specifically exercise the adaptive path override
-// this per-test via `mockCreateStreamingVadSession`.
-const mockCreateStreamingVadSession = vi.fn(() => createUnusableStreamingVadSessionFake());
+// By default the streaming VAD session reports itself as unusable, so batch
+// tests exercise the fixed-post-roll + trimCapturedAudioWithVad fallback path.
+// Live streaming models intentionally skip this duplicate VAD worker.
+const mockCreateStreamingVadSession = vi.fn(
+  (_options: StreamingVadSessionOptions) => createUnusableStreamingVadSessionFake(),
+);
 vi.mock("../utils/streamingVad", () => ({
-  createStreamingVadSession: (...args: unknown[]) =>
-    mockCreateStreamingVadSession(...(args as [])),
+  createStreamingVadSession: (options: StreamingVadSessionOptions) =>
+    mockCreateStreamingVadSession(options),
 }));
 
 function createUnusableStreamingVadSessionFake() {
@@ -201,18 +201,26 @@ describe("useTranscription", () => {
     vi.clearAllTimers();
   });
 
-  it("should initialize in ready state", async () => {
-    const { result } = renderHook(() => useTranscription());
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
+  it("starts idle", () => {
+    const { result } = renderHook(() =>
+      useTranscription({ autoInitStream: false }),
+    );
 
     expect(result.current.recording).toBe(false);
     expect(result.current.processing).toBe(false);
-    expect(result.current.liveText).toBe("");
     expect(result.current.text).toBe("");
     expect(result.current.error).toBe(null);
+  });
+
+  it("keeps the hook return stable across unrelated renders", async () => {
+    const { result, rerender } = renderHook(() =>
+      useTranscription({ autoInitStream: false }),
+    );
+
+    const firstResult = result.current;
+    rerender();
+
+    expect(result.current).toBe(firstResult);
   });
 
   it("keeps batch results out of live text and ignores duplicate stops", async () => {
@@ -229,18 +237,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
-    await waitFor(() => {
-      expect(window.stt.getPreferredProvider).toHaveBeenCalled();
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -255,7 +254,6 @@ describe("useTranscription", () => {
       expect(result.current.text).toBe("Local transcription");
     });
 
-    expect(result.current.liveText).toBe("");
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
     expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
     expect(window.stt.extractOcr).not.toHaveBeenCalled();
@@ -271,14 +269,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -302,14 +295,9 @@ describe("useTranscription", () => {
       useTranscription({ autoInitStream: false }),
     );
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([5, 6, 7, 8]);
+      await emitPcmFrame([5, 6, 7, 8]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -329,6 +317,114 @@ describe("useTranscription", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("cleans up recording when provider resolution rejects during stop", async () => {
+    const { defaultTranscriptionSessionOrchestrator } = await import(
+      "../core/transcription/defaultSessionOrchestrator"
+    );
+    const originalResolveProvider =
+      defaultTranscriptionSessionOrchestrator.resolveProvider;
+    const resolveProviderSpy = vi
+      .spyOn(defaultTranscriptionSessionOrchestrator, "resolveProvider")
+      .mockImplementationOnce(originalResolveProvider)
+      .mockImplementationOnce(() => {
+        throw new Error("Provider resolution failed");
+      });
+    const trackStop = vi.fn();
+    (navigator.mediaDevices.getUserMedia as any).mockResolvedValueOnce({
+      getTracks: () => [{ stop: trackStop, readyState: "live" }],
+      getAudioTracks: () => [{ stop: trackStop, readyState: "live" }],
+    });
+
+    try {
+      const { result } = renderHook(() =>
+        useTranscription({ autoInitStream: false }),
+      );
+
+      await act(async () => {
+        result.current.start();
+        await emitPcmFrame([1, 2, 3, 4]);
+      });
+
+      expect(result.current.recording).toBe(true);
+
+      await act(async () => {
+        await result.current.stop();
+      });
+
+      expect(result.current.recording).toBe(false);
+      expect(result.current.processing).toBe(false);
+      expect(result.current.error).toBe("Provider resolution failed");
+      expect(trackStop).toHaveBeenCalledOnce();
+
+      // A failed stop must not leave stopInFlightRef latched and block the
+      // next dictation.
+      await act(async () => {
+        result.current.start();
+        await emitPcmFrame([5, 6, 7, 8]);
+      });
+      expect(result.current.recording).toBe(true);
+      act(() => result.current.cancel());
+    } finally {
+      resolveProviderSpy.mockRestore();
+    }
+  });
+
+  it("discards pending chunk audio when provider resolution rejects during stop", async () => {
+    vi.useFakeTimers();
+    const { defaultTranscriptionSessionOrchestrator } = await import(
+      "../core/transcription/defaultSessionOrchestrator"
+    );
+    const originalResolveProvider =
+      defaultTranscriptionSessionOrchestrator.resolveProvider;
+    const resolveProviderSpy = vi
+      .spyOn(defaultTranscriptionSessionOrchestrator, "resolveProvider")
+      .mockImplementationOnce(originalResolveProvider)
+      .mockImplementationOnce(() => {
+        throw new Error("Provider resolution failed");
+      });
+    let notifySpeechEnd: (() => void) | undefined;
+    mockCreateStreamingVadSession.mockImplementationOnce((options) => {
+      notifySpeechEnd = options.onSpeechEnd;
+      return createUnusableStreamingVadSessionFake();
+    });
+
+    try {
+      const { result } = renderHook(() =>
+        useTranscription({ autoInitStream: false }),
+      );
+
+      await act(async () => {
+        await result.current.start();
+      });
+
+      const worklet = (globalThis as any)
+        .__lastWorklet as FakeAudioWorkletNode | null;
+      expect(worklet).toBeTruthy();
+
+      // Cross the forced chunk boundary, then leave enough fresh audio for a
+      // delayed natural-boundary timer to dispatch if cleanup misses it.
+      worklet?.emitAudio(new Int16Array(400_000));
+      expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
+      (window.stt.transcribeLocal as any).mockClear();
+      worklet?.emitAudio(new Int16Array(128_000));
+      expect(notifySpeechEnd).toBeTypeOf("function");
+      notifySpeechEnd?.();
+
+      await act(async () => {
+        await result.current.stop();
+      });
+
+      expect(result.current.error).toBe("Provider resolution failed");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_200);
+      });
+      expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
+    } finally {
+      resolveProviderSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("fails fast before recording when the local model is not installed", async () => {
     (window.stt.getModelStatus as any).mockResolvedValue({
       state: "not_installed",
@@ -346,10 +442,6 @@ describe("useTranscription", () => {
     const { result } = renderHook(() =>
       useTranscription({ autoInitStream: false }),
     );
-
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
 
     await act(async () => {
       result.current.start();
@@ -405,10 +497,6 @@ describe("useTranscription", () => {
         useTranscription({ autoInitStream: false }),
       );
 
-      await waitFor(() => {
-        expect(result.current.ready).toBe(true);
-      });
-
       await act(async () => {
         void result.current.start();
       });
@@ -446,14 +534,9 @@ describe("useTranscription", () => {
   it("should cancel recording", async () => {
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([9, 10, 11, 12]);
+      await emitPcmFrame([9, 10, 11, 12]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -479,14 +562,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     expect(result.current.recording).toBe(true);
@@ -523,14 +601,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([0, 0, 0, 0]);
+      await emitPcmFrame([0, 0, 0, 0]);
     });
 
     await act(async () => {
@@ -550,14 +623,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     const stopStartedAt = performance.now();
@@ -587,14 +655,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     expect(usableSession.pushFrame).toHaveBeenCalled();
@@ -636,14 +699,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -671,14 +729,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -707,12 +760,9 @@ describe("useTranscription", () => {
     });
 
     const { result } = renderHook(() => useTranscription());
-    await waitFor(() => expect(result.current.ready).toBe(true));
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -729,9 +779,17 @@ describe("useTranscription", () => {
     const transcribeLocal = window.stt.transcribeLocal as ReturnType<
       typeof vi.fn
     >;
-    const transcribedPcm = new Int16Array(
-      transcribeLocal.mock.calls[0][1] as ArrayBuffer,
-    );
+    const pcmPayload = transcribeLocal.mock.calls[0][1] as
+      | ArrayBuffer
+      | Uint8Array;
+    const transcribedPcm =
+      pcmPayload instanceof Uint8Array
+        ? new Int16Array(
+            pcmPayload.buffer,
+            pcmPayload.byteOffset,
+            pcmPayload.byteLength / Int16Array.BYTES_PER_ELEMENT,
+          )
+        : new Int16Array(pcmPayload);
     expect(Array.from(transcribedPcm)).toEqual([1, 2, 3, 4]);
   });
 
@@ -741,14 +799,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -773,14 +826,9 @@ describe("useTranscription", () => {
 
     const { result } = renderHook(() => useTranscription());
 
-    await waitFor(() => {
-      expect(result.current.ready).toBe(true);
-    });
-
     await act(async () => {
       result.current.start();
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      emitPcmFrame([1, 2, 3, 4]);
+      await emitPcmFrame([1, 2, 3, 4]);
     });
 
     await act(async () => {
@@ -809,9 +857,9 @@ describe("useTranscription", () => {
     const stream = configureStreamingModel("hello world");
 
     const { result } = renderHook(() => useTranscription());
-    await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
-    emitPcmFrame(new Array(10_240).fill(1));
+    expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
+    await emitPcmFrame(new Array(10_240).fill(1));
     await waitFor(() =>
       expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2),
     );
@@ -824,7 +872,6 @@ describe("useTranscription", () => {
     await act(async () => {
       stream.emitPartial("hello");
     });
-    expect(result.current.liveText).toBe("hello");
     expect(result.current.text).toBe("");
     expect(addTranscription).not.toHaveBeenCalled();
     expect(window.clipboard.insertText).not.toHaveBeenCalled();
@@ -833,7 +880,6 @@ describe("useTranscription", () => {
     await waitFor(() => expect(result.current.processing).toBe(false));
     expect(window.stt.finishLocalStream).toHaveBeenCalledWith("stream-1");
     expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
-    expect(result.current.liveText).toBe("hello world");
     expect(result.current.text).toBe("hello world");
     expect(addTranscription).toHaveBeenCalledOnce();
     expect(addTranscription).toHaveBeenCalledWith("hello world", "dictation");
@@ -841,23 +887,15 @@ describe("useTranscription", () => {
     expect(window.clipboard.insertText).toHaveBeenCalledWith("hello world");
   });
 
-  it("finishes a live stream when VAD post-roll fails", async () => {
+  it("finishes a live stream without starting duplicate VAD", async () => {
     configureStreamingModel("Recovered live stream");
-    mockCreateStreamingVadSession.mockReturnValueOnce(
-      createUsableStreamingVadSessionFake({
-        waitForQuiet: async () => {
-          throw new Error("VAD worker failed");
-        },
-      }),
-    );
 
     const { result } = renderHook(() => useTranscription());
-    await waitFor(() => expect(result.current.ready).toBe(true));
     await act(async () => result.current.start());
+    expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
 
     await act(async () => {
       result.current.stop();
-      await new Promise((resolve) => setTimeout(resolve, 400));
     });
 
     await waitFor(() => expect(result.current.processing).toBe(false));
@@ -887,7 +925,6 @@ describe("useTranscription", () => {
 
     try {
       const { result } = renderHook(() => useTranscription());
-      await waitFor(() => expect(result.current.ready).toBe(true));
       await act(async () => result.current.start());
       expect(result.current.recording).toBe(true);
 
@@ -903,21 +940,15 @@ describe("useTranscription", () => {
 
   it("clears a live hypothesis on cancel and ignores stale partials", async () => {
     const stream = configureStreamingModel("should not publish");
-    const { result } = renderHook(() =>
-      useTranscription({ suppressNativePaste: true }),
-    );
-    await waitFor(() => expect(result.current.ready).toBe(true));
+    const { result } = renderHook(() => useTranscription());
     await act(async () => result.current.start());
 
     await act(async () => stream.emitPartial("cancel me"));
-    expect(result.current.liveText).toBe("cancel me");
 
     act(() => result.current.cancel());
-    expect(result.current.liveText).toBe("");
     expect(result.current.text).toBe("");
 
     await act(async () => stream.emitPartial("stale words"));
-    expect(result.current.liveText).toBe("");
     expect(addTranscription).not.toHaveBeenCalled();
     expect(window.clipboard.insertText).not.toHaveBeenCalled();
   });
@@ -959,8 +990,6 @@ describe("useTranscription", () => {
     const { result } = renderHook(() =>
       useTranscription({ autoInitStream: false }),
     );
-    await waitFor(() => expect(result.current.ready).toBe(true));
-
     await act(async () => {
       await result.current.start();
       await waitFor(() =>
@@ -1047,10 +1076,14 @@ function testModelInfo() {
   };
 }
 
-function emitPcmFrame(samples: number[]) {
+async function emitPcmFrame(samples: number[]) {
+  await waitFor(() => {
+    const worklet = (globalThis as any)
+      .__lastWorklet as FakeAudioWorkletNode | null;
+    expect(worklet).toBeTruthy();
+  });
   const worklet = (globalThis as any)
     .__lastWorklet as FakeAudioWorkletNode | null;
-  expect(worklet).toBeTruthy();
   worklet?.emitAudio(new Int16Array(samples));
 }
 

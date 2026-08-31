@@ -58,6 +58,25 @@ describe("vadTrim", () => {
     expect(result.trailingTrimmedMs).toBe(500);
   });
 
+  it("reuses audio when the speech range already covers the clip", () => {
+    const audio = createCapturedAudio(new Int16Array(16_000));
+
+    const result = trimCapturedAudioToSpeech(
+      audio,
+      [{ startMs: 0, endMs: 1_000 }],
+      {
+        preSpeechPadMs: 300,
+        redemptionMs: 200,
+      },
+    );
+
+    expect(result.audio).toBe(audio);
+    expect(result.trimRange).toEqual({
+      startSample: 0,
+      endSample: 16_000,
+    });
+  });
+
   it("uses the first and last speech segment for a single final trim", () => {
     const audio = createCapturedAudio(new Int16Array(48_000));
 

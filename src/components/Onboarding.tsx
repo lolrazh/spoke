@@ -1,4 +1,6 @@
 import React, {
+  lazy,
+  Suspense,
   useState,
   useEffect,
   useRef,
@@ -6,7 +8,6 @@ import React, {
   useLayoutEffect,
 } from "react";
 import IntroExperience from "./intro/IntroExperience";
-import { ParticlesCanvas } from "./shared/ParticlesCanvas";
 import { GridBackground } from "./shared/GridBackground";
 import { useMicVisualizer } from "../hooks/useMicVisualizer";
 import {
@@ -16,27 +17,17 @@ import { MicBars } from "./MicBars";
 import { m, AnimatePresence, type Variants } from "framer-motion";
 import { Button } from "./ui/button";
 import Spinner from "./ui/Spinner";
-import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from "./ui/select";
 import SfIcon from "./icons/SfIcon";
-import ModelsList from "./ModelsList";
 import {
   usePermissions,
   type PermissionProvider,
 } from "../hooks/usePermissions";
-import { useModelStatus } from "../hooks/useModelStatus";
 import {
   buildOnboardingSteps,
   isOnboardingStep,
   type OnboardingStep,
 } from "./onboardingFlow";
 import {
-  ENABLE_ONBOARDING_PARTICLES,
   ENABLE_SCREEN_CONTEXT,
 } from "../config/featureFlags";
 import { HOLD_DURATION_MS, DOUBLE_TAP_MS } from "../constants/gestures";
@@ -46,10 +37,21 @@ import {
   panelCascadeItem,
 } from "./shared/panelMotion";
 import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
+
+const ModelsList = lazy(() => import("./ModelsList"));
+const OnboardingMicSelector = lazy(() => import("./OnboardingMicSelector"));
+const ONBOARDING_PROGRESS_STEPS = buildOnboardingSteps().slice(0, -1);
+
+const ModelsLoadingFallback: React.FC = () => (
+  <div className="py-8 text-sm text-muted-foreground">Loading models…</div>
+);
+
+const MicSelectorLoadingFallback: React.FC = () => (
+  <div className="h-10 w-full rounded-lg bg-white/5" aria-hidden />
+);
 // Development flags - only enabled in development mode
 const isDevelopment = process.env.NODE_ENV === "development";
 const devLog = createLogger("DEV");
-const devNotifyLog = createLogger("DEV NOTIFY");
 // Make permission mocking opt-in via URL (?mockPerms)
 const params =
   typeof window !== "undefined"
@@ -58,15 +60,10 @@ const params =
 const devFlags = {
   mockPermissionStates: isDevelopment && params.has("mockPerms"),
   showDebugOverlay: isDevelopment,
-  fastAnimations: isDevelopment,
-  alwaysShowDevMode: isDevelopment,
   isDevelopment,
   methods: {
     devLog: (...args: unknown[]) => {
       if (isDevelopment) devLog.info(...args);
-    },
-    devNotify: (message: string) => {
-      if (isDevelopment) devNotifyLog.info(message);
     },
   },
 };
@@ -118,16 +115,10 @@ const Onboarding: React.FC = () => {
   const [autoRestarting, setAutoRestarting] = useState<boolean>(false);
   const autoRestartTriggeredRef = useRef(false);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("permissions");
+  const [transcriptionSetupReady, setTranscriptionSetupReady] =
+    useState(false);
   const shouldLoadTranscriptionSetup =
     !showIntro && currentStep === "transcription-setup";
-  // Drives Next-gating and prewarm off the *active* model's live status: the
-  // user installs a model in a card below, it becomes active + ready, and that
-  // flips `transcriptionSetupReady`. `refresh` re-reads after the cards mutate
-  // state (install/activate) so this status stays in sync with the active row.
-  const {
-    status: modelStatus,
-    refresh: refreshModelStatus,
-  } = useModelStatus({ enabled: shouldLoadTranscriptionSetup });
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
     devFlags.mockPermissionStates
@@ -156,10 +147,9 @@ const Onboarding: React.FC = () => {
     setPermissions,
   } = usePermissions(mockProvider, {
     pollIntervalMs: 1000,
-    deepLinkGraceMs: 4000,
     includeScreenRecording: ENABLE_SCREEN_CONTEXT,
   });
-  const [isDev, setIsDev] = useState(false);
+  const isDev = devFlags.isDevelopment;
   const [pttApiReady, setPttApiReady] = useState(false);
   const [optKeyPressed, setOptKeyPressed] = useState(false);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -168,8 +158,6 @@ const Onboarding: React.FC = () => {
     pushToTalk: false,
     handsFree: false,
   });
-  // Track mount state and timeout handles to prevent leaks
-  const isMountedRef = useRef(true);
   const pttCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optionDownAtRef = useRef<number | null>(null);
   const lastTapUpAtRef = useRef<number | null>(null);
@@ -248,11 +236,6 @@ const Onboarding: React.FC = () => {
 
   // Initial permission check via shared hook
   useEffect(() => {
-    // Mirror previous debug mode flag
-    setIsDev(devFlags.isDevelopment);
-  }, []);
-
-  useEffect(() => {
     initPermissions();
   }, []);
 
@@ -260,7 +243,6 @@ const Onboarding: React.FC = () => {
   useEffect(() => {
     return () => {
       setOptKeyPressed(false); // Reset Option key state
-      isMountedRef.current = false;
       if (pttCheckTimeoutRef.current) {
         clearTimeout(pttCheckTimeoutRef.current);
         pttCheckTimeoutRef.current = null;
@@ -268,36 +250,15 @@ const Onboarding: React.FC = () => {
     };
   }, []);
 
-  // Helper to get the current steps array
-  const getSteps = (): OnboardingStep[] => buildOnboardingSteps();
-
   // Permission aggregates
   const allPermissionsGranted =
     permissions.microphone &&
     permissions.accessibility &&
     permissions.inputMonitoring &&
     (!ENABLE_SCREEN_CONTEXT || permissions.screenRecording);
-  // Next on the transcription step gates on the *active* model being ready.
-  // The cards below install/activate models; when the active one resolves to
-  // "ready" this flips true. Nothing installed → not ready → Next stays
-  // disabled (the deleted-models case).
-  const transcriptionSetupReady = modelStatus.state === "ready";
-
-  // The model cards (ModelsList) own their own install/activate state, so the
-  // active-model status this step reads doesn't auto-update when a card
-  // installs a model or switches the active one. Poll while the step is visible
-  // so `transcriptionSetupReady` (Next-gating) and prewarm track the active row.
   useEffect(() => {
     if (currentStep !== "transcription-setup") return;
-    const interval = setInterval(() => {
-      void refreshModelStatus();
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [currentStep, refreshModelStatus]);
-
-  useEffect(() => {
-    if (currentStep !== "transcription-setup") return;
-    if (modelStatus.state !== "ready") return;
+    if (!transcriptionSetupReady) return;
     if (localPrewarmRequestedRef.current) return;
 
     localPrewarmRequestedRef.current = true;
@@ -305,7 +266,13 @@ const Onboarding: React.FC = () => {
       localPrewarmRequestedRef.current = false;
       console.warn("[Onboarding] Failed to prewarm local model:", error);
     });
-  }, [currentStep, modelStatus.state]);
+  }, [currentStep, transcriptionSetupReady]);
+
+  useEffect(() => {
+    if (currentStep !== "transcription-setup") {
+      setTranscriptionSetupReady(false);
+    }
+  }, [currentStep]);
 
   // Initialize provider settings and restore saved step
   useEffect(() => {
@@ -314,12 +281,7 @@ const Onboarding: React.FC = () => {
       // Check if there's a saved onboarding step (from mid-onboarding restart)
       try {
         const savedStep = await window.electron?.getOnboardingStep?.();
-        const steps = buildOnboardingSteps();
-        if (
-          savedStep &&
-          isOnboardingStep(savedStep) &&
-          steps.includes(savedStep)
-        ) {
+        if (savedStep && isOnboardingStep(savedStep)) {
           // Resuming a session already in progress (e.g. right after the
           // post-permissions auto-restart) — skip the intro and land directly
           // on the saved step so it "reopens from the next page".
@@ -396,7 +358,7 @@ const Onboarding: React.FC = () => {
 
   // Navigation functions
   const nextStep = () => {
-    const steps = getSteps();
+    const steps = buildOnboardingSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       // Reset Option key visual state when leaving hotkey pages
@@ -408,7 +370,7 @@ const Onboarding: React.FC = () => {
   };
 
   const prevStep = () => {
-    const steps = getSteps();
+    const steps = buildOnboardingSteps();
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       // Reset Option key visual state when leaving hotkey pages
@@ -438,7 +400,7 @@ const Onboarding: React.FC = () => {
       window.electron?.setPttTarget?.("main");
       // Reveal pill safely for test step (compact; main guarded against expansion)
       try {
-        (window.electron as any)?.revealPillForTest?.();
+        void window.electron?.revealPillForTest?.();
       } catch {}
     }
   }, [currentStep]);
@@ -569,14 +531,8 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  // Step progress indicator
-  // Returns the index among ['welcome','permissions','hotkey-test'], or -1 when not applicable
-  const getProgressStepIndex = () => {
-    const steps = getSteps();
-    // Progress steps include welcome and exclude 'complete'
-    const progressSteps = steps.slice(0, -1);
-    return progressSteps.indexOf(currentStep);
-  };
+  // Step progress indicator. Completion is intentionally outside this list.
+  const progressStepIndex = ONBOARDING_PROGRESS_STEPS.indexOf(currentStep);
 
   const containerVariants: Variants = {
     hidden: { opacity: 0, y: 16 },
@@ -675,9 +631,8 @@ const Onboarding: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full min-h-screen text-foreground onboarding-window relative">
-      {/* Grid and starfield backgrounds */}
-      <GridBackground />
-      {ENABLE_ONBOARDING_PARTICLES && <ParticlesCanvas />}
+      {/* The intro owns its own grid; avoid painting a hidden page grid below it. */}
+      {!showIntro && <GridBackground />}
 
       {showIntro && (
         <IntroExperience
@@ -709,33 +664,29 @@ const Onboarding: React.FC = () => {
       {currentStep !== "complete" && (
         <div className="absolute top-20 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
           <div className="onboarding-progress-shell">
-            {(() => {
-              const progressSteps = getSteps().slice(0, -1);
-              const idx = getProgressStepIndex();
-              return progressSteps.map((step, i) => {
-                const isComplete = i < idx;
-                const isActive = i === idx;
-                const growClass = isActive ? "grow-active" : "grow-inactive";
-                const heightClass = isActive ? "h-[3px]" : "h-[2px]"; // minor height emphasis
-                const toneClass = isActive
-                  ? "bar-active"
-                  : isComplete
-                    ? "bar-complete"
-                    : "bar-upcoming";
-                return (
-                  <div
-                    key={step}
-                    className={`onboarding-progress-bar ${toneClass} ${growClass} ${heightClass}`}
-                  />
-                );
-              });
-            })()}
+            {ONBOARDING_PROGRESS_STEPS.map((step, i) => {
+              const isComplete = i < progressStepIndex;
+              const isActive = i === progressStepIndex;
+              const growClass = isActive ? "grow-active" : "grow-inactive";
+              const heightClass = isActive ? "h-[3px]" : "h-[2px]"; // minor height emphasis
+              const toneClass = isActive
+                ? "bar-active"
+                : isComplete
+                  ? "bar-complete"
+                  : "bar-upcoming";
+              return (
+                <div
+                  key={step}
+                  className={`onboarding-progress-bar ${toneClass} ${growClass} ${heightClass}`}
+                />
+              );
+            })}
           </div>
         </div>
       )}
 
       {/* Development Mode Indicator & Controls */}
-      {(isDev || devFlags.alwaysShowDevMode) && (
+      {isDev && (
         <div className="absolute top-4 right-4 z-50 space-y-2">
           <div className="card-floating rounded-lg px-3 py-1">
             <span className="text-xs font-medium text-white/80">
@@ -1170,25 +1121,13 @@ const Onboarding: React.FC = () => {
                       className="mx-auto w-full max-w-xl"
                       variants={panelCascadeItem}
                     >
-                      <Select
-                        value={selectedMicId}
-                        onValueChange={(v) => setSelectedMicId(v)}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select microphone" />
-                        </SelectTrigger>
-                        <SelectContent inPlace>
-                          {micDevices.map((d) => (
-                            <SelectItem
-                              key={d.id}
-                              value={d.id}
-                              className="text-sm"
-                            >
-                              {d.label || "Microphone"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Suspense fallback={<MicSelectorLoadingFallback />}>
+                        <OnboardingMicSelector
+                          devices={micDevices}
+                          selectedId={selectedMicId}
+                          onChange={setSelectedMicId}
+                        />
+                      </Suspense>
                     </m.div>
 
                     <m.div
@@ -1236,10 +1175,13 @@ const Onboarding: React.FC = () => {
                         active, dim check (brightens on hover, click to activate)
                         when installed-but-inactive. Installing one and making it
                         active is what flips this step's Next on. */}
-                    <ModelsList
-                      enabled={shouldLoadTranscriptionSetup}
-                      inGroup={false}
-                    />
+                    <Suspense fallback={<ModelsLoadingFallback />}>
+                      <ModelsList
+                        enabled={shouldLoadTranscriptionSetup}
+                        inGroup={false}
+                        onActiveModelReadyChange={setTranscriptionSetupReady}
+                      />
+                    </Suspense>
                   </m.div>
                 </m.div>
               )}
@@ -1475,7 +1417,7 @@ const Onboarding: React.FC = () => {
             <Button
               variant="secondary"
               onClick={prevStep}
-              disabled={getProgressStepIndex() <= 0}
+              disabled={progressStepIndex <= 0}
             >
               Back
             </Button>

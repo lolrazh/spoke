@@ -9,6 +9,8 @@ export interface LocalStreamingDictationOptions {
   onLimitReached: () => void;
 }
 
+const EMPTY_PCM16 = new Int16Array(0);
+
 /**
  * Bounded renderer adapter for a main-process live STT session.
  *
@@ -19,20 +21,22 @@ export interface LocalStreamingDictationOptions {
 export class LocalStreamingDictation {
   private readonly batchSamples: number;
   private readonly maxSamples: number;
-  private readonly pending: Int16Array[] = [];
   private readonly queuedBatches: Int16Array[] = [];
+  private recycledBatch: Int16Array | null = null;
+  private pendingBatch: Int16Array;
+  private queuedBatchStart = 0;
   private pendingSamples = 0;
   private totalSamples = 0;
   private sessionId: string | null = null;
   private removePartialListener: (() => void) | null = null;
   private startPromise: Promise<void> | null = null;
   private cancelPromise: Promise<void> | null = null;
-  private sendQueue = Promise.resolve();
   private failure: Error | null = null;
   private closed = false;
   private startPending = false;
   private cancelRequested = false;
   private limitReported = false;
+  private sendPumpPromise: Promise<void> | null = null;
 
   constructor(private readonly options: LocalStreamingDictationOptions) {
     const batchMs = options.batchMs ?? 320;
@@ -43,6 +47,7 @@ export class LocalStreamingDictation {
     this.maxSamples = Math.round(
       (options.maxDurationMs / 1000) * options.sampleRateHz,
     );
+    this.pendingBatch = new Int16Array(this.batchSamples);
   }
 
   get durationMs(): number {
@@ -104,10 +109,26 @@ export class LocalStreamingDictation {
       return;
     }
     this.totalSamples += frame.length;
-    this.pending.push(frame);
-    this.pendingSamples += frame.length;
-    while (this.pendingSamples >= this.batchSamples) {
-      this.sealPending(this.batchSamples);
+    let frameOffset = 0;
+    while (frameOffset < frame.length) {
+      const copyLength = Math.min(
+        this.batchSamples - this.pendingSamples,
+        frame.length - frameOffset,
+      );
+      if (frameOffset === 0 && copyLength === frame.length) {
+        this.pendingBatch.set(frame, this.pendingSamples);
+      } else {
+        this.pendingBatch.set(
+          frame.subarray(frameOffset, frameOffset + copyLength),
+          this.pendingSamples,
+        );
+      }
+      this.pendingSamples += copyLength;
+      frameOffset += copyLength;
+
+      if (this.pendingSamples === this.batchSamples) {
+        this.queueFullBatch();
+      }
     }
   }
 
@@ -117,10 +138,19 @@ export class LocalStreamingDictation {
     if (!this.startPromise) {
       throw new Error("Local streaming session did not start.");
     }
-    if (this.pendingSamples > 0) this.sealPending(this.pendingSamples);
+    if (this.pendingSamples > 0) {
+      const tail = new Int16Array(this.pendingSamples);
+      tail.set(this.pendingBatch.subarray(0, this.pendingSamples));
+      this.pendingSamples = 0;
+      this.queuedBatches.push(tail);
+      this.drainQueuedBatches();
+    }
+    // No more frames can arrive after finish() closes the session. Release the
+    // reusable staging buffer while the sidecar drains and finalizes.
+    this.pendingBatch = EMPTY_PCM16;
     await this.startPromise;
     this.drainQueuedBatches();
-    await this.sendQueue;
+    await this.sendPumpPromise;
     try {
       if (this.failure) throw this.failure;
       if (!this.sessionId) throw new Error("Local streaming session did not start.");
@@ -135,6 +165,8 @@ export class LocalStreamingDictation {
     } finally {
       this.cleanupListener();
       this.sessionId = null;
+      this.pendingBatch = EMPTY_PCM16;
+      this.recycledBatch = null;
     }
   }
 
@@ -143,8 +175,10 @@ export class LocalStreamingDictation {
       !this.cancelRequested && (this.startPending || this.sessionId !== null);
     this.cancelRequested = true;
     this.closed = true;
-    this.pending.length = 0;
+    this.pendingBatch = EMPTY_PCM16;
     this.queuedBatches.length = 0;
+    this.queuedBatchStart = 0;
+    this.recycledBatch = null;
     this.pendingSamples = 0;
     this.cleanupListener();
     this.sessionId = null;
@@ -155,24 +189,12 @@ export class LocalStreamingDictation {
     await (this.cancelPromise ?? Promise.resolve());
   }
 
-  private sealPending(sampleCount: number): void {
-    if (sampleCount <= 0 || sampleCount > this.pendingSamples) return;
-    const pcm = new Int16Array(sampleCount);
-    let offset = 0;
-    while (offset < sampleCount) {
-      const frame = this.pending[0];
-      const remaining = sampleCount - offset;
-      if (frame.length <= remaining) {
-        pcm.set(frame, offset);
-        offset += frame.length;
-        this.pending.shift();
-      } else {
-        pcm.set(frame.subarray(0, remaining), offset);
-        this.pending[0] = frame.slice(remaining);
-        offset += remaining;
-      }
-    }
-    this.pendingSamples -= sampleCount;
+  private queueFullBatch(): void {
+    const pcm = this.pendingBatch;
+    this.pendingBatch =
+      this.recycledBatch ?? new Int16Array(this.batchSamples);
+    this.recycledBatch = null;
+    this.pendingSamples = 0;
     this.queuedBatches.push(pcm);
     this.drainQueuedBatches();
   }
@@ -180,15 +202,44 @@ export class LocalStreamingDictation {
   private drainQueuedBatches(): void {
     const sessionId = this.sessionId;
     if (!sessionId) return;
-    for (const pcm of this.queuedBatches.splice(0)) {
-      this.sendQueue = this.sendQueue.then(async () => {
-        if (this.failure || this.cancelRequested) return;
-        try {
-          await window.stt.pushLocalStream(sessionId, pcm.buffer as ArrayBuffer);
-        } catch (error) {
-          this.failure = asError(error);
+    if (this.sendPumpPromise) return;
+    if (this.queuedBatchStart >= this.queuedBatches.length) return;
+
+    this.sendPumpPromise = this.pumpQueuedBatches(sessionId);
+  }
+
+  private async pumpQueuedBatches(sessionId: string): Promise<void> {
+    while (
+      this.queuedBatchStart < this.queuedBatches.length &&
+      !this.failure &&
+      !this.cancelRequested
+    ) {
+      const batchIndex = this.queuedBatchStart;
+      const pcm = this.queuedBatches[batchIndex];
+      // The IPC promise owns the batch after pushLocalStream() starts. Drop
+      // the queue's reference now instead of retaining every sent batch until
+      // a slow pump becomes idle.
+      this.queuedBatches[batchIndex] = EMPTY_PCM16;
+      this.queuedBatchStart += 1;
+      try {
+        await window.stt.pushLocalStream(sessionId, pcm.buffer as ArrayBuffer);
+        if (pcm.length === this.batchSamples) {
+          // Keep one reusable buffer only. A slow IPC consumer may let the
+          // queued list grow; retaining every completed batch would recreate
+          // the memory spike this pool is meant to avoid.
+          this.recycledBatch = pcm;
         }
-      });
+      } catch (error) {
+        this.failure = asError(error);
+      }
+    }
+
+    try {
+      // Release sent or abandoned buffers as soon as the pump becomes idle.
+      this.queuedBatches.length = 0;
+      this.queuedBatchStart = 0;
+    } finally {
+      this.sendPumpPromise = null;
     }
   }
 

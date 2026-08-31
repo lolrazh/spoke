@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { WebContents } from "electron";
 
 import { LocalStreamIpcController } from "./localStreamIpcController";
+import { boundLiveTranscriptText } from "../../utils/liveTranscriptText";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -159,6 +160,59 @@ describe("LocalStreamIpcController", () => {
     expect(session.cancel).toHaveBeenCalledOnce();
     await expect(controller.start(owner, "nemotron")).resolves.toEqual({
       sessionId: "stream",
+    });
+  });
+
+  it("wraps an ArrayBuffer payload without copying its PCM bytes", async () => {
+    const session = createSession();
+    const controller = new LocalStreamIpcController(
+      vi.fn().mockResolvedValue(session),
+      vi.fn(),
+      () => "stream",
+    );
+    const owner = createOwner();
+    const payload = new Uint8Array([1, 0, 2, 0]);
+
+    await controller.start(owner, "nemotron");
+    await controller.push(owner, "stream", payload.buffer);
+
+    const pushCalls = (session.push as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    const forwarded = pushCalls[0][0] as Buffer;
+    expect(forwarded).toEqual(Buffer.from(payload));
+    expect(forwarded.buffer).toBe(payload.buffer);
+  });
+
+  it("bounds and deduplicates live partials before sending them to the renderer", async () => {
+    const session = createSession();
+    let emitPartial!: (text: string) => void;
+    const begin = vi.fn().mockImplementation(
+      async (
+        _modelId: string,
+        onPartial: (text: string) => void,
+      ) => {
+        emitPartial = onPartial;
+        return session;
+      },
+    );
+    const owner = createOwner();
+    const controller = new LocalStreamIpcController(
+      begin,
+      vi.fn(),
+      () => "stream",
+    );
+
+    await controller.start(owner, "nemotron");
+
+    const longPrefix = Array.from({ length: 2_500 }, () => "old").join(" ");
+    const visibleTail = Array.from({ length: 700 }, () => "new").join(" ");
+    emitPartial(`${longPrefix} ${visibleTail}`);
+    emitPartial(`different prefix ${longPrefix} ${visibleTail}`);
+
+    expect(owner.send).toHaveBeenCalledOnce();
+    expect(owner.send).toHaveBeenCalledWith("stt:local-stream-partial", {
+      sessionId: "stream",
+      text: boundLiveTranscriptText(`${longPrefix} ${visibleTail}`),
     });
   });
 });

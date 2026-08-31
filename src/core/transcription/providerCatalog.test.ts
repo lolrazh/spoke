@@ -3,7 +3,6 @@ import {
   buildTranscriptionProviderSettingsSnapshot,
   isApiKeyTranscriptionProviderId,
   isSelectableTranscriptionProviderId,
-  listTranscriptionProviderCatalog,
 } from "./providerCatalog";
 import {
   LOCAL_STT_PROVIDER_ID,
@@ -15,7 +14,9 @@ import {
 describe("providerCatalog", () => {
   it("lists the current provider catalog", () => {
     expect(
-      listTranscriptionProviderCatalog().map((provider) => provider.id),
+      buildTranscriptionProviderSettingsSnapshot({
+        preferredProviderId: LOCAL_STT_PROVIDER_ID,
+      }).providers.map((provider) => provider.id),
     ).toEqual([
       LOCAL_STT_PROVIDER_ID,
       OPENAI_CLOUD_PROVIDER_ID,

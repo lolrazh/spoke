@@ -36,7 +36,6 @@ describe("pillStateMachine", () => {
     it("ignores unhandled events", () => {
       expect(dispatch(idle, { type: "PTT_STOP" }).state).toBe("IDLE");
       expect(dispatch(idle, { type: "CANCEL" }).state).toBe("IDLE");
-      expect(dispatch(idle, { type: "ANIM_DONE" }).state).toBe("IDLE");
     });
   });
 
@@ -124,12 +123,6 @@ describe("pillStateMachine", () => {
       state: "NOTIFICATION",
       context: { notifMsg: "hello" },
     };
-
-    it("ignores stale animation completion", () => {
-      expect(dispatch(notification, { type: "ANIM_DONE" })).toEqual(
-        notification,
-      );
-    });
 
     it("transitions to IDLE on explicit dismissal and clears message", () => {
       const next = dispatch(notification, { type: "DISMISS_NOTIFICATION" });

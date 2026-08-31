@@ -4,12 +4,6 @@
  * Edit prompt builder for the local Electron enhancement pipeline.
  */
 
-export interface EditRequestPayload {
-  prompt: string;
-  instructions: string;
-  originalText: string;
-}
-
 export function buildEditPrompt(input: {
   instructions: string;
   originalText: string;
@@ -21,28 +15,6 @@ export function buildEditPrompt(input: {
     "Original Text:",
     input.originalText,
   ].join("\n");
-}
-
-export function prepareEditRequest(params: {
-  instructions: string;
-  selectionText: string | null | undefined;
-}): EditRequestPayload | null {
-  const instructions = (params.instructions ?? "").trim();
-  if (!instructions) return null;
-
-  const original = (params.selectionText ?? "").trim();
-  if (!original) return null;
-
-  const prompt = buildEditPrompt({
-    instructions,
-    originalText: original,
-  });
-
-  return {
-    prompt,
-    instructions,
-    originalText: original,
-  };
 }
 
 export function buildEditSystemPrompt(opts?: { vocabulary?: string }): string {

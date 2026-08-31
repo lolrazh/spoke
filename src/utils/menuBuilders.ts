@@ -1,4 +1,4 @@
-import { app, clipboard, MenuItemConstructorOptions, shell } from "electron";
+import { app, MenuItemConstructorOptions, shell } from "electron";
 import type { MicDevice } from "../types/shared";
 
 export function buildMicrophoneSubmenu(

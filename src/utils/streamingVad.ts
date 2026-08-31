@@ -14,7 +14,7 @@
  * one worker and terminates it when the session finishes or is cancelled, so
  * no worker state or model memory is shared between recordings.
  */
-import { pcm16ToFloat32, type CapturedAudio } from "../core/transcription/capturedAudio";
+import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import {
   trimCapturedAudioToSpeech,
   type VadAudioResult,
@@ -31,14 +31,25 @@ import { createLogger } from "./logger";
 const log = createLogger("StreamingVAD");
 
 // The Silero legacy model (see @ricky0123/vad-web's NonRealTimeVAD.new)
-// requires fixed 1536-sample windows at 16kHz (96ms). Our capture frames are
-// 30ms (480 samples @ 16kHz, see PCM_CAPTURE_FRAME_SAMPLES in config/audio.ts)
-// and don't divide evenly into that, so we re-chunk here.
+// requires fixed 1536-sample windows at 16kHz (96ms). The canonical capture
+// frame has this same size, but pushFrame still accepts arbitrary frame sizes
+// so alternate capture sources and test inputs remain safe.
 const MODEL_FRAME_SAMPLES = 1536;
 const MODEL_SAMPLES_PER_MS = 16; // 16,000 Hz / 1000 ms
+const PCM16_TO_FLOAT_GAIN = 1 / 32768;
+const EMPTY_VAD_WINDOW = new Float32Array(0);
 const QUIET_POLL_INTERVAL_MS = 20;
+// Keep a slow VAD worker from retaining an unbounded chain of transferred
+// windows. At the normal 96ms model window size this is about 6 seconds of
+// backlog, after which the existing post-hoc VAD path is safer.
+const MAX_PENDING_VAD_WINDOWS = 64;
 
 type SessionStatus = "pending" | "ready" | "failed";
+
+type PendingVadWindow = {
+  frame: Float32Array;
+  frameIndex: number;
+};
 
 export interface StreamingVadSessionHandle {
   /** False once the model has failed to load; callers should use the
@@ -99,17 +110,19 @@ const UNAVAILABLE_STREAMING_VAD_SESSION: StreamingVadSessionHandle = {
 class StreamingVadSession implements StreamingVadSessionHandle {
   private status: SessionStatus = "pending";
   private readonly worker = createVadWorkerClient();
-  private processingQueue: Promise<void> = Promise.resolve();
+  private processingPumpPromise: Promise<void> | null = null;
   private disposed = false;
   private workerReleased = false;
 
   // Persistent scratch for samples that don't yet fill a model window. Sized
-  // for a full window (leftover is always < MODEL_FRAME_SAMPLES), so it's
-  // allocated once and reused rather than re-sliced every 30ms frame.
+  // for a full window (leftover is always < MODEL_FRAME_SAMPLES), so it is
+  // allocated once and reused rather than re-sliced for every capture frame.
   private readonly carryBuf = new Float32Array(MODEL_FRAME_SAMPLES);
   private carryLen = 0;
-  private pendingWindows: Float32Array[] = [];
+  private readonly pendingWindows: PendingVadWindow[] = [];
+  private pendingWindowStart = 0;
   private queueDepth = 0;
+  private recycledWindow: Float32Array | null = null;
 
   private segments: VadSpeechSegment[] = [];
   private speaking = false;
@@ -144,8 +157,8 @@ class StreamingVadSession implements StreamingVadSessionHandle {
   private async initialize(): Promise<void> {
     try {
       await this.worker.ready();
-      if (this.cancelled) {
-        this.pendingWindows = [];
+      if (this.cancelled || this.status === "failed") {
+        this.clearPendingWindows();
         this.queueDepth = 0;
         return;
       }
@@ -153,7 +166,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       this.drainPendingWindows();
     } catch (error) {
       this.status = "failed";
-      this.pendingWindows = [];
+      this.clearPendingWindows();
       this.queueDepth = 0;
       this.disposeWorker();
       log.warn("Model init failed, streaming VAD unavailable:", error);
@@ -169,73 +182,135 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       return;
     }
     this.totalCapturedMs += pcm16.length / MODEL_SAMPLES_PER_MS;
-    this.appendSamples(pcm16ToFloat32(pcm16));
+    this.appendSamples(pcm16);
   }
 
-  private appendSamples(float32: Float32Array): void {
+  private appendSamples(pcm16: Int16Array): void {
+    if (this.carryLen === 0 && pcm16.length === MODEL_FRAME_SAMPLES) {
+      const window =
+        this.recycledWindow ?? new Float32Array(MODEL_FRAME_SAMPLES);
+      this.recycledWindow = null;
+      copyPcm16ToFloat32(pcm16, 0, window, 0, MODEL_FRAME_SAMPLES);
+      this.enqueueWindow(window);
+      return;
+    }
+
     // Emit as many full MODEL_FRAME_SAMPLES windows as carry + this frame can
-    // fill, without materializing a `combined` buffer per frame. Each window is
-    // still its own Float32Array because it is transferred to the worker; only
-    // the transient per-frame `combined`/carry slices are gone.
+    // fill, without materializing a Float32Array for every capture frame.
+    // Each window is still its own Float32Array because it is transferred to
+    // the worker; the PCM conversion writes directly into those windows.
     let inputOffset = 0;
-    while (this.carryLen + (float32.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
-      const window = new Float32Array(MODEL_FRAME_SAMPLES);
+    while (this.carryLen + (pcm16.length - inputOffset) >= MODEL_FRAME_SAMPLES) {
+      const window =
+        this.recycledWindow ?? new Float32Array(MODEL_FRAME_SAMPLES);
+      this.recycledWindow = null;
       if (this.carryLen > 0) {
         window.set(this.carryBuf.subarray(0, this.carryLen), 0);
       }
       const needed = MODEL_FRAME_SAMPLES - this.carryLen;
-      window.set(float32.subarray(inputOffset, inputOffset + needed), this.carryLen);
+      copyPcm16ToFloat32(pcm16, inputOffset, window, this.carryLen, needed);
       inputOffset += needed;
       this.carryLen = 0;
       this.enqueueWindow(window);
     }
 
     // Stash the remaining (sub-window) samples back into the reusable carry.
-    const remaining = float32.length - inputOffset;
+    const remaining = pcm16.length - inputOffset;
     if (remaining > 0) {
-      this.carryBuf.set(
-        float32.subarray(inputOffset, inputOffset + remaining),
+      copyPcm16ToFloat32(
+        pcm16,
+        inputOffset,
+        this.carryBuf,
         this.carryLen,
+        remaining,
       );
       this.carryLen += remaining;
     }
   }
 
   private enqueueWindow(window: Float32Array): void {
-    this.queueDepth++;
-    if (this.status === "ready") {
-      this.submitWindow(window);
-    } else {
-      this.pendingWindows.push(window);
+    if (this.queueDepth >= MAX_PENDING_VAD_WINDOWS) {
+      this.status = "failed";
+      this.clearPendingWindows();
+      this.queueDepth = 0;
+      this.disposeWorker();
+      log.warn(
+        "Streaming VAD fell behind; falling back to post-hoc VAD:",
+        `queue exceeded ${MAX_PENDING_VAD_WINDOWS} model windows`,
+      );
+      return;
     }
+    this.queueDepth++;
+    this.pendingWindows.push({
+      frame: window,
+      frameIndex: this.frameIndex++,
+    });
+    if (this.status === "ready") this.startProcessingPump();
   }
 
   private drainPendingWindows(): void {
-    const pending = this.pendingWindows;
-    this.pendingWindows = [];
-    for (const window of pending) {
-      this.submitWindow(window);
-    }
+    this.startProcessingPump();
   }
 
-  private submitWindow(window: Float32Array): void {
-    const indexForWindow = this.frameIndex;
-    this.frameIndex += 1;
-    const processWindow = async () => {
+  private startProcessingPump(): void {
+    if (
+      this.processingPumpPromise ||
+      this.pendingWindowStart >= this.pendingWindows.length
+    ) {
+      return;
+    }
+
+    this.processingPumpPromise = this.processPendingWindows().finally(() => {
+      this.processingPumpPromise = null;
+      if (!this.cancelled && this.status === "ready") {
+        this.startProcessingPump();
+      }
+    });
+  }
+
+  private async processPendingWindows(): Promise<void> {
+    while (
+      this.pendingWindowStart < this.pendingWindows.length &&
+      !this.cancelled &&
+      this.status === "ready"
+    ) {
+      const pending = this.pendingWindows[this.pendingWindowStart];
+      this.pendingWindowStart += 1;
       try {
-        const events = await this.worker.processFrame(window, indexForWindow);
-        for (const event of events) this.handleEvent(event);
+        const result = await this.worker.processFrame(
+          pending.frame,
+          pending.frameIndex,
+        );
+        // Keep one spare only. A backlog can finish several windows before
+        // capture produces another one; retaining all of them would leave
+        // the queue bound resident after the worker catches up.
+        this.recycledWindow = result.frame;
+        if (this.cancelled || this.status !== "ready") return;
+        for (const event of result.events) this.handleEvent(event);
       } catch (error) {
         if (!this.cancelled) {
           this.status = "failed";
+          this.clearPendingWindows();
+          this.queueDepth = 0;
           this.disposeWorker();
           log.warn("Streaming VAD frame processing failed:", error);
         }
+        return;
       } finally {
+        // The worker has returned (or rejected) this window. Drop the queue
+        // record's typed-array reference immediately instead of keeping every
+        // completed frame reachable until the backlog fully drains.
+        pending.frame = EMPTY_VAD_WINDOW;
         this.queueDepth = Math.max(0, this.queueDepth - 1);
       }
-    };
-    this.processingQueue = this.processingQueue.then(processWindow, processWindow);
+    }
+
+    this.clearPendingWindows();
+  }
+
+  private clearPendingWindows(): void {
+    this.pendingWindows.length = 0;
+    this.pendingWindowStart = 0;
   }
 
   private handleEvent(event: VadWorkerEvent): void {
@@ -310,7 +385,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
 
       this.drainPendingWindows();
       const finalFrameIndex = this.frameIndex;
-      await this.processingQueue;
+      await this.processingPumpPromise;
       if (this.cancelled || this.status !== "ready") return null;
       const events = await this.worker.finish(Math.max(0, finalFrameIndex - 1));
       if (this.cancelled) return null;
@@ -343,7 +418,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     if (this.cancelled || this.workerReleased) return;
     this.disposed = true;
     this.cancelled = true;
-    this.pendingWindows = [];
+    this.clearPendingWindows();
     this.queueDepth = 0;
     this.disposeWorker();
   }
@@ -352,5 +427,18 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     if (this.workerReleased) return;
     this.workerReleased = true;
     this.worker.dispose();
+  }
+}
+
+function copyPcm16ToFloat32(
+  source: Int16Array,
+  sourceOffset: number,
+  target: Float32Array,
+  targetOffset: number,
+  length: number,
+): void {
+  for (let index = 0; index < length; index += 1) {
+    target[targetOffset + index] =
+      source[sourceOffset + index] * PCM16_TO_FLOAT_GAIN;
   }
 }

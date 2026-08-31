@@ -35,7 +35,7 @@ export async function openExternalUrlSafely(url: string): Promise<boolean> {
   return true;
 }
 
-export function isAllowedAppNavigation(url: string): boolean {
+function isAllowedAppNavigation(url: string): boolean {
   try {
     const target = new URL(url);
     if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {

@@ -5,8 +5,10 @@ import {
 
 const listeners = new Set<(items: TranscriptionItem[]) => void>();
 let items: TranscriptionItem[] = [];
-let initialized = false;
+let hasMore = false;
 let initPromise: Promise<TranscriptionItem[]> | null = null;
+let loadMorePromise: Promise<void> | null = null;
+const PAGE_SIZE = 50;
 
 function emit() {
   for (const listener of listeners) {
@@ -27,14 +29,15 @@ export async function initTranscriptionHistory(): Promise<TranscriptionItem[]> {
 
   initPromise = (async () => {
     try {
-      items = await window.transcriptions.getAll();
-      initialized = true;
-      // Loaded successfully
+      const page = await window.transcriptions.getPage(0, PAGE_SIZE);
+      items = page.items;
+      hasMore = page.hasMore;
     } catch (error) {
       console.error("[TranscriptionHistory] Failed to load:", error);
       items = [];
-      initialized = true;
+      hasMore = false;
     }
+    emit();
     return items;
   })();
 
@@ -48,11 +51,36 @@ export function getTranscriptionHistory(): TranscriptionItem[] {
   return items;
 }
 
-/**
- * Check if history has been initialized.
- */
-export function isTranscriptionHistoryInitialized(): boolean {
-  return initialized;
+export function hasMoreTranscriptionHistory(): boolean {
+  return hasMore;
+}
+
+/** Load the next bounded page of history, sharing overlapping requests. */
+export async function loadMoreTranscriptionHistory(): Promise<void> {
+  if (!hasMore) return;
+  if (loadMorePromise) return loadMorePromise;
+
+  const promise = (async () => {
+    try {
+      const page = await window.transcriptions.getPage(items.length, PAGE_SIZE);
+      const existingIds = new Set(items.map((item) => item.id));
+      const nextItems = page.items.filter((item) => !existingIds.has(item.id));
+      const changed = nextItems.length > 0 || hasMore !== page.hasMore;
+
+      if (nextItems.length > 0) {
+        items = [...items, ...nextItems];
+      }
+      hasMore = page.hasMore;
+      if (changed) emit();
+    } catch (error) {
+      console.error("[TranscriptionHistory] Failed to load more:", error);
+    } finally {
+      loadMorePromise = null;
+    }
+  })();
+
+  loadMorePromise = promise;
+  return promise;
 }
 
 /**
@@ -64,6 +92,9 @@ export function subscribeTranscriptionHistory(
 ): () => void {
   listeners.add(listener);
   listener(items);
+  void initTranscriptionHistory().catch(() => {
+    // Keep the empty in-memory state if storage is unavailable.
+  });
   return () => {
     listeners.delete(listener);
   };
@@ -107,23 +138,4 @@ export async function deleteTranscription(id: string): Promise<boolean> {
   }
 
   return success;
-}
-
-/**
- * Clear all transcription history.
- */
-export async function clearTranscriptionHistory(): Promise<void> {
-  await window.transcriptions.clear();
-  items = [];
-  emit();
-}
-
-/**
- * Reset state for tests.
- */
-export function resetTranscriptionHistoryForTests(): void {
-  items = [];
-  initialized = false;
-  initPromise = null;
-  listeners.clear();
 }

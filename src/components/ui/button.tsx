@@ -21,7 +21,7 @@ const BUTTON_SIZE_CLASSES = {
 type ButtonVariant = keyof typeof BUTTON_VARIANT_CLASSES;
 type ButtonSize = keyof typeof BUTTON_SIZE_CLASSES;
 
-export function buttonVariants(
+function buttonVariants(
   options: {
     variant?: ButtonVariant | null;
     size?: ButtonSize | null;

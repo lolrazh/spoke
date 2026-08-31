@@ -33,9 +33,6 @@ import {
   transcribeWithGroq,
   transcribeWithDeepgram,
 } from "../providerStore";
-import { enhance } from "../enhanceService";
-import { extractOcrWords } from "../ocrService";
-import { resolveEnhancementProvider } from "../llmService";
 import {
   installLocalModelAndSyncSidecar,
   prewarmLocalSidecar,
@@ -116,6 +113,7 @@ export function registerSttIpc(): void {
         selectionText?: string;
       },
     ) => {
+      const { enhance } = await import("../enhanceService");
       return enhance(payload.text, {
         vocabulary: payload.vocabulary,
         mode: payload.mode,
@@ -134,7 +132,11 @@ export function registerSttIpc(): void {
 
   ipcMain.handle(
     "stt:push-local-stream",
-    async (event, sessionId: string, pcmBytes: Uint8Array) => {
+    async (
+      event,
+      sessionId: string,
+      pcmBytes: Uint8Array | ArrayBuffer,
+    ) => {
       await localStreams.push(event.sender, sessionId, pcmBytes);
     },
   );
@@ -144,6 +146,8 @@ export function registerSttIpc(): void {
   );
 
   ipcMain.handle("stt:extract-ocr", async (_event, imageBase64: string) => {
+    const [{ extractOcrWords }, { resolveEnhancementProvider }] =
+      await Promise.all([import("../ocrService"), import("../llmService")]);
     const providerId = resolveEnhancementProvider(getPreferredProviderId());
     if (!providerId) {
       return { words: [] };
@@ -156,19 +160,23 @@ export function registerSttIpc(): void {
     async (
       _event,
       modelId: string,
-      pcmBuffer: Uint8Array,
+      pcmBuffer: Uint8Array | ArrayBuffer,
       prompt?: string,
     ) => {
       try {
-        // Wrap the transferred bytes in place instead of copying them: the
-        // sidecar only reads this buffer, and the Uint8Array isn't reused after
-        // this handler returns.
+        // Wrap the IPC payload in place instead of copying it: the sidecar
+        // only reads this buffer, and the renderer does not reuse it after the
+        // request returns.
+        const bytes =
+          pcmBuffer instanceof Uint8Array
+            ? pcmBuffer
+            : new Uint8Array(pcmBuffer);
         return await transcribeWithLocalSidecar(
           modelId,
           Buffer.from(
-            pcmBuffer.buffer,
-            pcmBuffer.byteOffset,
-            pcmBuffer.byteLength,
+            bytes.buffer,
+            bytes.byteOffset,
+            bytes.byteLength,
           ),
           prompt,
         );

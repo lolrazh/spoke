@@ -1,10 +1,12 @@
+/* global sampleRate */
+
 /*
   AudioWorkletProcessor that:
   - Accepts mono Float32 input at the AudioContext sampleRate (typically 48k or 44.1k)
   - Resamples to 16,000 Hz using linear interpolation (cheap, good for speech)
   - Converts to signed Int16
   - Buffers a configurable frame length (frameSamples), default 100 ms (1600 samples at 16k),
-    and posts frames to the main thread as transferable ArrayBuffers
+    and posts frames to the main thread as transferable Int16Array views
 */
 
 class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
@@ -51,7 +53,10 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
       // Normalize DC gain to 1
       for (let n = 0; n < TAPS; n++) taps[n] /= sum;
       this._taps = taps;
-      this._dl = new Float32Array(TAPS);
+      // Store each delay-line sample twice. This lets the convolution scan
+      // backward through a contiguous 31-sample range without a modulo or
+      // wrap branch for every tap.
+      this._dl = new Float32Array(TAPS * 2);
       this._dlIdx = 0;
       this._phase = 0; // emit every 3rd sample
     }
@@ -59,44 +64,33 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     // Output frame buffer. Keep this fixed-size on the audio thread to avoid
     // per-sample JS array growth and slicing during recording.
     this._frame = new Int16Array(this.frameSamples);
+    this._recycledFrame = null;
     this._frameIndex = 0;
-    this._seq = 0;
 
     // Track pause state
     this._paused = false;
 
-    // Respond to parameter updates from node if needed later
+    // Handle control messages from the capture session.
     this.port.onmessage = (ev) => {
       const msg = ev.data || {};
-      if (msg.type === "reset") {
-        this._resetState();
-        this._seq = 0;
-        this._paused = false;
-      } else if (msg.type === "flush") {
+      if (msg.type === "flush") {
         this._emitPartialFrame();
         this.port.postMessage({
           type: "flushed",
-          seq: this._seq,
-          rate: this.targetRate,
         });
       } else if (msg.type === "pause") {
         this._paused = true;
-      } else if (msg.type === "resume") {
-        this._paused = false;
+      } else if (
+        msg.type === "recycle" &&
+        msg.samples instanceof ArrayBuffer &&
+        msg.samples.byteLength === this.frameSamples * 2
+      ) {
+        // The renderer returns a transferred full frame after all consumers
+        // have copied it. Keep only the newest spare so a slow audio thread
+        // cannot accumulate returned buffers.
+        this._recycledFrame = new Int16Array(msg.samples);
       }
     };
-  }
-
-  _resetState() {
-    this._last = 0.0;
-    this._pos = 0.0;
-    this._frame = new Int16Array(this.frameSamples);
-    this._frameIndex = 0;
-    if (this.mode === "decimate3") {
-      this._dl.fill(0);
-      this._dlIdx = 0;
-      this._phase = 0;
-    }
   }
 
   _floatToInt16(sample) {
@@ -116,9 +110,7 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this.port.postMessage(
       {
         type: "audio",
-        seq: this._seq++,
-        rate: this.targetRate,
-        samples: out.buffer,
+        samples: out,
       },
       [out.buffer],
     );
@@ -126,7 +118,8 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
 
   _emitFullFrame() {
     const out = this._frame;
-    this._frame = new Int16Array(this.frameSamples);
+    this._frame = this._recycledFrame || new Int16Array(this.frameSamples);
+    this._recycledFrame = null;
     this._frameIndex = 0;
     this._postFrame(out);
   }
@@ -142,20 +135,19 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
   _linearResample(input) {
     const srcLen = input.length;
     if (srcLen === 0) return;
-    const windowLen = srcLen + 1;
-    const window = new Float32Array(windowLen);
-    window[0] = this._last;
-    window.set(input, 1);
-    while (this._pos + 1 < windowLen) {
+    // Read directly from the current render block. The previous sample is the
+    // only value that crosses a block boundary, so a temporary [last, ...input]
+    // window would only add a copy on every AudioWorklet callback.
+    while (this._pos + 1 < srcLen + 1) {
       const i = Math.floor(this._pos);
       const t = this._pos - i;
-      const a = window[i];
-      const b = window[i + 1];
+      const a = i === 0 ? this._last : input[i - 1];
+      const b = input[i];
       this._pushSample(a + (b - a) * t);
       this._pos += this.ratio;
     }
-    this._pos -= windowLen - 1;
-    this._last = window[windowLen - 1];
+    this._pos -= srcLen;
+    this._last = input[srcLen - 1];
   }
 
   _decimateBy3(input) {
@@ -165,16 +157,20 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     let idx = this._dlIdx;
     let phase = this._phase;
     for (let n = 0; n < input.length; n++) {
-      dl[idx] = input[n];
-      idx = (idx + 1) % TAPS;
+      const sample = input[n];
+      dl[idx] = sample;
+      dl[idx + TAPS] = sample;
+      idx += 1;
+      if (idx === TAPS) idx = 0;
       phase++;
       if (phase === 3) {
-        // Convolution centered at idx-1 (most recent sample)
+        // idx points at the next write slot. The duplicated line guarantees
+        // this range contains the most recent sample followed by all taps.
         let acc = 0.0;
-        let di = (idx - 1 + TAPS) % TAPS;
+        let di = idx + TAPS - 1;
         for (let k = 0; k < TAPS; k++) {
           acc += taps[k] * dl[di];
-          di = (di - 1 + TAPS) % TAPS;
+          di -= 1;
         }
         this._pushSample(acc);
         phase = 0;

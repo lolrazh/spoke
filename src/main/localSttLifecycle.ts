@@ -20,7 +20,6 @@ import {
   type LocalStreamingSession,
 } from "./sidecarEngine";
 import { bootTimeline } from "./bootTimeline";
-import { correctTranscript } from "./dictionaryCorrection";
 import { getVocabularyDictionary } from "./vocabularyService";
 import { state } from "./windowState";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
@@ -38,12 +37,22 @@ let idleTimer: NodeJS.Timeout | null = null;
 let transcriptionsInFlight = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
 let prewarmGeneration = 0;
+let queuedPrewarmGeneration: number | null = null;
 let activePrewarm: {
   generation: number;
   cancelled: boolean;
   stopPromise: Promise<void> | null;
 } | null = null;
 const transcriptionDrainWaiters = new Set<() => void>();
+
+async function correctTranscriptIfNeeded(
+  text: string,
+  dictionary: readonly string[],
+): Promise<string> {
+  if (!Array.isArray(dictionary) || dictionary.length === 0) return text;
+  const { correctTranscript } = await import("./dictionaryCorrection");
+  return correctTranscript(text, dictionary);
+}
 
 function logSidecarShutdownFailure(context: string, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
@@ -170,31 +179,43 @@ async function ensureLocalSidecarRunningOnce(modelId: string): Promise<void> {
   armIdleTimer();
 }
 
-export async function ensureLocalSidecarRunning(): Promise<void> {
-  await enqueueLifecycle(() =>
-    ensureLocalSidecarRunningOnce(getActiveModelId()),
-  );
-}
-
 function queueLocalSidecarPrewarm(
   reason: string,
   generation: number,
   waitBeforeStart: Promise<void>,
 ): void {
+  if (
+    queuedPrewarmGeneration === generation ||
+    activePrewarm?.generation === generation
+  ) {
+    return;
+  }
+
+  queuedPrewarmGeneration = generation;
+  const releaseQueuedPrewarm = () => {
+    if (queuedPrewarmGeneration === generation) {
+      queuedPrewarmGeneration = null;
+    }
+  };
   void enqueueLifecycle(async () => {
     try {
       await waitBeforeStart;
     } catch (error) {
       logPrewarmFailure(reason, error);
+      releaseQueuedPrewarm();
       return;
     }
-    if (generation !== prewarmGeneration) return;
+    if (generation !== prewarmGeneration) {
+      releaseQueuedPrewarm();
+      return;
+    }
 
     const modelId = getActiveModelId();
     if (
       !isPreferredProviderLocal() ||
       getModelInstallState(modelId) !== "ready"
     ) {
+      releaseQueuedPrewarm();
       return;
     }
 
@@ -228,11 +249,25 @@ function queueLocalSidecarPrewarm(
       logPrewarmFailure(reason, err);
     } finally {
       if (activePrewarm === task) activePrewarm = null;
+      releaseQueuedPrewarm();
     }
   });
 }
 
 export function prewarmLocalSidecar(reason: string): void {
+  if (isPreferredProviderLocal()) {
+    const modelId = getActiveModelId();
+    if (
+      isSidecarRunning() &&
+      getSidecarModelId() === modelId &&
+      getModelInstallState(modelId) === "ready"
+    ) {
+      // A warm sidecar needs no lifecycle queue work. PTT calls this on every
+      // key-down, so only refresh the idle watchdog in the common case.
+      armIdleTimer();
+      return;
+    }
+  }
   queueLocalSidecarPrewarm(reason, prewarmGeneration, Promise.resolve());
 }
 
@@ -336,7 +371,10 @@ export async function transcribeWithLocalSidecar(
       buildWhisperPrompt(modelId, prompt),
     );
     const dictionary = state.appPreferences.vocabularyDictionary ?? [];
-    return { ...result, text: correctTranscript(result.text, dictionary) };
+    return {
+      ...result,
+      text: await correctTranscriptIfNeeded(result.text, dictionary),
+    };
   } finally {
     releaseTranscriptionLease();
     // Reset on completion so idle time is measured from the last activity.
@@ -405,7 +443,10 @@ export async function beginLocalStreamingSession(
       try {
         const result = await sidecarSession.finish();
         const dictionary = state.appPreferences.vocabularyDictionary ?? [];
-        return { ...result, text: correctTranscript(result.text, dictionary) };
+        return {
+          ...result,
+          text: await correctTranscriptIfNeeded(result.text, dictionary),
+        };
       } finally {
         release();
       }

@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  composeDynamicPrompt,
-  estimatePromptTokens,
-  getPromptStats,
-} from "./prompts";
+import { composeDynamicPrompt } from "./prompts";
 import { detectTriggers } from "./triggers";
 
 describe("services/llm/prompts", () => {
@@ -109,100 +105,6 @@ describe("services/llm/prompts", () => {
       const prompt = composeDynamicPrompt(triggerContext);
 
       expect(prompt).not.toContain("<vocabulary>");
-    });
-  });
-
-  describe("estimatePromptTokens", () => {
-    it("returns reasonable token estimate", () => {
-      const text =
-        "This is a test sentence with about twenty characters per word on average.";
-      const tokens = estimatePromptTokens(text);
-
-      // Rough estimate: ~4 chars per token
-      expect(tokens).toBeGreaterThan(0);
-      expect(tokens).toBeLessThan(text.length); // Should be less than char count
-    });
-
-    it("estimates larger prompts correctly", () => {
-      const triggerContext = detectTriggers("spell C L A U D E");
-      const prompt = composeDynamicPrompt(triggerContext);
-      const tokens = estimatePromptTokens(prompt);
-
-      expect(tokens).toBeGreaterThan(100); // Should have meaningful content
-      expect(tokens).toBeLessThan(1000); // But not excessive
-    });
-  });
-
-  describe("getPromptStats", () => {
-    it("returns stats for clean dictation", () => {
-      const triggerContext = detectTriggers("This is normal text");
-      const stats = getPromptStats(triggerContext);
-
-      expect(stats.hasLLMBypass).toBe(true);
-      expect(stats.triggeredModules).toEqual([]);
-      expect(stats.dynamicTokens).toBeGreaterThan(0);
-      expect(stats.dynamicPrompt).toContain("You are a verbatim ASR cleaner");
-    });
-
-    it("returns stats with triggered modules", () => {
-      const triggerContext = detectTriggers(
-        "Add an at symbol and spell C L A U D E",
-      );
-      const stats = getPromptStats(triggerContext);
-
-      expect(stats.hasLLMBypass).toBe(false);
-      expect(stats.triggeredModules).toContain("symbols");
-      expect(stats.triggeredModules).toContain("spelling");
-      expect(stats.dynamicTokens).toBeGreaterThan(0);
-    });
-
-    it("includes vocabulary in token count", () => {
-      const triggerContext = detectTriggers("Normal text");
-      const statsWithoutVocab = getPromptStats(triggerContext);
-      const statsWithVocab = getPromptStats(triggerContext, {
-        vocabulary:
-          "A very long vocabulary list with many proper nouns and technical terms",
-      });
-
-      expect(statsWithVocab.dynamicTokens).toBeGreaterThan(
-        statsWithoutVocab.dynamicTokens,
-      );
-    });
-  });
-
-  describe("token savings comparison", () => {
-    it("shows significant savings for clean dictation vs full prompt", () => {
-      const cleanContext = detectTriggers("This is a normal sentence");
-      const fullContext = detectTriggers(
-        "Make it uppercase, add symbols, spell C L A U D E, quote it, sorry I mean add lists: 1 first, 2 second, 3 third",
-      );
-
-      const cleanStats = getPromptStats(cleanContext);
-      const fullStats = getPromptStats(fullContext);
-
-      // Clean dictation should use fewer tokens
-      expect(cleanStats.dynamicTokens).toBeLessThan(fullStats.dynamicTokens);
-
-      // Clean should have no modules, full should have many
-      expect(cleanStats.triggeredModules.length).toBe(0);
-      expect(fullStats.triggeredModules.length).toBeGreaterThan(3);
-    });
-
-    it("saves ~30-40% tokens for single trigger vs all triggers", () => {
-      const singleTrigger = detectTriggers("spell C L A U D E");
-      const allTriggers = detectTriggers(
-        "Make uppercase, add symbol, spell it, quote it, sorry, list: 1 a, 2 b, 3 c",
-      );
-
-      const singleStats = getPromptStats(singleTrigger);
-      const allStats = getPromptStats(allTriggers);
-
-      const savings = 1 - singleStats.dynamicTokens / allStats.dynamicTokens;
-
-      // Should save at least 30% tokens
-      expect(savings).toBeGreaterThan(0.3);
-      expect(singleStats.triggeredModules.length).toBe(1);
-      expect(allStats.triggeredModules.length).toBeGreaterThan(4);
     });
   });
 });

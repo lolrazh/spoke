@@ -23,9 +23,7 @@ const cloudProvider: TranscriptionProvider = {
     kind: "cloud",
     requiresApiKey: true,
   },
-  prepare: async () => ({
-    ocrWords: ["Spoke"],
-  }),
+  prepare: async () => ({}),
   transcribe: async () => ({ text: "cloud transcript" }),
 };
 
