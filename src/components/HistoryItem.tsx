@@ -59,14 +59,8 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
     }, 1500);
   };
 
-  return (
-    <m.div
-      initial={skipAnimation ? false : "hidden"}
-      animate="visible"
-      exit="exit"
-      variants={panelCascadeItem}
-      className="group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default"
-    >
+  const content = (
+    <>
       {/* Text - left side with max width */}
       <div className="flex-1 p-3 pr-2">
         <p className="text-xs text-foreground/80 leading-relaxed font-normal">
@@ -146,6 +140,25 @@ const HistoryItemInner: React.FC<HistoryItemProps> = ({
           {formatTime(item.timestamp)}
         </span>
       </div>
+    </>
+  );
+
+  const className =
+    "group flex border-b border-white/[0.08] hover:bg-white/5 transition-colors cursor-default";
+
+  if (skipAnimation) {
+    return <div className={className}>{content}</div>;
+  }
+
+  return (
+    <m.div
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      variants={panelCascadeItem}
+      className={className}
+    >
+      {content}
     </m.div>
   );
 };
