@@ -41,6 +41,7 @@ import transparentLogoUrl from "/assets/transparent-wordmark.png?url";
 
 const ModelsList = lazy(() => import("./ModelsList"));
 const OnboardingMicSelector = lazy(() => import("./OnboardingMicSelector"));
+const ONBOARDING_PROGRESS_STEPS = buildOnboardingSteps().slice(0, -1);
 
 const ModelsLoadingFallback: React.FC = () => (
   <div className="py-8 text-sm text-muted-foreground">Loading models…</div>
@@ -551,14 +552,8 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  // Step progress indicator
-  // Returns the index among the visible onboarding steps, or -1 when not applicable.
-  const getProgressStepIndex = () => {
-    const steps = buildOnboardingSteps();
-    // Progress steps exclude the final completion screen.
-    const progressSteps = steps.slice(0, -1);
-    return progressSteps.indexOf(currentStep);
-  };
+  // Step progress indicator. Completion is intentionally outside this list.
+  const progressStepIndex = ONBOARDING_PROGRESS_STEPS.indexOf(currentStep);
 
   const containerVariants: Variants = {
     hidden: { opacity: 0, y: 16 },
@@ -690,27 +685,23 @@ const Onboarding: React.FC = () => {
       {currentStep !== "complete" && (
         <div className="absolute top-20 left-0 right-0 z-40 flex items-center justify-center pointer-events-none">
           <div className="onboarding-progress-shell">
-            {(() => {
-              const progressSteps = buildOnboardingSteps().slice(0, -1);
-              const idx = getProgressStepIndex();
-              return progressSteps.map((step, i) => {
-                const isComplete = i < idx;
-                const isActive = i === idx;
-                const growClass = isActive ? "grow-active" : "grow-inactive";
-                const heightClass = isActive ? "h-[3px]" : "h-[2px]"; // minor height emphasis
-                const toneClass = isActive
-                  ? "bar-active"
-                  : isComplete
-                    ? "bar-complete"
-                    : "bar-upcoming";
-                return (
-                  <div
-                    key={step}
-                    className={`onboarding-progress-bar ${toneClass} ${growClass} ${heightClass}`}
-                  />
-                );
-              });
-            })()}
+            {ONBOARDING_PROGRESS_STEPS.map((step, i) => {
+              const isComplete = i < progressStepIndex;
+              const isActive = i === progressStepIndex;
+              const growClass = isActive ? "grow-active" : "grow-inactive";
+              const heightClass = isActive ? "h-[3px]" : "h-[2px]"; // minor height emphasis
+              const toneClass = isActive
+                ? "bar-active"
+                : isComplete
+                  ? "bar-complete"
+                  : "bar-upcoming";
+              return (
+                <div
+                  key={step}
+                  className={`onboarding-progress-bar ${toneClass} ${growClass} ${heightClass}`}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -1446,7 +1437,7 @@ const Onboarding: React.FC = () => {
             <Button
               variant="secondary"
               onClick={prevStep}
-              disabled={getProgressStepIndex() <= 0}
+              disabled={progressStepIndex <= 0}
             >
               Back
             </Button>
