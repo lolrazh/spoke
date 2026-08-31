@@ -490,13 +490,8 @@ extern IOHIDAccessType IOHIDCheckAccess(uint32_t requestType);
 #define kCGListenEventAccessGranted (1)
 #endif
 
-#define FN_MASK  kCGEventFlagMaskSecondaryFn // 0x00800000
 #define OPT_MASK kCGEventFlagMaskAlternate   // Option/Alt modifier
 
-// Some SDKs don't expose virtual keycodes; define the ones we need for Option
-#ifndef kVK_Option
-#define kVK_Option      58
-#endif
 #ifndef kVK_RightOption
 #define kVK_RightOption 61
 #endif
@@ -542,10 +537,7 @@ bool check_permissions() {
 }
 
 typedef struct {
-    bool fn;
-    bool optL;
     bool optR;
-    bool cmdL;
     bool cmdR;
 } KeyState;
 
@@ -561,12 +553,11 @@ CGEventRef cb(CGEventTapProxy proxy, CGEventType t, CGEventRef e, void *ctx) {
     if (t == kCGEventFlagsChanged) {
         KeyState *state = (KeyState *)ctx;
         CGEventFlags flags = CGEventGetFlags(e);
-        bool fnNow = (flags & FN_MASK) != 0;
         CGKeyCode code = (CGKeyCode)CGEventGetIntegerValueField(e, kCGKeyboardEventKeycode);
 
         if (g_debug_keys) {
-            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx optL=%d optR=%d cmdL=%d cmdR=%d\n",
-                    (unsigned)code, (unsigned long long)flags, (int)state->optL, (int)state->optR, (int)state->cmdL, (int)state->cmdR);
+            fprintf(stderr, "[KEY] flagsChanged code=%u flags=0x%llx optR=%d cmdR=%d\n",
+                    (unsigned)code, (unsigned long long)flags, (int)state->optR, (int)state->cmdR);
         }
 
         // Track Option sides by reading flag state (not toggling)
@@ -815,7 +806,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    KeyState s = { false, false, false, false, false };
+    KeyState s = { false, false };
     // Only listen to flagsChanged; modifiers are canonical via flagsChanged + keycode
     CGEventMask m = (1ULL << kCGEventFlagsChanged);
     CFMachPortRef tap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap,
