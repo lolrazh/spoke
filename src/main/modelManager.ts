@@ -74,6 +74,9 @@ const installedFiles = new Map<string, InstalledModelFile[]>();
 // In-flight installs, so a download can be cancelled. Keyed by modelId; the
 // entry is cleared in installModel's `finally`.
 const installAborts = new Map<string, AbortController>();
+// Keep high-frequency network chunks inside the main process. The renderer
+// only needs progress at a paint-friendly rate, not once per response chunk.
+const DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS = 30;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -580,6 +583,7 @@ export async function installModel(modelId?: string): Promise<void> {
     persistState();
 
     let totalDownloaded = 0;
+    let lastProgressEmitAt = 0;
     const completedFileBytes = new Map<string, number>();
 
     for (const file of manifest.files) {
@@ -599,9 +603,20 @@ export async function installModel(modelId?: string): Promise<void> {
             downloadedBytes: totalDownloaded,
             totalBytes: totalSize,
           });
+
+          const nextProgress = Math.min(progress, 1);
+          const now = Date.now();
+          const isEndpoint = nextProgress <= 0 || nextProgress >= 1;
+          if (
+            !isEndpoint &&
+            now - lastProgressEmitAt < DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS
+          ) {
+            return;
+          }
+          lastProgressEmitAt = now;
           callbacks.onDownloadProgress({
             modelId: id,
-            progress: Math.min(progress, 1),
+            progress: nextProgress,
             downloadedBytes: totalDownloaded,
             totalBytes: totalSize,
           });

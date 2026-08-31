@@ -486,6 +486,71 @@ describe("modelManager", () => {
   });
 
   describe("installModel", () => {
+    it("throttles download progress before invoking the callback", async () => {
+      const now = vi.spyOn(Date, "now");
+      now.mockReturnValue(1_000);
+
+      let requestCount = 0;
+      vi.mocked(https.get).mockImplementation((...args: any[]) => {
+        const callback = args[args.length - 1];
+        requestCount += 1;
+        if (requestCount > 1) {
+          callback({
+            statusCode: 500,
+            headers: {},
+            resume: vi.fn(),
+            on: vi.fn(),
+            pipe: vi.fn(),
+          });
+          return { on: vi.fn().mockReturnThis() } as any;
+        }
+
+        const response = {
+          statusCode: 200,
+          headers: { "content-length": "30" },
+          resume: vi.fn(),
+          on: vi.fn((event: string, handler: (chunk?: Buffer) => void) => {
+            if (event === "data") {
+              now.mockReturnValue(1_000);
+              handler(Buffer.alloc(10));
+              now.mockReturnValue(1_005);
+              handler(Buffer.alloc(10));
+              now.mockReturnValue(1_040);
+              handler(Buffer.alloc(10));
+            }
+            return response;
+          }),
+          pipe: vi.fn(),
+        };
+        callback(response);
+        return { on: vi.fn().mockReturnThis() } as any;
+      });
+      (fs.createWriteStream as any).mockImplementation(() => {
+        const stream = {
+          on: (event: string, handler: () => void) => {
+            if (event === "finish") queueMicrotask(handler);
+            return stream;
+          },
+          close: vi.fn(),
+        };
+        return stream;
+      });
+
+      const callbacks = makeCallbacks();
+      initModelManager(callbacks);
+      await installModel();
+
+      expect(callbacks.onDownloadProgress).toHaveBeenCalledTimes(2);
+      expect(callbacks.onDownloadProgress).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ downloadedBytes: 10 }),
+      );
+      expect(callbacks.onDownloadProgress).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ downloadedBytes: 30 }),
+      );
+    });
+
     it("resolves Hugging Face relative redirect URLs", () => {
       const redirect = resolveDownloadRedirectUrl(
         "/api/resolve-cache/models/spokedotso/cohere-transcribe-03-2026-mlx-4bit/config.json?etag=test",
