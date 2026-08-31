@@ -22,7 +22,6 @@ import {
   usePermissions,
   type PermissionProvider,
 } from "../hooks/usePermissions";
-import { useModelStatus } from "../hooks/useModelStatus";
 import {
   buildOnboardingSteps,
   isOnboardingStep,
@@ -116,17 +115,10 @@ const Onboarding: React.FC = () => {
   const [autoRestarting, setAutoRestarting] = useState<boolean>(false);
   const autoRestartTriggeredRef = useRef(false);
   const [currentStep, setCurrentStep] = useState<OnboardingStep>("permissions");
+  const [transcriptionSetupReady, setTranscriptionSetupReady] =
+    useState(false);
   const shouldLoadTranscriptionSetup =
     !showIntro && currentStep === "transcription-setup";
-  // Drives Next-gating and prewarm off the *active* model's live status: the
-  // user installs a model in a card below, it becomes active + ready, and that
-  // flips `transcriptionSetupReady`. Status events keep this value in sync with
-  // the active row after the cards mutate state (install/activate).
-  const {
-    status: modelStatus,
-  } = useModelStatus({
-    enabled: shouldLoadTranscriptionSetup,
-  });
   // Permissions via shared hook (deduplicated across surfaces)
   const mockProvider: PermissionProvider | undefined =
     devFlags.mockPermissionStates
@@ -264,15 +256,9 @@ const Onboarding: React.FC = () => {
     permissions.accessibility &&
     permissions.inputMonitoring &&
     (!ENABLE_SCREEN_CONTEXT || permissions.screenRecording);
-  // Next on the transcription step gates on the *active* model being ready.
-  // The cards below install/activate models; when the active one resolves to
-  // "ready" this flips true. Nothing installed → not ready → Next stays
-  // disabled (the deleted-models case).
-  const transcriptionSetupReady = modelStatus.state === "ready";
-
   useEffect(() => {
     if (currentStep !== "transcription-setup") return;
-    if (modelStatus.state !== "ready") return;
+    if (!transcriptionSetupReady) return;
     if (localPrewarmRequestedRef.current) return;
 
     localPrewarmRequestedRef.current = true;
@@ -280,7 +266,13 @@ const Onboarding: React.FC = () => {
       localPrewarmRequestedRef.current = false;
       console.warn("[Onboarding] Failed to prewarm local model:", error);
     });
-  }, [currentStep, modelStatus.state]);
+  }, [currentStep, transcriptionSetupReady]);
+
+  useEffect(() => {
+    if (currentStep !== "transcription-setup") {
+      setTranscriptionSetupReady(false);
+    }
+  }, [currentStep]);
 
   // Initialize provider settings and restore saved step
   useEffect(() => {
@@ -1187,6 +1179,7 @@ const Onboarding: React.FC = () => {
                       <ModelsList
                         enabled={shouldLoadTranscriptionSetup}
                         inGroup={false}
+                        onActiveModelReadyChange={setTranscriptionSetupReady}
                       />
                     </Suspense>
                   </m.div>

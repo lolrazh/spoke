@@ -126,4 +126,44 @@ describe("ModelsList progress rendering", () => {
     expect(harness.cardRenders).toBe(1);
     unmount();
   });
+
+  it("reports active readiness without reacting to progress-only updates", async () => {
+    vi.mocked(window.stt.getModelStatuses).mockResolvedValueOnce(
+      createStatuses().map((status, index) =>
+        index === 0
+          ? {
+              ...status,
+              state: "ready",
+              downloadProgress: 1,
+              downloadedBytes: status.totalBytes,
+            }
+          : status,
+      ),
+    );
+    const onActiveModelReadyChange = vi.fn();
+    const ModelsList = (await import("./ModelsList")).default;
+    const { unmount } = render(
+      <ModelsList onActiveModelReadyChange={onActiveModelReadyChange} />,
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(onActiveModelReadyChange).toHaveBeenLastCalledWith(true);
+    const callsAfterLoad = onActiveModelReadyChange.mock.calls.length;
+
+    await act(async () => {
+      harness.emitProgress?.({
+        modelId: "model-a",
+        progress: 0.5,
+        downloadedBytes: 500,
+        totalBytes: 1000,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+
+    expect(onActiveModelReadyChange).toHaveBeenCalledTimes(callsAfterLoad);
+    unmount();
+  });
 });

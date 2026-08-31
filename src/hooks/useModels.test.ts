@@ -49,6 +49,7 @@ describe("useModels", () => {
       getActiveModel: vi.fn().mockResolvedValue("model-a"),
       setActiveModel: vi.fn().mockResolvedValue(undefined),
       onModelProgress: vi.fn(() => () => undefined),
+      onModelStatusChanged: vi.fn(() => () => undefined),
     });
   });
 
@@ -159,5 +160,30 @@ describe("useModels", () => {
 
     expect(result.current.rows).toBe(rows);
     expect(renders).toBe(rendersAfterInitialLoad);
+  });
+
+  it("updates a row from a model status event", async () => {
+    let listener: ((status: ModelStatus) => void) | undefined;
+    vi.mocked(window.stt.onModelStatusChanged).mockImplementation((cb) => {
+      listener = cb;
+      return () => {
+        listener = undefined;
+      };
+    });
+
+    const { result } = renderHook(() => useModels());
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+
+    act(() => {
+      listener?.({
+        ...statuses[0],
+        state: "downloading",
+        downloadProgress: 0.5,
+        downloadedBytes: 0.5,
+      });
+    });
+
+    expect(result.current.rows[0].status.state).toBe("downloading");
+    expect(result.current.rows[0].status.downloadProgress).toBe(0.5);
   });
 });

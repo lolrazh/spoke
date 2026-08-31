@@ -117,6 +117,19 @@ export function useModels(options: UseModelsOptions = {}) {
     [],
   );
 
+  const updateStatus = useCallback(
+    (next: ModelStatus) => {
+      const modelId = next.modelId;
+      if (!modelId) return;
+      updateStatuses((previous) => {
+        const current = previous[modelId];
+        if (current && sameModelStatus(current, next)) return previous;
+        return { ...previous, [modelId]: next };
+      });
+    },
+    [updateStatuses],
+  );
+
   const updateActiveModel = useCallback((next: string | null) => {
     if (activeModelIdRef.current === next) return;
     activeModelIdRef.current = next;
@@ -215,11 +228,25 @@ export function useModels(options: UseModelsOptions = {}) {
       scheduleProgressFlush();
     });
 
+    const unsubStatus = window.stt?.onModelStatusChanged?.((next) => {
+      updateStatus(next);
+
+      // A status event for another model can also mean that another window
+      // changed the active selection. Re-read only the selection; the event
+      // already carries the changed model's full status.
+      if (next.modelId && next.modelId !== activeModelIdRef.current) {
+        void window.stt?.getActiveModel?.().then((active) => {
+          if (active) updateActiveModel(active);
+        });
+      }
+    });
+
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
 
     return () => {
       unsubProgress?.();
+      unsubStatus?.();
       window.removeEventListener("focus", onFocus);
       if (scheduledFrame !== null) {
         if (scheduledWithRaf) {
@@ -231,7 +258,13 @@ export function useModels(options: UseModelsOptions = {}) {
       }
       pendingProgress.clear();
     };
-  }, [enabled, refresh, updateStatuses]);
+  }, [
+    enabled,
+    refresh,
+    updateActiveModel,
+    updateStatus,
+    updateStatuses,
+  ]);
 
   const install = useCallback(
     async (modelId: string) => {
@@ -317,8 +350,14 @@ export function useModels(options: UseModelsOptions = {}) {
     [activeModelId, infos, statuses],
   );
 
+  const activeStatus = useMemo(
+    () => rows.find((row) => row.isActive)?.status ?? null,
+    [rows],
+  );
+
   return {
     rows,
+    activeStatus,
     activeModelId,
     install,
     remove,
