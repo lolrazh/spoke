@@ -76,11 +76,11 @@ let coalesceTimer: NodeJS.Timeout | null = null;
 let pendingBounds: Rectangle | null = null;
 let lastFollowCursorPoint: Point | null = null;
 
-export function getDisplayForPoint(point: Point): Display {
+function getDisplayForPoint(point: Point): Display {
   return screen.getDisplayNearestPoint(point);
 }
 
-export function getActiveDisplay(): Display {
+function getActiveDisplay(): Display {
   if (state.activeDisplayId != null) {
     const existing = screen
       .getAllDisplays()
@@ -115,7 +115,7 @@ export function computeScaleForDisplay(display: Display): number {
   return clamp(raw, MIN_UI_SCALE, MAX_UI_SCALE);
 }
 
-export function ensureEnvelopeForDisplay(
+function ensureEnvelopeForDisplay(
   display: Display,
 ): { scale: number; width: number; height: number } | null {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return null;
@@ -183,7 +183,7 @@ export function emitActiveDisplayInfo(display: Display, scale: number): void {
 }
 
 // After refreshing notch info, also update the renderer with new display data
-export async function refreshNotchInfoAndEmit(reason: string): Promise<void> {
+async function refreshNotchInfoAndEmit(reason: string): Promise<void> {
   await refreshNotchInfo(reason);
   try {
     if (state.mainWindow && !state.mainWindow.isDestroyed()) {
@@ -320,7 +320,7 @@ function pauseFollowCursorOnHide(): void {
   pauseFollowCursorInterval();
 }
 
-export function syncToCurrentDisplay(): void {
+function syncToCurrentDisplay(): void {
   try {
     lastFollowCursorPoint = null;
     // On OS display changes, select display based on current window location
@@ -334,7 +334,7 @@ export function syncToCurrentDisplay(): void {
   }
 }
 
-export function coalescedSetBounds(bounds: Rectangle): void {
+function coalescedSetBounds(bounds: Rectangle): void {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return;
   const current = state.mainWindow.getBounds();
   // Skip if identical
@@ -395,7 +395,7 @@ export function registerDisplayChangeListeners(): void {
   });
 }
 
-export function getRendererEntryUrl(hash?: string): string {
+function getRendererEntryUrl(hash?: string): string {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     const url = new URL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     if (hash) url.hash = hash;
@@ -423,7 +423,7 @@ export function scheduleLocalSidecarPrewarm(
   timer.unref?.();
 }
 
-export function scheduleMainWindowPostReadyWork(): void {
+function scheduleMainWindowPostReadyWork(): void {
   if (state.mainWindowPostReadyWorkScheduled) return;
   state.mainWindowPostReadyWorkScheduled = true;
 

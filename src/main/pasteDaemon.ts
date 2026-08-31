@@ -80,7 +80,7 @@ export function preSpawnPasteHelper(): void {
 }
 
 /** Returns the pre-spawned helper if alive, or null */
-export function getPreSpawnedHelper(): ChildProcess | null {
+function getPreSpawnedHelper(): ChildProcess | null {
   if (preSpawnedHelper && !preSpawnedHelper.killed) {
     return preSpawnedHelper;
   }
@@ -88,7 +88,7 @@ export function getPreSpawnedHelper(): ChildProcess | null {
 }
 
 /** Wait for the daemon to signal readiness (with timeout) */
-export async function waitForReady(timeoutMs = 300): Promise<void> {
+async function waitForReady(timeoutMs = 300): Promise<void> {
   const ready = readyPromise;
   if (!ready) return;
 

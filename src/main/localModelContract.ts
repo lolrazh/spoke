@@ -286,7 +286,7 @@ function makeInfo(
   };
 }
 
-export const LOCAL_MODELS: Record<string, LocalModelEntry> = {
+const LOCAL_MODELS: Record<string, LocalModelEntry> = {
   [NEMOTRON_ID]: {
     manifest: NEMOTRON_MANIFEST,
     info: makeInfo(NEMOTRON_MANIFEST, {

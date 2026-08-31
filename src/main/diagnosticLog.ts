@@ -32,7 +32,7 @@ let pendingLines: string[] = [];
 let flushTimer: NodeJS.Timeout | null = null;
 let exitHookInstalled = false;
 
-export function getDiagnosticLogPath(): string {
+function getDiagnosticLogPath(): string {
   if (cachedLogPath) return cachedLogPath;
 
   const logsDir = app.getPath("logs");

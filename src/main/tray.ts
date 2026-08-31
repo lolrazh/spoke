@@ -53,7 +53,7 @@ let tray: Tray | null = null;
 
 // ── Floating bar submenu ───────────────────────────────────────────────
 
-export function buildFloatingBarMenuItems(): MenuItemConstructorOptions[] {
+function buildFloatingBarMenuItems(): MenuItemConstructorOptions[] {
   if (!state.mainWindow) {
     return [];
   }
@@ -130,7 +130,7 @@ export function buildFloatingBarMenuItems(): MenuItemConstructorOptions[] {
 
 // ── Menu builders ───────────────────────────────────────────────────────
 
-export function buildTrayMenu(): MenuItemConstructorOptions[] {
+function buildTrayMenu(): MenuItemConstructorOptions[] {
   console.log(
     "[Tray Menu] Building tray menu with",
     getMicDevices().length,

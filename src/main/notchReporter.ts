@@ -129,7 +129,7 @@ function sanitizeScreen(
   };
 }
 
-export function sanitizeNotchReport(
+function sanitizeNotchReport(
   raw: NotchRawReport | null | undefined,
 ): NotchReport | null {
   if (!raw || typeof raw !== "object") return null;
@@ -160,7 +160,7 @@ export function cloneDisplayNotchInfo(
 
 // ── Path resolution ────────────────────────────────────────────────────
 
-export function getNotchReporterPath(): string {
+function getNotchReporterPath(): string {
   if (process.platform !== "darwin") return "";
   return app.isPackaged
     ? path.join(process.resourcesPath, "notch-reporter")
