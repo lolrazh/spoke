@@ -45,13 +45,32 @@ let activePrewarm: {
 } | null = null;
 const transcriptionDrainWaiters = new Set<() => void>();
 
-async function correctTranscriptIfNeeded(
+async function normalizeTranscriptForModel(
   text: string,
+  modelId: string,
   dictionary: readonly string[],
 ): Promise<string> {
-  if (!Array.isArray(dictionary) || dictionary.length === 0) return text;
-  const { correctTranscript } = await import("./dictionaryCorrection");
-  return correctTranscript(text, dictionary);
+  let normalized = text;
+
+  if (getModelFamily(modelId) === "parakeet") {
+    try {
+      const { normalizeParakeetTranscript } = await import(
+        "./parakeetTranscriptNormalizer"
+      );
+      normalized = normalizeParakeetTranscript(normalized);
+    } catch (error) {
+      console.warn("[STT] Parakeet transcript normalization failed:", error);
+    }
+  }
+
+  if (!Array.isArray(dictionary) || dictionary.length === 0) return normalized;
+  try {
+    const { correctTranscript } = await import("./dictionaryCorrection");
+    return correctTranscript(normalized, dictionary);
+  } catch (error) {
+    console.warn("[STT] Dictionary correction failed:", error);
+    return normalized;
+  }
 }
 
 function logSidecarShutdownFailure(context: string, error: unknown): void {
@@ -373,7 +392,7 @@ export async function transcribeWithLocalSidecar(
     const dictionary = state.appPreferences.vocabularyDictionary ?? [];
     return {
       ...result,
-      text: await correctTranscriptIfNeeded(result.text, dictionary),
+      text: await normalizeTranscriptForModel(result.text, modelId, dictionary),
     };
   } finally {
     releaseTranscriptionLease();
@@ -445,7 +464,7 @@ export async function beginLocalStreamingSession(
         const dictionary = state.appPreferences.vocabularyDictionary ?? [];
         return {
           ...result,
-          text: await correctTranscriptIfNeeded(result.text, dictionary),
+          text: await normalizeTranscriptForModel(result.text, modelId, dictionary),
         };
       } finally {
         release();

@@ -96,6 +96,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Sidecar engine family (default: whisper).",
     )
     parser.add_argument("--language", default="en")
+    parser.add_argument(
+        "--prompt",
+        help=(
+            "Optional vocabulary/decoding prompt sent in each request's metadata "
+            "frame. This exercises the same Whisper prompt path as the app."
+        ),
+    )
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--max-cases", type=int, default=0)
@@ -441,10 +448,14 @@ def process_rss_mb(pid: int) -> float:
     return round(total_kb / 1024, 1)
 
 
-def transcribe_pcm(proc: subprocess.Popen[bytes], pcm_path: Path) -> dict[str, Any]:
+def transcribe_pcm(
+    proc: subprocess.Popen[bytes],
+    pcm_path: Path,
+    prompt: str | None = None,
+) -> dict[str, Any]:
     assert proc.stdin is not None and proc.stdout is not None
     data = pcm_path.read_bytes()
-    metadata = b"{}"
+    metadata = json.dumps({"prompt": prompt} if prompt else {}).encode("utf-8")
     start = time.perf_counter()
     proc.stdin.write(struct.pack("<I", len(metadata)))
     proc.stdin.write(metadata)
@@ -637,7 +648,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, Any]:
                 schedule.append((False, iteration, case))
 
         for warmup, iteration, case in schedule:
-            event = transcribe_pcm(proc, audio_paths[case.id])
+            event = transcribe_pcm(proc, audio_paths[case.id], args.prompt)
             metrics = event["metrics"]
             audio_duration_ms = int(metrics.get("audio_duration_ms") or 0)
             wall_ms = int(event["wall_ms"])

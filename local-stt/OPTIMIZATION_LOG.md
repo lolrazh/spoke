@@ -803,3 +803,89 @@ Primary references:
 - [Efficient Conformer](https://arxiv.org/abs/2109.01163)
 - [Zipformer](https://arxiv.org/abs/2310.11230)
 - [Moonshine](https://arxiv.org/abs/2410.15608)
+
+## Experiment 16: vocabulary prompting versus deterministic correction
+
+Status: measured; keep deterministic correction, do not expand decoder
+prompting by default
+
+- Added `benchmark.py --prompt` so the benchmark can send the same optional
+  vocabulary metadata frame as the app instead of always sending `{}`.
+- Used the same ten cached PCM files for every run. The full prompt contained
+  the product and technical terms present in the corpus. A second prompt kept
+  only `Deepgram`, `Groq`, `PyInstaller`, and `one-dir`.
+
+| Mode | Runs | Mean inference | WER | Strict WER | Mean MLX peak | Max MLX peak |
+|---|---:|---:|---:|---:|---:|---:|
+| No prompt | 20 | 1041.2 ms | 9.6% | 15.5% | 545.2 MB | 546.8 MB |
+| Full vocabulary prompt | 20 | 989.9 ms | 6.9% | 12.0% | 581.0 MB | 594.2 MB |
+| Four-term prompt | 10 | 1214.5 ms | 6.9% | 15.2% | 556.7 MB | 557.2 MB |
+| No prompt + existing dictionary correction replay | 20 | unchanged | 6.2% | 13.3% | unchanged | unchanged |
+
+Findings:
+
+- Whisper prompting correctly recovered `Deepgram`, `Groq`, `PyInstaller`,
+  and `one-dir`, but did not recover the underscore-heavy filename. It also
+  changed the numeric case in an unfavorable way.
+- Prompt length increased decoder KV/cache memory. The short prompt limited the
+  increase to about 10 MB, but its timing result was slower and its strict WER
+  lost most of the full prompt's gain.
+- Replaying Spoke's existing deterministic dictionary correction over the
+  unprompted transcripts produced the best normalized WER without changing MLX
+  memory. It corrected `Grok`, `Pi Installer`, and the filename spelling. It
+  still missed `Degram` and `1Dier`, which need explicit pronunciation aliases
+  rather than a lower global fuzzy-match threshold.
+- Timing comparisons were host-contended and are not evidence that the full
+  prompt is faster. Transcript differences and MLX allocation differences were
+  deterministic across repeated cases.
+
+Reports:
+
+- `local-stt/benchmarks/runs/20260901T122758Z-vocab-ab-baseline/report.md`
+- `local-stt/benchmarks/runs/20260901T122829Z-vocab-ab-prompt/report.md`
+- `local-stt/benchmarks/runs/20260901T122922Z-vocab-ab-minimal/report.md`
+
+Conclusion:
+
+- Do not replace or enlarge the current decoder prompt based on this corpus.
+- Keep deterministic vocabulary correction as the primary low-memory path.
+- The next bounded quality experiment is explicit `spoken form -> written form`
+  aliases, evaluated on held-out real speech. Do not relax global fuzzy
+  thresholds to catch one product name.
+
+## Experiment 17: deterministic Parakeet transcript normalization
+
+Status: implemented; automated validation and focused live dogfood complete
+
+- Added a Parakeet-only post-ASR normalizer in the Electron main process. Other
+  model families retain their existing output path.
+- Removes the standalone hesitation fillers `um`, `uh`, `erm`, and `ah`, while
+  preserving uppercase abbreviations, hyphenated forms, direct quotes, and
+  explicit references such as `the word uh`.
+- Converts unambiguous clock times (`five thirty a m` -> `5:30 AM`), storage
+  sizes, percentages, and simple dotted version numbers.
+- Restores sentence-start capitalization and the standalone pronoun `I`.
+- Runs before the existing dictionary correction and cursor-aware insertion
+  formatter. The dictionary remains authoritative for proper-noun spelling and
+  casing.
+- Does not invent terminal punctuation or attempt general grammar rewriting.
+  Any normalizer or dictionary failure logs a warning and returns the best raw
+  transcript available instead of failing dictation.
+
+Validation:
+
+- `npm test`: 62 files and 532 tests passed.
+- `npx tsc --noEmit`: passed.
+- `npm run lint`: passed with 22 pre-existing warnings and no errors.
+- `git diff --check`: passed.
+- Live Parakeet dictation confirmed filler removal, `six thirty PM` ->
+  `6:30 PM`, dictionary correction for a personal name, and
+  `two hundred and thirty seven MB` -> `237 MB` after adding abbreviated
+  storage-unit support.
+
+Remaining acceptance work:
+
+- Continue broader dogfood for literal quoted fillers and mid-sentence insertion
+  context.
+- Add explicit pronunciation aliases only after real transcripts identify the
+  repeated acoustic forms. Keep aliases separate from broad fuzzy matching.

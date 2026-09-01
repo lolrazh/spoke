@@ -181,6 +181,35 @@ describe("localSttLifecycle", () => {
     ).resolves.toEqual({ text: "GitHub", metrics: {} });
   });
 
+  it("normalizes Parakeet spoken text before returning it", async () => {
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "um meet me at five thirty a m",
+      metrics: {},
+    });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await expect(
+      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
+    ).resolves.toEqual({ text: "Meet me at 5:30 AM", metrics: {} });
+  });
+
+  it("does not apply Parakeet normalization to Whisper", async () => {
+    mocks.getModelFamily.mockReturnValue("whisper");
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "um meet me at five thirty a m",
+      metrics: {},
+    });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await expect(
+      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
+    ).resolves.toEqual({
+      text: "um meet me at five thirty a m",
+      metrics: {},
+    });
+  });
+
   it("passes the transcript through unchanged when no dictionary is set", async () => {
     mocks.transcribeLocal.mockResolvedValue({ text: "github", metrics: {} });
     const { transcribeWithLocalSidecar } = await importLifecycle();
