@@ -295,7 +295,7 @@ const LOCAL_MODELS: Record<string, LocalModelEntry> = {
       quantization: "8-bit",
       isDefault: true,
       streaming: true,
-      streamingChunkMs: 320,
+      streamingChunkMs: 560,
     }),
     requiredFilePaths: [
       "config.json",

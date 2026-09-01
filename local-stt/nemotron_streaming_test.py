@@ -14,18 +14,18 @@ from nemotron_streaming import (
 
 
 class AttentionProfileContractTests(unittest.TestCase):
-    def test_uses_the_measured_lowest_wer_320_ms_profile(self) -> None:
+    def test_uses_the_560_ms_profile(self) -> None:
         self.assertIn(
             NEMOTRON_ATT_CONTEXT_SIZE[1],
             NEMOTRON_SUPPORTED_RIGHT_CONTEXTS,
         )
-        self.assertEqual(NEMOTRON_ATT_CONTEXT_SIZE, [56, 3])
+        self.assertEqual(NEMOTRON_ATT_CONTEXT_SIZE, [56, 6])
         self.assertEqual(
             NEMOTRON_STREAM_CHUNK_SECONDS,
             (NEMOTRON_ATT_CONTEXT_SIZE[1] + 1)
             * NEMOTRON_ENCODER_FRAME_SECONDS,
         )
-        self.assertEqual(NEMOTRON_STREAM_CHUNK_SECONDS, 0.32)
+        self.assertEqual(NEMOTRON_STREAM_CHUNK_SECONDS, 0.56)
 
 
 class FinalSilenceSampleCountTests(unittest.TestCase):

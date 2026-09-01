@@ -39,7 +39,7 @@ export class LocalStreamingDictation {
   private sendPumpPromise: Promise<void> | null = null;
 
   constructor(private readonly options: LocalStreamingDictationOptions) {
-    const batchMs = options.batchMs ?? 320;
+    const batchMs = options.batchMs ?? 560;
     this.batchSamples = Math.max(
       1,
       Math.round((batchMs / 1000) * options.sampleRateHz),

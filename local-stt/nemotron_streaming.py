@@ -17,11 +17,10 @@ from mlx_audio.stt.models.nemotron_asr.streaming import stream_encode_chunks
 
 
 # NVIDIA declares right contexts {0, 1, 3, 6, 13} as runtime operating points
-# for this checkpoint. Use the trained 320 ms profile because it produced the
-# lowest WER in Spoke's cadence comparison.
+# for this checkpoint. Use the 560 ms profile for this dev test.
 NEMOTRON_ENCODER_FRAME_SECONDS = 0.08
 NEMOTRON_SUPPORTED_RIGHT_CONTEXTS = frozenset({0, 1, 3, 6, 13})
-NEMOTRON_ATT_CONTEXT_SIZE = [56, 3]
+NEMOTRON_ATT_CONTEXT_SIZE = [56, 6]
 NEMOTRON_STREAM_CHUNK_SECONDS = (
     NEMOTRON_ATT_CONTEXT_SIZE[1] + 1
 ) * NEMOTRON_ENCODER_FRAME_SECONDS

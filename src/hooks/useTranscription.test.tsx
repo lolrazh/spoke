@@ -982,7 +982,7 @@ describe("useTranscription", () => {
         totalBytes: 1,
         isDefault: false,
         streaming: true,
-        streamingChunkMs: 320,
+        streamingChunkMs: 560,
       },
     ]);
     (window.stt.startLocalStream as any).mockReturnValue(pendingStart);
@@ -1041,7 +1041,7 @@ function configureStreamingModel(finalText: string) {
       totalBytes: 1,
       isDefault: false,
       streaming: true,
-      streamingChunkMs: 320,
+      streamingChunkMs: 560,
     },
   ]);
   (window.stt.onLocalStreamPartial as any).mockImplementation((
