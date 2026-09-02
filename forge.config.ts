@@ -54,6 +54,15 @@ const enableNotarize =
 const timings: Record<string, number> = {};
 const packagedSidecarResource = "./local-stt/dist-ondir/spoke-stt";
 const packagedSidecarBinary = `${packagedSidecarResource}/spoke-stt`;
+const packagedItnBinary = "./native/bin/spoke-itn";
+const packagedItnGrammarResource = "./native/bin/itn-grammars";
+const packagedItnLibraryResource = "./native/bin/itn-libs";
+const packagedItnLibraryBinaries = fs.existsSync(packagedItnLibraryResource)
+  ? fs
+      .readdirSync(packagedItnLibraryResource)
+      .filter((name) => name.endsWith(".dylib"))
+      .map((name) => `Contents/Resources/itn-libs/${name}`)
+  : [];
 
 async function assertPackagedSidecarReady(platform: string, arch: string) {
   if (platform !== "darwin") return;
@@ -91,6 +100,63 @@ async function assertPackagedSidecarReady(platform: string, arch: string) {
   );
 }
 
+async function assertPackagedItnReady(platform: string, arch: string) {
+  if (platform !== "darwin") return;
+
+  if (!fs.existsSync(packagedItnBinary)) {
+    throw new Error(
+      `Packaged ITN helper is missing at ${packagedItnBinary}. Run npm run build:itn before packaging.`,
+    );
+  }
+
+  const stat = fs.statSync(packagedItnBinary);
+  if (!stat.isFile()) {
+    throw new Error(
+      `Packaged ITN helper path is not a file: ${packagedItnBinary}`,
+    );
+  }
+
+  try {
+    fs.accessSync(packagedItnBinary, fs.constants.X_OK);
+  } catch {
+    throw new Error(
+      `Packaged ITN helper is not executable: ${packagedItnBinary}`,
+    );
+  }
+
+  const { stdout } = await execFileAsync("file", [packagedItnBinary]);
+  if (arch === "arm64" && !stdout.includes("arm64")) {
+    throw new Error(
+      `Packaged ITN helper must be arm64 for this build. file(1): ${stdout}`,
+    );
+  }
+
+  for (const grammarFile of [
+    "tokenize_and_classify.far",
+    "verbalize.far",
+  ]) {
+    const grammarPath = `${packagedItnGrammarResource}/en-US/${grammarFile}`;
+    if (!fs.existsSync(grammarPath)) {
+      throw new Error(
+        `Packaged ITN grammar is missing at ${grammarPath}. Run npm run build:itn before packaging.`,
+      );
+    }
+  }
+
+  if (
+    !fs.existsSync(packagedItnLibraryResource) ||
+    packagedItnLibraryBinaries.length === 0
+  ) {
+    throw new Error(
+      `Packaged ITN libraries are missing at ${packagedItnLibraryResource}. Run npm run build:itn before packaging.`,
+    );
+  }
+
+  console.log(
+    `[Forge] ITN preflight passed: ${packagedItnBinary} (${(stat.size / 1024).toFixed(0)} KB, ${packagedItnLibraryBinaries.length} libraries)`,
+  );
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     appBundleId: "com.spoke.app",
@@ -112,6 +178,9 @@ const config: ForgeConfig = {
       "./native/bin/Spoke Audio Capture.app",
       "./native/bin/notch-reporter",
       packagedSidecarResource,
+      packagedItnBinary,
+      packagedItnGrammarResource,
+      packagedItnLibraryResource,
     ],
     extendInfo: {
       CFBundleIconName: "Spoke",
@@ -129,6 +198,8 @@ const config: ForgeConfig = {
         "Contents/Resources/Spoke Audio Capture.app/Contents/MacOS/Spoke Audio Capture",
         "Contents/Resources/notch-reporter",
         "Contents/Resources/spoke-stt/spoke-stt",
+        "Contents/Resources/spoke-itn",
+        ...packagedItnLibraryBinaries,
       ],
       optionsForFile: (filePath) => {
         // Base options applied to all files
@@ -256,6 +327,7 @@ const config: ForgeConfig = {
       timings["packageStart"] = Date.now();
       console.log(`[Forge] PrePackage: target=${platform}/${arch}`);
       await assertPackagedSidecarReady(platform, arch);
+      await assertPackagedItnReady(platform, arch);
     },
     postPackage: async () => {
       const ms = Date.now() - (timings["packageStart"] || Date.now());
