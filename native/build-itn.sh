@@ -7,6 +7,7 @@ NATIVE_BUILD_DIR="$DEPS_DIR/native"
 SPARROWHAWK_DIR="$NATIVE_BUILD_DIR/sparrowhawk"
 RE2_DIR="$NATIVE_BUILD_DIR/re2"
 NEMO_SPEECH_DIR="$NATIVE_BUILD_DIR/nemo-speech.cpp"
+NEMO_COMPAT_DIR="$NEMO_SPEECH_DIR/src/common/text_normalization/compat"
 SPARROWHAWK_PREFIX="$NATIVE_BUILD_DIR/sparrowhawk-prefix"
 NEMO_SPEECH_REPO="https://github.com/NVIDIA/NeMo-Speech.cpp.git"
 NEMO_SPEECH_COMMIT="56b60d432f1731d6d5b28a4c5a31cbaf871daba1"
@@ -14,7 +15,7 @@ SPARROWHAWK_REPO="https://github.com/google/sparrowhawk.git"
 SPARROWHAWK_COMMIT="8b082acc507312077a096be8398584a13832c490"
 RE2_REPO="https://github.com/google/re2.git"
 RE2_COMMIT="4be240789d5b322df9f02b7e19c8651f3ccbf205"
-COMPAT_DIR="$ROOT_DIR/native/itn/compat"
+LOCAL_COMPAT_DIR="$ROOT_DIR/native/itn/compat"
 PATCH_FILE="$ROOT_DIR/native/itn/sparrowhawk-macos.patch"
 OUTPUT_DIR="$ROOT_DIR/native/bin"
 LIB_OUTPUT_DIR="$OUTPUT_DIR/itn-libs"
@@ -56,7 +57,7 @@ for required_path in \
   "$OPENFST_PREFIX/include/fst/extensions/pdt/pdt.h" \
   "$PROTOBUF_PREFIX/include/google/protobuf/message.h" \
   "$PROTOC" \
-  "$COMPAT_DIR/sparrowhawk_compat.h"; do
+  "$LOCAL_COMPAT_DIR/fst/types.h"; do
   if [[ ! -e "$required_path" ]]; then
     echo "Required ITN build file is missing: $required_path" >&2
     exit 1
@@ -78,6 +79,15 @@ mkdir -p "$NATIVE_BUILD_DIR"
 ensure_checkout "$NEMO_SPEECH_REPO" "$NEMO_SPEECH_COMMIT" "$NEMO_SPEECH_DIR"
 ensure_checkout "$SPARROWHAWK_REPO" "$SPARROWHAWK_COMMIT" "$SPARROWHAWK_DIR"
 ensure_checkout "$RE2_REPO" "$RE2_COMMIT" "$RE2_DIR"
+
+for required_path in \
+  "$NEMO_COMPAT_DIR/sparrowhawk_compat.h" \
+  "$NEMO_COMPAT_DIR/thrax/thrax.h"; do
+  if [[ ! -e "$required_path" ]]; then
+    echo "Required NeMo ITN compatibility file is missing: $required_path" >&2
+    exit 1
+  fi
+done
 
 if git -C "$SPARROWHAWK_DIR" apply --unidiff-zero --check "$PATCH_FILE" >/dev/null 2>&1; then
   git -C "$SPARROWHAWK_DIR" apply --unidiff-zero "$PATCH_FILE"
@@ -107,8 +117,8 @@ make -C "$SPARROWHAWK_DIR" distclean >/dev/null 2>&1 || true
   PATH="$PROTOBUF_PREFIX/bin:$PATH" \
     CC="$CC_COMPILER" \
     CXX="$CXX_COMPILER" \
-    CPPFLAGS="-I$COMPAT_DIR -I$OPENFST_PREFIX/include -I$PROTOBUF_PREFIX/include -I$RE2_DIR" \
-    CXXFLAGS="-std=c++17 -O2 -funsigned-char -include $COMPAT_DIR/sparrowhawk_compat.h" \
+    CPPFLAGS="-I$LOCAL_COMPAT_DIR -I$NEMO_COMPAT_DIR -I$OPENFST_PREFIX/include -I$PROTOBUF_PREFIX/include -I$RE2_DIR" \
+    CXXFLAGS="-std=c++17 -O2 -funsigned-char -include $PROTOBUF_PREFIX/include/google/protobuf/message.h -include $LOCAL_COMPAT_DIR/fst/types.h -include $NEMO_COMPAT_DIR/sparrowhawk_compat.h" \
     LDFLAGS="-L$OPENFST_PREFIX/lib -L$PROTOBUF_PREFIX/lib -L$RE2_DIR/obj" \
     ./configure CXX="$CXX_COMPILER" \
       --prefix="$SPARROWHAWK_PREFIX" \
@@ -131,13 +141,16 @@ fi
 echo "Linking the persistent Spoke ITN helper..."
 mkdir -p "$OUTPUT_DIR" "$LIB_OUTPUT_DIR"
 "$CXX_COMPILER" -std=c++17 -O2 -funsigned-char \
-  -I"$COMPAT_DIR" \
+  -I"$LOCAL_COMPAT_DIR" \
+  -I"$NEMO_COMPAT_DIR" \
   -I"$SPARROWHAWK_PREFIX/include" \
   -I"$OPENFST_PREFIX/include" \
   -I"$PROTOBUF_PREFIX/include" \
   -I"$RE2_DIR" \
   -I"$NEMO_SPEECH_DIR/src/common/text_normalization" \
-  -include "$COMPAT_DIR/sparrowhawk_compat.h" \
+  -include "$PROTOBUF_PREFIX/include/google/protobuf/message.h" \
+  -include "$LOCAL_COMPAT_DIR/fst/types.h" \
+  -include "$NEMO_COMPAT_DIR/sparrowhawk_compat.h" \
   "$ROOT_DIR/native/itn/spoke-itn.cpp" \
   "$NEMO_SPEECH_DIR/src/common/text_normalization/fst_normalizer.cpp" \
   -L"$SPARROWHAWK_PREFIX/lib" -lsparrowhawk \
