@@ -257,7 +257,7 @@ export type LocalModelEntry = {
 };
 
 /** The model pre-selected in onboarding and used for fresh installs. */
-export const DEFAULT_MODEL_ID = NEMOTRON_ID;
+export const DEFAULT_MODEL_ID = PARAKEET_ID;
 
 function makeInfo(
   manifest: ModelManifest,
@@ -293,7 +293,7 @@ const LOCAL_MODELS: Record<string, LocalModelEntry> = {
       tagline: "Multilingual live transcription with low-latency partials.",
       languageCount: 40,
       quantization: "8-bit",
-      isDefault: true,
+      isDefault: false,
       streaming: true,
       streamingChunkMs: 560,
     }),
@@ -310,7 +310,7 @@ const LOCAL_MODELS: Record<string, LocalModelEntry> = {
       tagline: "English-only speech recognition built for speed.",
       languageCount: 1,
       quantization: "6-bit",
-      isDefault: false,
+      isDefault: true,
     }),
     requiredFilePaths: ["config.json", "model.safetensors", "mel_filters.npy"],
   },
@@ -347,8 +347,8 @@ const LOCAL_MODELS: Record<string, LocalModelEntry> = {
 
 /** Ordered list of model ids (default first), for stable UI rendering. */
 export const LOCAL_MODEL_IDS: string[] = [
-  NEMOTRON_ID,
   PARAKEET_ID,
+  NEMOTRON_ID,
   COHERE_ID,
   WHISPER_ID,
 ];
