@@ -1,0 +1,48 @@
+diff --git a/configure b/configure
+index fa1dbfb..8199d78 100755
+--- a/configure
++++ b/configure
+@@ -4179 +4179 @@ CPPFLAGS="$CPPFLAGS -funsigned-char"
+-CXXFLAGS="$CXXFLAGS -std=c++11"
++CXXFLAGS="$CXXFLAGS -std=c++17"
+diff --git a/src/lib/protobuf_serializer.cc b/src/lib/protobuf_serializer.cc
+index 5cfa7b3..81d0808 100644
+--- a/src/lib/protobuf_serializer.cc
++++ b/src/lib/protobuf_serializer.cc
+@@ -193 +193 @@ StateId ProtobufSerializer::SerializeField(const FieldDescriptor *field,
+-    state = SerializeString(field->name() + " { ", state);
++    state = SerializeString(std::string(field->name()) + " { ", state);
+@@ -205 +205 @@ StateId ProtobufSerializer::SerializeField(const FieldDescriptor *field,
+-    const string name = field->name();
++    const string name = std::string(field->name());
+diff --git a/src/lib/record_serializer.cc b/src/lib/record_serializer.cc
+index c04640e..0579d39 100644
+--- a/src/lib/record_serializer.cc
++++ b/src/lib/record_serializer.cc
+@@ -280 +280 @@ bool RecordSerializer::Serialize(const Token &token,
+-  bool repeated_field = field->label() == FieldDescriptor::LABEL_REPEATED;
++  bool repeated_field = field->is_repeated();
+diff --git a/src/lib/regexp.cc b/src/lib/regexp.cc
+index d882f80..5e317b6 100644
+--- a/src/lib/regexp.cc
++++ b/src/lib/regexp.cc
+@@ -119 +119 @@ int Regexp::GetAllMatches(const string &input,
+-    re_info.full_str = matched_pieces[0].as_string();
++    re_info.full_str = std::string(matched_pieces[0].data(), matched_pieces[0].length());
+@@ -122 +122 @@ int Regexp::GetAllMatches(const string &input,
+-      re_info.sub_str.push_back(matched_pieces[i].as_string());
++      re_info.sub_str.emplace_back(matched_pieces[i].data(), matched_pieces[i].length());
+diff --git a/src/lib/spec_serializer.cc b/src/lib/spec_serializer.cc
+index 101cdd8..9577f70 100644
+--- a/src/lib/spec_serializer.cc
++++ b/src/lib/spec_serializer.cc
+@@ -71 +71 @@ MutableTransducer Serializer::Serialize(const Token &token) const {
+-      string_compiler_(candidate_class.first->name() + kClassSeparator,
++      string_compiler_(std::string(candidate_class.first->name()) + kClassSeparator,
+diff --git a/src/lib/style_serializer.cc b/src/lib/style_serializer.cc
+index 3fa1675..8a94de1 100644
+--- a/src/lib/style_serializer.cc
++++ b/src/lib/style_serializer.cc
+@@ -117 +117 @@ bool StyleSerializer::IsFieldSet(const Message &root,
+-  if (field->label() == FieldDescriptor::LABEL_REPEATED) {
++  if (field->is_repeated()) {
