@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   streamingFinish: vi.fn(),
   streamingCancel: vi.fn(),
   getModelFamily: vi.fn(),
+  normalizeWithItn: vi.fn(),
   state: { appPreferences: {} as { vocabularyDictionary?: string[] } },
 }));
 
@@ -47,6 +48,10 @@ vi.mock("./sidecarEngine", () => ({
 
 vi.mock("./localModelContract", () => ({
   getModelFamily: mocks.getModelFamily,
+}));
+
+vi.mock("./itnEngine", () => ({
+  normalizeWithItn: mocks.normalizeWithItn,
 }));
 
 vi.mock("./windowState", () => ({ state: mocks.state }));
@@ -84,6 +89,7 @@ describe("localSttLifecycle", () => {
       cancel: mocks.streamingCancel,
     });
     mocks.getModelFamily.mockReturnValue("nemotron");
+    mocks.normalizeWithItn.mockImplementation(async (text: string) => text);
     mocks.state.appPreferences = {};
   });
 
@@ -181,6 +187,44 @@ describe("localSttLifecycle", () => {
     ).resolves.toEqual({ text: "GitHub", metrics: {} });
   });
 
+  it("runs NeMo ITN on Nemotron final text", async () => {
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "meet me at five thirty a m",
+      metrics: {},
+    });
+    mocks.normalizeWithItn.mockResolvedValue("Meet me at 05:30 a.m.");
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await expect(
+      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
+    ).resolves.toEqual({ text: "Meet me at 05:30 a.m.", metrics: {} });
+    expect(mocks.normalizeWithItn).toHaveBeenCalledWith(
+      "meet me at five thirty a m",
+    );
+  });
+
+  it("keeps the raw transcript when NeMo ITN is unavailable", async () => {
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "meet me at five thirty a m",
+      metrics: {},
+    });
+    mocks.normalizeWithItn.mockRejectedValue(new Error("helper unavailable"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await expect(
+      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
+    ).resolves.toEqual({
+      text: "meet me at five thirty a m",
+      metrics: {},
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "[STT] NeMo ITN failed; keeping raw transcript:",
+      expect.any(Error),
+    );
+    warn.mockRestore();
+  });
+
   it("normalizes Parakeet spoken text before returning it", async () => {
     mocks.getModelFamily.mockReturnValue("parakeet");
     mocks.transcribeLocal.mockResolvedValue({
@@ -192,6 +236,19 @@ describe("localSttLifecycle", () => {
     await expect(
       transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
     ).resolves.toEqual({ text: "Meet me at 5:30 AM", metrics: {} });
+  });
+
+  it("does not apply NeMo ITN to Whisper", async () => {
+    mocks.getModelFamily.mockReturnValue("whisper");
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "meet me at five thirty a m",
+      metrics: {},
+    });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+
+    await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3]));
+
+    expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
   });
 
   it("does not apply Parakeet normalization to Whisper", async () => {

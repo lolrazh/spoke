@@ -17,6 +17,7 @@ import {
   stopLocalSidecar,
   syncLocalSidecarForCurrentProvider,
 } from "./main/localSttLifecycle";
+import { killItn } from "./main/itnEngine";
 import { initModelManager } from "./main/modelManager";
 import { registerPermissionHandlers } from "./main/permissions";
 import {
@@ -464,6 +465,10 @@ app.on("before-quit", () => {
   void stopLocalSidecar().catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[STT] Shutdown during quit failed: ${message}`);
+  });
+  void killItn().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[STT] ITN shutdown during quit failed: ${message}`);
   });
 
   // Clean up the native macOS audio capture helper

@@ -51,8 +51,18 @@ async function normalizeTranscriptForModel(
   dictionary: readonly string[],
 ): Promise<string> {
   let normalized = text;
+  const modelFamily = getModelFamily(modelId);
 
-  if (getModelFamily(modelId) === "parakeet") {
+  if (modelFamily === "parakeet" || modelFamily === "nemotron") {
+    try {
+      const { normalizeWithItn } = await import("./itnEngine");
+      normalized = await normalizeWithItn(normalized);
+    } catch (error) {
+      console.warn("[STT] NeMo ITN failed; keeping raw transcript:", error);
+    }
+  }
+
+  if (modelFamily === "parakeet") {
     try {
       const { normalizeParakeetTranscript } = await import(
         "./parakeetTranscriptNormalizer"
