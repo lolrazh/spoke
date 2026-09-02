@@ -8,6 +8,15 @@ describe("main/parakeetTranscriptNormalizer", () => {
     ).toBe("I think, this is ready. We can ship it");
   });
 
+  it("removes punctuation stranded by filler removal", () => {
+    expect(normalizeParakeetTranscript("hello. um, world")).toBe(
+      "Hello. World",
+    );
+    expect(normalizeParakeetTranscript("hello, uh. world")).toBe(
+      "Hello. World",
+    );
+  });
+
   it("preserves fillers when the speaker refers to them literally", () => {
     expect(normalizeParakeetTranscript('type "um" in the field')).toBe(
       'Type "um" in the field',

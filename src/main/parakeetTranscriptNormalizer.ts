@@ -8,6 +8,7 @@
  */
 
 const FILLER_PATTERN = /\b(?:um+|uh+|erm+|ah+)\b/giu;
+const FILLER_MARKER = "\u0000";
 const PROTECTED_FILLER_CONTEXT = new Set([
   "called",
   "literal",
@@ -122,7 +123,7 @@ function isQuotedOrHyphenated(text: string, start: number, end: number): boolean
 }
 
 function removeHesitationFillers(text: string): string {
-  const withoutFillers = text.replace(
+  const withMarkers = text.replace(
     FILLER_PATTERN,
     (token: string, offset: number, source: string) => {
       const end = offset + token.length;
@@ -137,11 +138,23 @@ function removeHesitationFillers(text: string): string {
       ) {
         return token;
       }
-      return "";
+      return FILLER_MARKER;
     },
   );
 
-  return withoutFillers
+  return withMarkers
+    // A filler can leave its comma beside the sentence-ending punctuation.
+    // Remove only punctuation attached to a filler, not valid punctuation such
+    // as the comma after an abbreviation.
+    .replace(
+      new RegExp(`([.!?])\\s*${FILLER_MARKER}\\s*[,;:]+`, "gu"),
+      "$1",
+    )
+    .replace(
+      new RegExp(`[,;:]\\s*${FILLER_MARKER}\\s*[,;:]?\\s*([.!?])`, "gu"),
+      "$1",
+    )
+    .replace(new RegExp(FILLER_MARKER, "gu"), "")
     .replace(/,\s*,/gu, ",")
     .replace(/(^|\n)\s*[,;:]\s*/gu, "$1")
     .replace(/[ \t]+([,.;!?])/gu, "$1")
