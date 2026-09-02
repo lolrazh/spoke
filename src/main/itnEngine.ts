@@ -10,9 +10,9 @@ import * as fs from "node:fs";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { getItnBinaryPath, getItnGrammarPath } from "./itnPaths";
 
-export const ITN_REQUEST_TIMEOUT_MS = 5000;
-export const ITN_SHUTDOWN_TIMEOUT_MS = 1500;
-export const ITN_MAX_FRAME_BYTES = 16 * 1024 * 1024;
+const ITN_REQUEST_TIMEOUT_MS = 5000;
+const ITN_SHUTDOWN_TIMEOUT_MS = 1500;
+const ITN_MAX_FRAME_BYTES = 16 * 1024 * 1024;
 
 type PendingRequest = {
   process: ChildProcessWithoutNullStreams;
@@ -25,9 +25,8 @@ let itnProcess: ChildProcessWithoutNullStreams | null = null;
 let itnSpawnPromise: Promise<ChildProcessWithoutNullStreams> | null = null;
 let itnRequestQueue: Promise<void> = Promise.resolve();
 let stdoutBuffer = Buffer.alloc(0);
-let pendingRequests: PendingRequest[] = [];
+let pendingRequest: PendingRequest | null = null;
 const processExitPromises = new WeakMap<ChildProcessWithoutNullStreams, Promise<void>>();
-const exitedProcesses = new WeakSet<ChildProcessWithoutNullStreams>();
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -48,12 +47,11 @@ function rejectPendingForProcess(
   process: ChildProcessWithoutNullStreams,
   error: Error,
 ): void {
-  const failed = pendingRequests.filter((request) => request.process === process);
-  pendingRequests = pendingRequests.filter((request) => request.process !== process);
-  for (const request of failed) {
-    clearTimeout(request.timeout);
-    request.reject(error);
-  }
+  if (!pendingRequest || pendingRequest.process !== process) return;
+  const request = pendingRequest;
+  pendingRequest = null;
+  clearTimeout(request.timeout);
+  request.reject(error);
 }
 
 function failProcess(
@@ -76,11 +74,11 @@ function parseResponses(process: ChildProcessWithoutNullStreams): void {
     const frameLength = 4 + length;
     if (stdoutBuffer.length < frameLength) return;
 
-    const request = pendingRequests[0];
+    const request = pendingRequest;
     if (!request || request.process !== process) {
       throw new Error("ITN returned an unexpected response");
     }
-    pendingRequests.shift();
+    pendingRequest = null;
     clearTimeout(request.timeout);
     const output = stdoutBuffer.subarray(4, frameLength).toString("utf8");
     stdoutBuffer = stdoutBuffer.subarray(frameLength);
@@ -145,14 +143,12 @@ function spawnItnOnce(): ChildProcessWithoutNullStreams {
   const onProcessError = (error: Error) => {
     console.error(`[ITN] Native normalizer error: ${error.message}`);
     failProcess(process, error);
-    exitedProcesses.add(process);
     resolveExit();
   };
   process.once("error", onProcessError);
   process.stdin.once("error", onProcessError);
 
   process.once("exit", (code, signal) => {
-    exitedProcesses.add(process);
     resolveExit();
     const reason = signal
       ? `signal ${signal}`
@@ -191,9 +187,8 @@ async function normalizeWithItnOnce(text: string): Promise<string> {
       resolve,
       reject,
       timeout: setTimeout(() => {
-        const index = pendingRequests.indexOf(request);
-        if (index < 0) return;
-        pendingRequests.splice(index, 1);
+        if (pendingRequest !== request) return;
+        pendingRequest = null;
         const timeoutError = new Error("ITN normalization timed out");
         reject(timeoutError);
         failProcess(process, timeoutError);
@@ -204,14 +199,13 @@ async function normalizeWithItnOnce(text: string): Promise<string> {
         }
       }, ITN_REQUEST_TIMEOUT_MS),
     };
-    pendingRequests.push(request);
+    pendingRequest = request;
 
     try {
       process.stdin.write(frame(text));
     } catch (error) {
       const normalized = new Error(`ITN request failed: ${errorMessage(error)}`);
-      const index = pendingRequests.indexOf(request);
-      if (index >= 0) pendingRequests.splice(index, 1);
+      if (pendingRequest === request) pendingRequest = null;
       clearTimeout(request.timeout);
       reject(normalized);
       failProcess(process, normalized);
@@ -246,7 +240,7 @@ export async function killItn(): Promise<void> {
   }
 
   const exitPromise = processExitPromises.get(process);
-  if (!exitPromise || exitedProcesses.has(process)) return;
+  if (!exitPromise) return;
 
   let resolveTimeout!: () => void;
   const timeoutPromise = new Promise<void>((resolve) => {
@@ -254,7 +248,7 @@ export async function killItn(): Promise<void> {
   });
   const timeout = setTimeout(() => {
     try {
-      if (!exitedProcesses.has(process)) process.kill("SIGKILL");
+      process.kill("SIGKILL");
     } catch {
       // The process may have exited between the check and kill.
     }
@@ -266,8 +260,4 @@ export async function killItn(): Promise<void> {
     clearTimeout(timeout);
   }
   if (itnProcess === process) itnProcess = null;
-}
-
-export function isItnRunning(): boolean {
-  return itnProcess !== null && !itnProcess.killed;
 }

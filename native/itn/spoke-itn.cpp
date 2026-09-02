@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <exception>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -33,8 +32,7 @@ bool read_u32(std::uint32_t* value) {
 }
 
 bool write_frame(const std::string& text) {
-    if (text.size() > kMaxFrameBytes ||
-        text.size() > std::numeric_limits<std::uint32_t>::max())
+    if (text.size() > kMaxFrameBytes)
         throw std::runtime_error("ITN output frame is too large");
     const auto size = static_cast<std::uint32_t>(text.size());
     const unsigned char bytes[] = {

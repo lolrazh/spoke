@@ -118,7 +118,7 @@ make -C "$SPARROWHAWK_DIR" distclean >/dev/null 2>&1 || true
     CC="$CC_COMPILER" \
     CXX="$CXX_COMPILER" \
     CPPFLAGS="-I$LOCAL_COMPAT_DIR -I$NEMO_COMPAT_DIR -I$OPENFST_PREFIX/include -I$PROTOBUF_PREFIX/include -I$RE2_DIR" \
-    CXXFLAGS="-std=c++17 -O2 -funsigned-char -include $PROTOBUF_PREFIX/include/google/protobuf/message.h -include $LOCAL_COMPAT_DIR/fst/types.h -include $NEMO_COMPAT_DIR/sparrowhawk_compat.h" \
+    CXXFLAGS="-O2 -funsigned-char -include $PROTOBUF_PREFIX/include/google/protobuf/message.h -include $LOCAL_COMPAT_DIR/fst/types.h -include $NEMO_COMPAT_DIR/sparrowhawk_compat.h" \
     LDFLAGS="-L$OPENFST_PREFIX/lib -L$PROTOBUF_PREFIX/lib -L$RE2_DIR/obj" \
     ./configure CXX="$CXX_COMPILER" \
       --prefix="$SPARROWHAWK_PREFIX" \
