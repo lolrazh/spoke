@@ -45,7 +45,8 @@ const CohereGlyph: React.FC = () => (
   </svg>
 );
 
-// Official NVIDIA brand logomark — Parakeet is an NVIDIA model. Path data:
+// Official NVIDIA brand logomark — Parakeet and Nemotron are NVIDIA models.
+// Path data:
 // lobe-icons monochrome SVG (https://github.com/lobehub/lobe-icons —
 // packages/static-svg/icons/nvidia.svg), rendered with currentColor so it
 // stays monochrome.
@@ -66,6 +67,8 @@ const NvidiaGlyph: React.FC = () => (
 
 export const glyphForFamily = (family: string): React.ReactNode => {
   if (family === "cohere") return <CohereGlyph />;
-  if (family === "parakeet") return <NvidiaGlyph />;
+  if (family === "parakeet" || family === "nemotron") {
+    return <NvidiaGlyph />;
+  }
   return <OpenAiGlyph />;
 };
