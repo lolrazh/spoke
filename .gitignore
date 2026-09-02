@@ -92,6 +92,7 @@ typings/
 # Electron-Forge
 out/
 dist/
+/.deps/
 
 # Generated at release time (electron-updater manifest + CI scratch)
 latest-mac.yml

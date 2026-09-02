@@ -18,6 +18,8 @@
     "stage:package": "VITE_SF_DEVTOOLS=1 node --env-file=.env scripts/run-command.mjs electron-forge package --arch=arm64",
     "stage:make": "VITE_SF_DEVTOOLS=1 node --env-file=.env scripts/run-command.mjs electron-forge make --arch=arm64",
     "release:preflight": "node --env-file=.env scripts/run-command.mjs bash scripts/release-preflight.sh",
+    "build:itn:grammar": "bash native/build-itn-grammar.sh",
+    "build:itn": "npm run build:itn:grammar && bash native/build-itn.sh",
     "publish": "electron-forge publish",
     "publish:env": "node --env-file=.env scripts/run-command.mjs electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
