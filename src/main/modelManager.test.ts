@@ -79,6 +79,7 @@ import {
 
 // The default (active) model the no-arg accessors operate on.
 const ENTRY = getModelEntry(DEFAULT_MODEL_ID)!;
+const NEMOTRON_ID = "spokedotso/nemotron-3.5-asr-streaming-0.6b-8bit";
 const LEGACY_NEMOTRON_ID =
   "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
 const FAMILY = ENTRY.manifest.family;
@@ -138,8 +139,12 @@ function readyEntryFor(modelId: string): Record<string, unknown> {
     displayName: entry.manifest.displayName,
     version: entry.manifest.version,
     manifestVersion: entry.manifest.manifestVersion,
-    files:
-      modelId === DEFAULT_MODEL_ID ? INSTALLED_FILES : OTHER_INSTALLED_FILES,
+    files: entry.manifest.files.map((f) => ({
+      role: f.role,
+      path: f.path,
+      sha256: f.sha256,
+      size: f.size,
+    })),
     error: null,
   };
 }
@@ -187,11 +192,16 @@ function mockState(state: Record<string, unknown>): void {
   );
 }
 
-function mockStateWithWeights(state: Record<string, unknown>): void {
+function mockStateWithWeights(
+  state: Record<string, unknown>,
+  modelIds: string[] = [DEFAULT_MODEL_ID],
+): void {
   const statePath = path.join(MOCK_LOCAL_STT_DIR, "model-state.json");
   const installedPaths = new Set(
-    INSTALLED_FILES.map((f) =>
-      path.join(weightsDirFor(DEFAULT_MODEL_ID), f.path),
+    modelIds.flatMap((modelId) =>
+      getModelEntry(modelId)!.manifest.files.map((f) =>
+        path.join(weightsDirFor(modelId), f.path),
+      ),
     ),
   );
   (fs.existsSync as any).mockImplementation(
@@ -259,25 +269,26 @@ describe("modelManager", () => {
       mockStateWithWeights({
         activeModelId: LEGACY_NEMOTRON_ID,
         models: {
-          [LEGACY_NEMOTRON_ID]: readyEntry({
+          [LEGACY_NEMOTRON_ID]: {
+            ...readyEntryFor(NEMOTRON_ID),
             modelId: LEGACY_NEMOTRON_ID,
-          }),
+          },
         },
-      });
+      }, [DEFAULT_MODEL_ID, NEMOTRON_ID]);
 
       initModelManager(makeCallbacks());
 
-      expect(getActiveModelId()).toBe(DEFAULT_MODEL_ID);
-      expect(getModelStatus().state).toBe("ready");
-      expect(getModelStatus().modelId).toBe(DEFAULT_MODEL_ID);
+      expect(getActiveModelId()).toBe(NEMOTRON_ID);
+      expect(getModelStatus(NEMOTRON_ID).state).toBe("ready");
+      expect(getModelStatus(NEMOTRON_ID).modelId).toBe(NEMOTRON_ID);
       const persistedJson = (
         fs.writeFileSync as ReturnType<typeof vi.fn>
       ).mock.calls.at(-1)?.[1] as string;
       const persistedState = JSON.parse(persistedJson);
-      expect(persistedState.activeModelId).toBe(DEFAULT_MODEL_ID);
-      expect(persistedState.models[DEFAULT_MODEL_ID]).toMatchObject({
+      expect(persistedState.activeModelId).toBe(NEMOTRON_ID);
+      expect(persistedState.models[NEMOTRON_ID]).toMatchObject({
         state: "ready",
-        modelId: DEFAULT_MODEL_ID,
+        modelId: NEMOTRON_ID,
       });
       expect(persistedState.models[LEGACY_NEMOTRON_ID]).toBeUndefined();
     });
