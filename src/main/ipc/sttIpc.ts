@@ -1,7 +1,7 @@
 /**
  * STT IPC
  *
- * Local Whisper/model-manager handlers, enhancement + OCR, and the
+ * Local Whisper/model-manager handlers and the
  * transcription-provider handlers (including the CLOUD_STT_ENABLED-gated
  * API-key-provider paths, which are dormant while cloud STT is disabled).
  */
@@ -100,28 +100,6 @@ export function registerSttIpc(): void {
     cancelInstall(modelId),
   );
 
-  // ============ Enhancement + OCR IPC handlers ============
-
-  ipcMain.handle(
-    "stt:enhance",
-    async (
-      _event,
-      payload: {
-        text: string;
-        vocabulary?: string[];
-        mode?: "dictation" | "edit";
-        selectionText?: string;
-      },
-    ) => {
-      const { enhance } = await import("../enhanceService");
-      return enhance(payload.text, {
-        vocabulary: payload.vocabulary,
-        mode: payload.mode,
-        selectionText: payload.selectionText,
-      });
-    },
-  );
-
   ipcMain.handle("stt:cancel-local-transcription", () => {
     localStreams.cancel();
   });
@@ -144,16 +122,6 @@ export function registerSttIpc(): void {
   ipcMain.handle("stt:finish-local-stream", (event, sessionId: string) =>
     localStreams.finish(event.sender, sessionId),
   );
-
-  ipcMain.handle("stt:extract-ocr", async (_event, imageBase64: string) => {
-    const [{ extractOcrWords }, { resolveEnhancementProvider }] =
-      await Promise.all([import("../ocrService"), import("../llmService")]);
-    const providerId = resolveEnhancementProvider(getPreferredProviderId());
-    if (!providerId) {
-      return { words: [] };
-    }
-    return extractOcrWords(imageBase64, providerId);
-  });
 
   ipcMain.handle(
     "stt:transcribe-local",

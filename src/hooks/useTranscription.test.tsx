@@ -97,14 +97,6 @@ Object.defineProperty(navigator, "mediaDevices", {
 // Mock window.electron and window.clipboard
 Object.defineProperty(window, "electron", {
   value: {
-    takeScreenshot: vi.fn(() =>
-      Promise.resolve({
-        success: true,
-        imageBase64: "fake-screenshot-base64",
-        captureTimeMs: 100,
-        sizeKb: 50,
-      }),
-    ),
   },
   writable: true,
 });
@@ -151,11 +143,6 @@ Object.defineProperty(window, "stt", {
     ),
     cancelLocalTranscription: vi.fn(() => Promise.resolve()),
     onLocalStreamPartial: vi.fn(() => () => undefined),
-    enhance: vi.fn(async (payload: { text: string }) => ({
-      text: payload.text,
-      bypassed: true,
-    })),
-    extractOcr: vi.fn(async () => ({ words: [] })),
   },
   writable: true,
 });
@@ -255,9 +242,6 @@ describe("useTranscription", () => {
     });
 
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
-    expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
-    expect(window.stt.extractOcr).not.toHaveBeenCalled();
-    expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -311,9 +295,6 @@ describe("useTranscription", () => {
       expect(result.current.text).toBe("Local on first start");
     });
     expect(window.stt.transcribeLocal).toHaveBeenCalled();
-    expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
-    expect(window.stt.extractOcr).not.toHaveBeenCalled();
-    expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 

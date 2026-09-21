@@ -242,14 +242,6 @@ contextBridge.exposeInMainWorld("stt", {
       ipcRenderer.removeListener("stt:model-status-changed", handler);
     };
   },
-  enhance: (payload: {
-    text: string;
-    vocabulary?: string[];
-    mode?: "dictation" | "edit";
-    selectionText?: string;
-  }) => ipcRenderer.invoke("stt:enhance", payload),
-  extractOcr: (imageBase64: string) =>
-    ipcRenderer.invoke("stt:extract-ocr", imageBase64),
 });
 
 contextBridge.exposeInMainWorld("electron", {
@@ -339,12 +331,6 @@ contextBridge.exposeInMainWorld("electron", {
       label,
       rendererMs: Math.round(performance.now()),
     }),
-  // Screenshot capture (Phase 1 OCR)
-  takeScreenshot: (options?: {
-    display?: "active" | number;
-    quality?: number;
-    maxDimension?: number;
-  }) => ipcRenderer.invoke("screenshot:capture", options),
 });
 
 // Expose application metadata

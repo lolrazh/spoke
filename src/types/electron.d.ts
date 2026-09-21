@@ -177,20 +177,6 @@ declare global {
       // Renderer lifecycle
       rendererReady: () => void;
       bootMark?: (label: string) => void;
-      // Screenshot capture (Phase 1 OCR)
-      takeScreenshot: (options?: {
-        display?: "active" | number;
-        quality?: number;
-        maxDimension?: number;
-      }) => Promise<{
-        success: boolean;
-        imageBase64?: string;
-        captureTimeMs?: number;
-        sizeKb?: number;
-        displayId?: number;
-        displayBounds?: { x: number; y: number; width: number; height: number };
-        error?: string;
-      }>;
     };
     /** Receive active display information and computed UI scale from main */
     onActiveDisplay?: (
@@ -254,19 +240,6 @@ declare global {
       onModelStatusChanged: (
         cb: (status: import("./shared").ModelStatus) => void,
       ) => () => void;
-      enhance: (payload: {
-        text: string;
-        vocabulary?: string[];
-        mode?: "dictation" | "edit";
-        selectionText?: string;
-      }) => Promise<{
-        text: string;
-        bypassed: boolean;
-        tier?: string;
-        provider?: string;
-        model?: string;
-      }>;
-      extractOcr: (imageBase64: string) => Promise<{ words: string[] }>;
     };
     mic: {
       updateDevices: (
