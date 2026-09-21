@@ -263,14 +263,13 @@ app.whenReady().then(async () => {
     imgSrc,
     fontSrc,
   ].join("; ");
+  // No COOP/COEP here. Cross-origin isolation was once needed for a
+  // SharedArrayBuffer capture path that no longer exists, and on the packaged
+  // file:// origin COEP blocks the app's own VAD worker: worker script loads
+  // never pass through onHeadersReceived, so the isolated document rejects
+  // them (net::ERR_BLOCKED_BY_RESPONSE, coep-frame-resource-needs-coep-header).
   const rendererSecurityHeaders: Record<string, string> = {
     "Content-Security-Policy": csp,
-    ...(isPackaged
-      ? {
-          "Cross-Origin-Opener-Policy": "same-origin",
-          "Cross-Origin-Embedder-Policy": "require-corp",
-        }
-      : {}),
   };
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
