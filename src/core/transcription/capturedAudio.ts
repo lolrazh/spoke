@@ -1,8 +1,6 @@
 const CAPTURED_AUDIO_FORMAT = "pcm16" as const;
 export const CAPTURED_AUDIO_SAMPLE_RATE_HZ = 16_000;
 export const CAPTURED_AUDIO_CHANNEL_COUNT = 1;
-const PCM16_BYTES_PER_SAMPLE = 2;
-const PCM16_BITS_PER_SAMPLE = 16;
 const PCM16_TO_FLOAT_GAIN = 1 / 32768;
 
 export type CapturedAudioFormat = typeof CAPTURED_AUDIO_FORMAT;
@@ -33,10 +31,6 @@ export interface Pcm16TrimRange {
 export interface NormalizedPcm16TrimRange {
   startSample: number;
   endSample: number;
-}
-
-export interface Pcm16WavOptions {
-  sampleRateHz?: number;
 }
 
 export function createCapturedAudio(
@@ -112,61 +106,6 @@ export function trimCapturedAudio(
   });
 }
 
-export function encodeCapturedAudioAsWav(audio: CapturedAudio): ArrayBuffer {
-  return encodePcm16Wav(audio.pcm16, {
-    sampleRateHz: audio.sampleRateHz,
-  });
-}
-
-export function encodePcm16Wav(
-  pcm16: Int16Array,
-  options: Pcm16WavOptions = {},
-): ArrayBuffer {
-  assertPcm16(pcm16);
-  const sampleRateHz = normalizeSampleRateHz(options.sampleRateHz);
-  const dataByteLength = pcm16.length * PCM16_BYTES_PER_SAMPLE;
-  const fileByteLength = 44 + dataByteLength;
-
-  if (fileByteLength > 0xffffffff) {
-    throw new Error("PCM16 buffer is too large to encode as a WAV file.");
-  }
-
-  const buffer = new ArrayBuffer(fileByteLength);
-  const view = new DataView(buffer);
-
-  writeAscii(view, 0, "RIFF");
-  view.setUint32(4, 36 + dataByteLength, true);
-  writeAscii(view, 8, "WAVE");
-
-  writeAscii(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, CAPTURED_AUDIO_CHANNEL_COUNT, true);
-  view.setUint32(24, sampleRateHz, true);
-  view.setUint32(
-    28,
-    sampleRateHz * CAPTURED_AUDIO_CHANNEL_COUNT * PCM16_BYTES_PER_SAMPLE,
-    true,
-  );
-  view.setUint16(
-    32,
-    CAPTURED_AUDIO_CHANNEL_COUNT * PCM16_BYTES_PER_SAMPLE,
-    true,
-  );
-  view.setUint16(34, PCM16_BITS_PER_SAMPLE, true);
-
-  writeAscii(view, 36, "data");
-  view.setUint32(40, dataByteLength, true);
-
-  let byteOffset = 44;
-  for (let i = 0; i < pcm16.length; i++) {
-    view.setInt16(byteOffset, pcm16[i], true);
-    byteOffset += PCM16_BYTES_PER_SAMPLE;
-  }
-
-  return buffer;
-}
-
 function normalizeSampleRateHz(sampleRateHz?: number): number {
   const rate = sampleRateHz ?? CAPTURED_AUDIO_SAMPLE_RATE_HZ;
   if (!Number.isInteger(rate) || rate <= 0) {
@@ -185,11 +124,5 @@ function clampSampleIndex(value: number, sampleCount: number): number {
 function assertPcm16(value: Int16Array): void {
   if (!(value instanceof Int16Array)) {
     throw new Error("Expected PCM16 audio as an Int16Array.");
-  }
-}
-
-function writeAscii(view: DataView, byteOffset: number, value: string): void {
-  for (let i = 0; i < value.length; i++) {
-    view.setUint8(byteOffset + i, value.charCodeAt(i));
   }
 }

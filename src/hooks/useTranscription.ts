@@ -1,29 +1,21 @@
 /**
  * Transcription Hook
  *
- * Manages audio recording and transcription using provider-backed adapters.
- * Captures PCM16 audio and delegates transcription to providers.
+ * Manages audio recording and dictation. Captures PCM16 audio and sends it to
+ * the local STT sidecar, live, in pause-aligned chunks, or as one clip.
  */
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
-import type { TranscriptionSessionOrchestrator } from "../core/transcription/sessionOrchestrator";
 import type {
   PrepareTranscriptionResult,
   TranscriptionContext,
   TranscriptionMode,
-  TranscriptionProviderKind,
   TranscriptionResult,
 } from "../core/transcription/sessionTypes";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import { isTranscriptionSessionError } from "../core/transcription/sessionErrors";
-import {
-  LOCAL_STT_PROVIDER_ID,
-  type PreferredTranscriptionProviderId,
-} from "../core/transcription/providerPreferences";
-import {
-  buildSTTPrompt,
-  DEFAULT_STT_PROMPT,
-} from "../../shared/sttPrompt";
+import { localStt } from "../core/transcription/localStt";
+import { DEFAULT_STT_PROMPT } from "../../shared/sttPrompt";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
 import type { VadAudioResult } from "../utils/vadTrimmer";
 import type {
@@ -37,11 +29,9 @@ import { setLiveTranscript } from "../state/liveTranscript";
 import {
   POST_ROLL_MS,
   LOCAL_DICTATION_MAX_DURATION_MS,
-  LOCAL_STT_CHUNK_NATURAL_START_MS,
-  LOCAL_STT_CHUNK_FORCED_MS,
-  LOCAL_STT_CHUNK_MIN_NATURAL_MS,
-  LOCAL_STT_CHUNK_OVERLAP_MS,
-  LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
+  LOCAL_STT_CHUNK_MIN_MS,
+  LOCAL_STT_CHUNK_MAX_MS,
+  LOCAL_STT_CHUNK_PAUSE_GUARD_MS,
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
 import type {
@@ -49,10 +39,6 @@ import type {
   LocalChunkedDictationOptions,
 } from "../core/transcription/localChunkedDictation";
 import type { LocalStreamingDictation } from "../core/transcription/localStreamingDictation";
-import {
-  ENABLE_SCREEN_CONTEXT,
-  ENABLE_TRANSCRIPT_ENHANCEMENT,
-} from "../config/featureFlags";
 import { createLogger } from "../utils/logger";
 
 const PASTE_TIMEOUT_MS = 2_000;
@@ -62,7 +48,6 @@ const DICTATION_MODE: TranscriptionMode = "dictation";
 
 const log = createLogger("Transcription");
 const vadLog = createLogger("VAD");
-const ocrLog = createLogger("OCR");
 const latencyLog = createLogger("Latency");
 
 async function loadStreamingVadSession(
@@ -70,13 +55,6 @@ async function loadStreamingVadSession(
 ): Promise<StreamingVadSessionHandle> {
   const { createStreamingVadSession } = await import("../utils/streamingVad");
   return createStreamingVadSession(options);
-}
-
-async function loadDefaultTranscriptionSessionOrchestrator(): Promise<TranscriptionSessionOrchestrator> {
-  const { defaultTranscriptionSessionOrchestrator } = await import(
-    "../core/transcription/defaultSessionOrchestrator"
-  );
-  return defaultTranscriptionSessionOrchestrator;
 }
 
 async function createLocalChunkedDictation(
@@ -176,13 +154,9 @@ export function useTranscription(
   const stopGenerationRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const nativeCaptureAvailableRef = useRef(false);
-  const ocrWordsRef = useRef<string[]>([]);
-  const ocrPromiseRef = useRef<Promise<void> | null>(null);
-  const activeProviderIdRef = useRef<string | null>(null);
+  // True from a successful start until the dictation ends or is cancelled.
+  const dictationActiveRef = useRef(false);
   const prepareResultRef = useRef<PrepareTranscriptionResult | null>(null);
-  const preferredProviderIdRef = useRef<PreferredTranscriptionProviderId>(
-    LOCAL_STT_PROVIDER_ID,
-  );
 
   const reportTranscriptionError = useCallback((message: string) => {
     setError(message);
@@ -250,59 +224,20 @@ export function useTranscription(
       void localStreamingDictation?.cancel().catch(() => undefined);
       streamingVadRef.current?.dispose();
       streamingVadRef.current = null;
-      activeProviderIdRef.current = null;
-      ocrWordsRef.current = [];
-      ocrPromiseRef.current = null;
+      dictationActiveRef.current = false;
       setLiveTranscript("");
       prepareResultRef.current = null;
     };
   }, [initStream, options.autoInitStream]);
 
-  const resolveActiveProviderId = useCallback(async () => {
-    const storedProviderId = await window.stt?.getPreferredProvider?.();
-    const resolvedProviderId =
-      storedProviderId ?? preferredProviderIdRef.current;
-    preferredProviderIdRef.current = resolvedProviderId;
-    return resolvedProviderId;
-  }, []);
-
-  const buildTranscriptionContext = useCallback((): TranscriptionContext => {
-    return {
+  const buildTranscriptionContext = useCallback(
+    (): TranscriptionContext => ({
       mode: DICTATION_MODE,
       language: "en",
-      // Opportunistic: OCR words are gathered in the background starting at
-      // start(), so by the time stop() rebuilds the context they're often
-      // already populated (for local transcription we never block on OCR to
-      // avoid adding latency; whatever's already there just rides along).
-      // With no OCR words yet, buildSTTPrompt still returns its default
-      // vocabulary hint (the product name), which is a free win on its own.
-      sttPrompt: ENABLE_SCREEN_CONTEXT
-        ? buildSTTPrompt({ extraVocab: ocrWordsRef.current })
-        : DEFAULT_STT_PROMPT,
-    };
-  }, []);
-
-  const captureScreenshotBase64 = useCallback(async () => {
-    if (!ENABLE_SCREEN_CONTEXT) {
-      return undefined;
-    }
-
-    try {
-      const takeScreenshot = window.electron?.takeScreenshot;
-      if (!takeScreenshot) {
-        return undefined;
-      }
-
-      const result = await takeScreenshot();
-      if (result.success && result.imageBase64) {
-        return result.imageBase64;
-      }
-    } catch (err) {
-      log.warn("Screenshot capture failed:", err);
-    }
-
-    return undefined;
-  }, []);
+      sttPrompt: DEFAULT_STT_PROMPT,
+    }),
+    [],
+  );
 
   // Start recording
   const start = useCallback(async () => {
@@ -318,8 +253,7 @@ export function useTranscription(
     const startGeneration = startGenerationRef.current + 1;
     startGenerationRef.current = startGeneration;
     pendingStartGenerationRef.current = startGeneration;
-    const isCurrentStart = () =>
-      startGenerationRef.current === startGeneration;
+    const isCurrentStart = () => startGenerationRef.current === startGeneration;
 
     let localChunkedDictation: LocalChunkedDictation | null = null;
     let localStreamingDictation: LocalStreamingDictation | null = null;
@@ -332,22 +266,11 @@ export function useTranscription(
     setError(null);
 
     try {
-      const providerId = await resolveActiveProviderId();
-      if (!isCurrentStart()) return;
-      const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
-      if (!isCurrentStart()) return;
-      const provider = orchestrator.resolveProvider(providerId);
-
-      const prepareResult = await orchestrator.prepare(providerId, {
-        context: buildTranscriptionContext(),
-      });
+      const prepareResult = await localStt.prepare();
       if (!isCurrentStart()) return;
       prepareResultRef.current = prepareResult;
 
-      if (
-        provider.descriptor.kind === "local" &&
-        prepareResult?.localModel?.streaming
-      ) {
+      if (prepareResult.localModel?.streaming) {
         localStreamingDictation = await createLocalStreamingDictation({
           modelId: prepareResult.localModel.modelId,
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
@@ -370,18 +293,15 @@ export function useTranscription(
         localStreamingDictationRef.current = localStreamingDictation;
         localStreamingDictation.start();
       }
-      if (provider.descriptor.kind === "local" && !localStreamingDictation) {
+      if (!localStreamingDictation) {
         localChunkedDictation = await createLocalChunkedDictation({
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
-          naturalChunkingStartMs: LOCAL_STT_CHUNK_NATURAL_START_MS,
-          minNaturalChunkMs: LOCAL_STT_CHUNK_MIN_NATURAL_MS,
-          forcedChunkMs: LOCAL_STT_CHUNK_FORCED_MS,
-          overlapMs: LOCAL_STT_CHUNK_OVERLAP_MS,
-          naturalBoundaryDelayMs:
-            LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
+          minChunkMs: LOCAL_STT_CHUNK_MIN_MS,
+          maxChunkMs: LOCAL_STT_CHUNK_MAX_MS,
+          pauseGuardMs: LOCAL_STT_CHUNK_PAUSE_GUARD_MS,
           maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
           transcribe: (audio) => {
-            return orchestrator.transcribe(providerId, {
+            return localStt.transcribe({
               audio,
               context: buildTranscriptionContext(),
               prepareResult,
@@ -404,8 +324,8 @@ export function useTranscription(
       const streamingVadSession = localStreamingDictation
         ? null
         : await loadStreamingVadSession({
-            onSpeechStart: () => localChunkedDictation?.cancelNaturalBoundary(),
-            onSpeechEnd: () => localChunkedDictation?.requestNaturalBoundary(),
+            onSpeechStart: () => localChunkedDictation?.noteSpeechStart(),
+            onSpeechEnd: (endMs) => localChunkedDictation?.noteSpeechEnd(endMs),
           });
       streamingVadRef.current = streamingVadSession;
 
@@ -448,31 +368,8 @@ export function useTranscription(
 
       if (!isCurrentStart()) return;
       setRecording(true);
-      activeProviderIdRef.current = providerId;
+      dictationActiveRef.current = true;
 
-      // Start OCR extraction in parallel only when screen context is enabled.
-      // The current production flag is off, so a recording does not create a
-      // needless async task or await an empty OCR promise.
-      let ocrPromise: Promise<void> | null = null;
-      if (ENABLE_SCREEN_CONTEXT) {
-        ocrPromise = (async () => {
-          try {
-            const imageBase64 = await captureScreenshotBase64();
-            if (imageBase64 && window.stt?.extractOcr) {
-              const result = await window.stt.extractOcr(imageBase64);
-              ocrWordsRef.current = result.words ?? [];
-              if (result.words?.length) {
-                ocrLog.info(`Extracted ${result.words.length} vocabulary words`);
-              }
-            }
-          } catch (err) {
-            ocrLog.warn("Extraction failed:", err);
-            // Non-critical — continue without OCR vocabulary
-          }
-        })();
-      }
-
-      // Wait for recorder to be ready, but OCR continues in background
       const recorder = await recorderPromise;
       if (!isCurrentStart()) {
         recorder.cancel();
@@ -483,13 +380,12 @@ export function useTranscription(
       }
       recorderRef.current = recorder;
       recorderStartPromiseRef.current = null;
-      ocrPromiseRef.current = ocrPromise;
     } catch (err) {
       if (!isCurrentStart()) return;
       log.error("Start failed:", err);
       reportTranscriptionError(toUserFacingTranscriptionError(err));
       setRecording(false);
-      activeProviderIdRef.current = null;
+      dictationActiveRef.current = false;
       prepareResultRef.current = null;
       recorderStartPromiseRef.current = null;
       streamingVadRef.current?.dispose();
@@ -514,62 +410,29 @@ export function useTranscription(
     }
   }, [
     buildTranscriptionContext,
-    captureScreenshotBase64,
     initStream,
     processing,
     reportTranscriptionError,
     recording,
-    resolveActiveProviderId,
   ]);
 
-  const awaitPendingOcr = useCallback(async () => {
-    if (!ocrPromiseRef.current) return;
-    await ocrPromiseRef.current;
-    ocrPromiseRef.current = null;
-  }, []);
-
-  // Shared tail of the stop() pipeline for local and cloud providers:
-  // await OCR, enhance, publish text, record history, paste, log latency.
+  // Shared tail of the stop() pipeline: publish text, record history, paste,
+  // log latency.
   const finishTranscription = useCallback(
     async ({
       result,
       timing,
-      providerKind,
       capturedAudioMs,
       vadResult,
-      isCancelled,
       reconcileLiveTranscript,
     }: {
       result: TranscriptionResult;
       timing: TranscriptionLatencyTiming;
-      providerKind: TranscriptionProviderKind;
       capturedAudioMs: number;
       vadResult: VadAudioResult;
-      isCancelled: () => boolean;
       reconcileLiveTranscript: boolean;
     }) => {
-      // Wait for OCR to finish, then enhance (no-op when the cloud path
-      // already awaited it before transcribing)
-      await awaitPendingOcr();
-      if (isCancelled()) return;
-
-      let finalText = result.text;
-      if (ENABLE_TRANSCRIPT_ENHANCEMENT && window.stt?.enhance) {
-        try {
-          const enhanced = await window.stt.enhance({
-            text: result.text,
-            vocabulary: ocrWordsRef.current,
-            mode: DICTATION_MODE,
-          });
-          finalText = enhanced.text;
-          if (!enhanced.bypassed) {
-            log.info(`Enhanced (${enhanced.tier}): ${finalText.length} chars`);
-          }
-        } catch (err) {
-          log.warn("Enhancement failed, using raw transcript:", err);
-        }
-        if (isCancelled()) return;
-      }
+      const finalText = result.text;
 
       // Only a provider that emitted live hypotheses can reconcile one with
       // the authoritative result. Batch models publish the final result to
@@ -605,7 +468,6 @@ export function useTranscription(
         timing.pasteDoneAt = performance.now();
       }
       logTranscriptionLatency({
-        providerKind,
         status: "done",
         timing,
         capturedAudioMs,
@@ -613,7 +475,7 @@ export function useTranscription(
         metrics: result.metrics,
       });
     },
-    [awaitPendingOcr],
+    [],
   );
 
   // Stop recording and transcribe
@@ -662,13 +524,6 @@ export function useTranscription(
       streamingVadSession = streamingVadRef.current;
       localStreamingDictation = localStreamingDictationRef.current;
 
-      const providerId =
-        activeProviderIdRef.current ?? (await resolveActiveProviderId());
-      // cancel() already reset all state if it fired during the await above
-      if (isCancelled()) return;
-      const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
-      if (isCancelled()) return;
-      const provider = orchestrator.resolveProvider(providerId);
       const prepareResult = prepareResultRef.current;
 
       // Batch paths need a short tail for VAD trimming. Live Nemotron adds
@@ -722,7 +577,7 @@ export function useTranscription(
         capturedAudio = localChunkedDictation.takePendingAudio();
       }
 
-      if (provider.descriptor.kind === "local" && localStreamingDictation) {
+      if (localStreamingDictation) {
         capturedAudio = null;
         timing.vadStartedAt = performance.now();
         timing.vadDoneAt = timing.vadStartedAt;
@@ -752,7 +607,6 @@ export function useTranscription(
         if (!result.text) {
           log.info("Live local model returned no speech; skipping publish");
           logTranscriptionLatency({
-            providerKind: provider.descriptor.kind,
             status: "no_speech",
             timing,
             capturedAudioMs,
@@ -766,19 +620,14 @@ export function useTranscription(
         await finishTranscription({
           result,
           timing,
-          providerKind: provider.descriptor.kind,
           capturedAudioMs,
           vadResult,
-          isCancelled,
           reconcileLiveTranscript: true,
         });
         return;
       }
 
-      if (
-        provider.descriptor.kind === "local" &&
-        localChunkedDictation?.hasDispatchedChunks
-      ) {
+      if (localChunkedDictation?.hasDispatchedChunks) {
         // The completed chunk promises may already be running while the user
         // was still dictating. The CapturedAudio returned above is only a
         // transient tail (or an empty buffer after the chunker released the
@@ -821,7 +670,6 @@ export function useTranscription(
             "No speech detected across local dictation chunks; skipping publish",
           );
           logTranscriptionLatency({
-            providerKind: provider.descriptor.kind,
             status: "no_speech",
             timing,
             capturedAudioMs,
@@ -839,10 +687,8 @@ export function useTranscription(
         await finishTranscription({
           result,
           timing,
-          providerKind: provider.descriptor.kind,
           capturedAudioMs,
           vadResult,
-          isCancelled,
           reconcileLiveTranscript: false,
         });
         return;
@@ -913,7 +759,6 @@ export function useTranscription(
       if (!vadResult.speechDetected) {
         log.info("No speech detected; skipping STT");
         logTranscriptionLatency({
-          providerKind: provider.descriptor.kind,
           status: "no_speech",
           timing,
           capturedAudioMs,
@@ -925,22 +770,10 @@ export function useTranscription(
       }
 
       const audio = vadResult.audio;
-      const providerKind = provider.descriptor.kind;
-
-      // Cloud STT waits for OCR before transcribing so vocabulary reaches the
-      // provider; local Whisper transcribes immediately and folds OCR
-      // vocabulary in during enhancement below.
-      if (providerKind !== "local") {
-        if (ocrPromiseRef.current) {
-          log.info("Waiting for OCR to complete...");
-        }
-        await awaitPendingOcr();
-        if (isCancelled()) return;
-      }
 
       timing.sttStartedAt = performance.now();
-      log.info(`Starting ${providerKind} transcription`);
-      const result = await orchestrator.transcribe(providerId, {
+      log.info("Starting local transcription");
+      const result = await localStt.transcribe({
         audio,
         context,
         prepareResult,
@@ -950,7 +783,7 @@ export function useTranscription(
       log.info(
         `STT complete in ${elapsedMs(timing.sttStartedAt, timing.sttDoneAt)}ms (${result.text.length} chars)`,
       );
-      if (providerKind === "local" && result.metrics) {
+      if (result.metrics) {
         const m = result.metrics as Record<string, unknown>;
         log.info(`Metrics: inference=${m.inference_ms}ms, ttft=${m.ttft_ms}ms`);
       }
@@ -958,10 +791,8 @@ export function useTranscription(
       await finishTranscription({
         result,
         timing,
-        providerKind,
         capturedAudioMs,
         vadResult,
-        isCancelled,
         reconcileLiveTranscript: false,
       });
     } catch (err) {
@@ -1014,7 +845,7 @@ export function useTranscription(
           }
         }
         stopInFlightRef.current = false;
-        activeProviderIdRef.current = null;
+        dictationActiveRef.current = false;
         prepareResultRef.current = null;
         recorderStartPromiseRef.current = null;
         // Release microphone stream so the OS mic indicator turns off
@@ -1023,20 +854,16 @@ export function useTranscription(
           streamRef.current = null;
         }
         setProcessing(false);
-        ocrWordsRef.current = [];
-        ocrPromiseRef.current = null;
         localChunkedDictationRef.current?.discardPendingAudio();
         localChunkedDictationRef.current = null;
         localStreamingDictationRef.current = null;
       }
     }
   }, [
-    awaitPendingOcr,
     buildTranscriptionContext,
     finishTranscription,
     recording,
     reportTranscriptionError,
-    resolveActiveProviderId,
   ]);
 
   // A chunker reaches the five-minute guard from the audio worklet callback.
@@ -1076,10 +903,7 @@ export function useTranscription(
     void localStreamingDictation?.cancel().catch((cancelError) => {
       log.warn("Failed to release local streaming session:", cancelError);
     });
-    if (
-      activeProviderIdRef.current === LOCAL_STT_PROVIDER_ID &&
-      !localStreamingDictation
-    ) {
+    if (dictationActiveRef.current && !localStreamingDictation) {
       void window.stt?.cancelLocalTranscription?.();
     }
     // Keep this reference reachable while stop() is finalizing VAD so cancel
@@ -1098,10 +922,8 @@ export function useTranscription(
     setLiveTranscript("");
     setText("");
     setAudioLevel(0);
-    activeProviderIdRef.current = null;
+    dictationActiveRef.current = false;
     prepareResultRef.current = null;
-    ocrWordsRef.current = [];
-    ocrPromiseRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -1186,14 +1008,12 @@ interface TranscriptionLatencyTiming {
 }
 
 function logTranscriptionLatency({
-  providerKind,
   status,
   timing,
   capturedAudioMs,
   vadResult,
   metrics,
 }: {
-  providerKind: TranscriptionProviderKind;
   status: "done" | "no_speech";
   timing: TranscriptionLatencyTiming;
   capturedAudioMs: number;
@@ -1204,7 +1024,7 @@ function logTranscriptionLatency({
   const trimmedMs = vadResult.leadingTrimmedMs + vadResult.trailingTrimmedMs;
 
   latencyLog.info("Transcription", {
-    provider: providerKind,
+    provider: "local",
     status,
     total_ms: elapsedMs(timing.stopStartedAt, totalDoneAt),
     post_roll_ms: elapsedMs(timing.postRollStartedAt, timing.postRollDoneAt),

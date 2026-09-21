@@ -104,26 +104,34 @@ describe("components/SettingsPanel behavior", () => {
     unmount();
   }, 10_000);
 
-  it("selects a microphone through the native control", async () => {
+  it("selects a microphone through the compact dropdown", async () => {
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const { container, unmount } = render(React.createElement(SettingsPanel));
     await act(async () => {
       await Promise.resolve();
     });
 
-    const select = container.querySelector(
-      'select[aria-label="Microphone"]',
-    ) as HTMLSelectElement | null;
-    expect(select).not.toBeNull();
-    expect(select?.options).toHaveLength(3);
+    const trigger = container.querySelector(
+      'button[aria-label="Microphone"]',
+    ) as HTMLButtonElement | null;
+    expect(trigger).not.toBeNull();
 
     await act(async () => {
-      if (!select) return;
-      select.value = "mic2";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
+      trigger?.click();
       await Promise.resolve();
     });
 
+    const options = Array.from(
+      document.querySelectorAll('[role="listbox"] [role="option"]'),
+    ) as HTMLElement[];
+    expect(options).toHaveLength(3);
+
+    await act(async () => {
+      options.find((option) => option.textContent === "Mic 2")?.click();
+      await Promise.resolve();
+    });
+
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
     expect((window as any).mic.select).toHaveBeenCalledWith("mic2");
     unmount();
   }, 10_000);

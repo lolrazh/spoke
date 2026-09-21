@@ -97,21 +97,6 @@ if (!globalThis.window.stt) {
   // @ts-ignore
   globalThis.window.stt = {
     transcribeLocal: vi.fn(async () => ({ text: "", metrics: {} })),
-    transcribeApiKeyProvider: vi.fn(async () => ({ text: "", metrics: {} })),
-    getProviderSettings: vi.fn(async () => ({
-      preferredProviderId: "local-stt",
-      providers: [],
-    })),
-    getPreferredProvider: vi.fn(async () => "local-stt"),
-    setPreferredProvider: vi.fn(async () => {}),
-    setProviderApiKey: vi.fn(async () => ({
-      preferredProviderId: "local-stt",
-      providers: [],
-    })),
-    clearProviderApiKey: vi.fn(async () => ({
-      preferredProviderId: "local-stt",
-      providers: [],
-    })),
     getModelStatus: vi.fn(async () => ({
       state: "not_installed",
       family: "whisper",
@@ -128,11 +113,6 @@ if (!globalThis.window.stt) {
     removeModel: vi.fn(async () => {}),
     onModelProgress: vi.fn(() => () => {}),
     onModelStatusChanged: vi.fn(() => () => {}),
-    enhance: vi.fn(async (payload: any) => ({
-      text: payload.text,
-      bypassed: true,
-    })),
-    extractOcr: vi.fn(async () => ({ words: [] })),
   } as any;
 }
 

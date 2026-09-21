@@ -12,7 +12,6 @@ import { execSync } from "child_process";
 import fs from "node:fs";
 
 import { logger } from "./utils/logger";
-import { initProviderStore } from "./main/providerStore";
 import {
   stopLocalSidecar,
   syncLocalSidecarForCurrentProvider,
@@ -74,10 +73,6 @@ bootTimeline.mark("main:module-loaded", {
   pid: process.pid,
 });
 
-// Disable Chromium's HTTP cache. Must be set before app is ready — command
-// line switches appended after that point are silently ignored.
-app.commandLine.appendSwitch("disable-http-cache");
-
 // Ensure a single running app instance.
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -114,11 +109,10 @@ registerInsertTextAtCursorIpc();
 app.whenReady().then(async () => {
   installMainConsoleFileSink();
   bootTimeline.mark("app:when-ready");
-  // Initialize preferences and provider store
+  // Initialize preferences
   const userDataPath = app.getPath("userData");
   bootTimeline.measureSync("startup:init-preferences", () => {
     initPreferences(userDataPath);
-    initProviderStore(userDataPath);
   });
   bootTimeline.measureSync("startup:init-model-manager", () => {
     // Broadcast model download progress to every window. The model install runs
@@ -218,7 +212,7 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Stop the sidecar if current provider/model state cannot use it. Do not
+  // Stop the sidecar if the active model cannot use it. Do not
   // pre-spawn on startup; packaged PyInstaller + MLX cold starts can starve
   // first paint and make onboarding feel frozen.
   bootTimeline.mark("startup:sync-sidecar-scheduled");
@@ -233,9 +227,6 @@ app.whenReady().then(async () => {
   const fontSrc = "font-src 'self' data:";
   const connect = [
     "connect-src 'self'",
-    "https://api.openai.com",
-    "https://api.groq.com",
-    "https://api.deepgram.com",
     ...(isDev
       ? [
           "http://localhost:*",
@@ -263,14 +254,13 @@ app.whenReady().then(async () => {
     imgSrc,
     fontSrc,
   ].join("; ");
+  // No COOP/COEP here. Cross-origin isolation was once needed for a
+  // SharedArrayBuffer capture path that no longer exists, and on the packaged
+  // file:// origin COEP blocks the app's own VAD worker: worker script loads
+  // never pass through onHeadersReceived, so the isolated document rejects
+  // them (net::ERR_BLOCKED_BY_RESPONSE, coep-frame-resource-needs-coep-header).
   const rendererSecurityHeaders: Record<string, string> = {
     "Content-Security-Policy": csp,
-    ...(isPackaged
-      ? {
-          "Cross-Origin-Opener-Policy": "same-origin",
-          "Cross-Origin-Embedder-Policy": "require-corp",
-        }
-      : {}),
   };
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

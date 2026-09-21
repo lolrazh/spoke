@@ -2,8 +2,7 @@
  * Misc IPC
  *
  * Everything that doesn't fit the other IPC groups: focused-selection
- * inspection, screenshot capture (for OCR context), microphone device
- * management, the generic show-notification relay, and the
+ * inspection, microphone device management, the generic show-notification relay, and the
  * power-monitor-driven background update-check trigger.
  */
 
@@ -50,22 +49,6 @@ export function registerMiscIpc(): void {
       }
     },
   );
-
-  // Screenshot capture for OCR context (Phase 1)
-  ipcMain.handle("screenshot:capture", async (_event, options) => {
-    try {
-      const { captureScreenshot } = await import("../../utils/screenshot");
-      const result = await captureScreenshot(options);
-      console.log(
-        `[Screenshot] Captured in ${result.captureTimeMs}ms, size: ${result.sizeKb}KB`,
-      );
-      return { success: true, ...result };
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error("[Screenshot] Capture failed:", errorMsg);
-      return { success: false, error: errorMsg };
-    }
-  });
 
   // Microphone management IPC handlers
   ipcMain.on(

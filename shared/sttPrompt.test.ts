@@ -7,18 +7,6 @@ describe("buildSTTPrompt", () => {
     expect(buildSTTPrompt({})).toBe(DEFAULT_STT_PROMPT);
   });
 
-  it("appends identity name tokens split on whitespace", () => {
-    expect(
-      buildSTTPrompt({ identity: { name: "Sandeep Rajkumar" } }),
-    ).toBe(`${DEFAULT_STT_PROMPT}, Sandeep, Rajkumar`);
-  });
-
-  it("appends identity email", () => {
-    expect(
-      buildSTTPrompt({ identity: { email: "sandeep@spoke.so" } }),
-    ).toBe(`${DEFAULT_STT_PROMPT}, sandeep@spoke.so`);
-  });
-
   it("appends extra vocabulary tokens (e.g. OCR words)", () => {
     expect(
       buildSTTPrompt({ extraVocab: ["Kubernetes", "Terraform"] }),
@@ -59,16 +47,11 @@ describe("buildSTTPrompt", () => {
 
   it("caps the overall prompt length, dropping lowest-priority tokens", () => {
     const extraVocab = Array.from({ length: 60 }, (_, i) => `Vocabword${i}`);
-    const result = buildSTTPrompt({
-      identity: { name: "Sandeep Rajkumar" },
-      extraVocab,
-    });
+    const result = buildSTTPrompt({ extraVocab });
 
     expect(result.length).toBeLessThanOrEqual(400);
-    // Identity tokens (higher priority) must survive the cap.
-    expect(result).toContain("Sandeep");
-    expect(result).toContain("Rajkumar");
-    // Not every low-priority extra vocab token can fit under the cap.
+    // Earlier tokens survive the cap; not every token can fit under it.
+    expect(result).toContain("Vocabword0");
     expect(result).not.toContain("Vocabword59");
   });
 

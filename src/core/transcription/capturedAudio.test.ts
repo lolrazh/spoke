@@ -3,22 +3,12 @@ import {
   CAPTURED_AUDIO_CHANNEL_COUNT,
   CAPTURED_AUDIO_SAMPLE_RATE_HZ,
   createCapturedAudio,
-  encodeCapturedAudioAsWav,
-  encodePcm16Wav,
   getPcm16DurationMs,
   normalizePcm16TrimRange,
   pcm16ToFloat32,
   trimCapturedAudio,
   trimPcm16,
 } from "./capturedAudio";
-
-function ascii(view: DataView, byteOffset: number, byteLength: number): string {
-  let out = "";
-  for (let i = 0; i < byteLength; i++) {
-    out += String.fromCharCode(view.getUint8(byteOffset + i));
-  }
-  return out;
-}
 
 describe("capturedAudio", () => {
   it("creates canonical PCM16 captured audio", () => {
@@ -84,41 +74,6 @@ describe("capturedAudio", () => {
     expect(trimmed.sampleRateHz).toBe(16_000);
     expect(trimmed.durationMs).toBe(500);
     expect(trimmed.pcm16.length).toBe(8_000);
-  });
-
-  it("encodes PCM16 as mono 16-bit little-endian WAV", () => {
-    const wav = encodePcm16Wav(new Int16Array([0, 32_767, -32_768]));
-    const view = new DataView(wav);
-
-    expect(wav.byteLength).toBe(50);
-    expect(ascii(view, 0, 4)).toBe("RIFF");
-    expect(view.getUint32(4, true)).toBe(42);
-    expect(ascii(view, 8, 4)).toBe("WAVE");
-    expect(ascii(view, 12, 4)).toBe("fmt ");
-    expect(view.getUint32(16, true)).toBe(16);
-    expect(view.getUint16(20, true)).toBe(1);
-    expect(view.getUint16(22, true)).toBe(1);
-    expect(view.getUint32(24, true)).toBe(16_000);
-    expect(view.getUint32(28, true)).toBe(32_000);
-    expect(view.getUint16(32, true)).toBe(2);
-    expect(view.getUint16(34, true)).toBe(16);
-    expect(ascii(view, 36, 4)).toBe("data");
-    expect(view.getUint32(40, true)).toBe(6);
-    expect(view.getInt16(44, true)).toBe(0);
-    expect(view.getInt16(46, true)).toBe(32_767);
-    expect(view.getInt16(48, true)).toBe(-32_768);
-  });
-
-  it("encodes captured audio as WAV with the captured sample rate", () => {
-    const audio = createCapturedAudio(new Int16Array([1]), {
-      sampleRateHz: 48_000,
-    });
-
-    const wav = encodeCapturedAudioAsWav(audio);
-    const view = new DataView(wav);
-
-    expect(view.getUint32(24, true)).toBe(48_000);
-    expect(view.getUint32(28, true)).toBe(96_000);
   });
 
   it("converts PCM16 samples to normalized Float32 in [-1, 1)", () => {

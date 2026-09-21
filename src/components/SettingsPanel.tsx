@@ -1,5 +1,4 @@
 import React, {
-  lazy,
   Suspense,
   useState,
   useEffect,
@@ -8,7 +7,12 @@ import React, {
 } from "react";
 import { AnimatePresence, m } from "framer-motion";
 import { Switch } from "./ui/switch";
-import { NativeSelect } from "./ui/native-select";
+import { CompactSelect } from "./ui/compact-select";
+import {
+  getMicSnapshot,
+  getSettingsSnapshot,
+  loadSettingsSnapshot,
+} from "../state/panelPrefetch";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
@@ -31,9 +35,11 @@ type SettingsPanelInitialTab = Extract<
   "settings" | "history"
 >;
 
-const ModelsList = lazy(() => import("./ModelsList"));
-const DictionaryView = lazy(() => import("./DictionaryView"));
-const TranscriptionHistoryView = lazy(() => import("./TranscriptionHistoryView"));
+import {
+  DictionaryViewChunk as DictionaryView,
+  ModelsListChunk as ModelsList,
+  TranscriptionHistoryViewChunk as TranscriptionHistoryView,
+} from "./panelChunks";
 
 const DEFAULT_MIC_DEVICE = DEFAULT_MICROPHONE;
 
@@ -126,12 +132,12 @@ const SelectField: React.FC<{
       }
       inGroup={inGroup}
     >
-      <NativeSelect
+      <CompactSelect
         aria-label={label}
         value={value}
         onValueChange={onChange}
         options={options}
-        className="ml-2 w-48"
+        className="ml-2 w-44"
       />
     </SettingsCard>
   );
@@ -643,74 +649,39 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   }, [initialTab]);
 
+  const settingsSnapshot = getSettingsSnapshot();
+  const micSnapshot = getMicSnapshot();
   const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>(
-    [DEFAULT_MIC_DEVICE],
+    () => micSnapshot?.devices ?? [DEFAULT_MIC_DEVICE],
   );
-  const [selectedMicId, setSelectedMicId] = useState<string>("default");
-  const [showFloatingBar, setShowFloatingBar] = useState<boolean | null>(null);
-  const [showInDock, setShowInDock] = useState<boolean | null>(null);
-  const [autoSpace, setAutoSpace] = useState<boolean | null>(null);
-  const [appVersion, setAppVersion] = useState<string>("");
+  const [selectedMicId, setSelectedMicId] = useState<string>(
+    () => micSnapshot?.selectedId ?? "default",
+  );
+  const [showFloatingBar, setShowFloatingBar] = useState<boolean | null>(
+    () => settingsSnapshot?.showFloatingBar ?? null,
+  );
+  const [showInDock, setShowInDock] = useState<boolean | null>(
+    () => settingsSnapshot?.showInDock ?? null,
+  );
+  const [autoSpace, setAutoSpace] = useState<boolean | null>(
+    () => settingsSnapshot?.autoSpace ?? null,
+  );
+  const [appVersion, setAppVersion] = useState<string>(
+    () => settingsSnapshot?.appVersion ?? "",
+  );
 
-  // Load independent startup settings together so their async results commit
-  // in one React update instead of causing a render per bridge response.
+  // The idle prefetch normally filled the snapshot already, so the first
+  // frame is correct; this refresh only catches changes made since then and
+  // commits them in one update.
   useEffect(() => {
     let isMounted = true;
-
-    const loadInitialSettings = async () => {
-      const [version, floatingBar, dock, autoSpaceEnabled] = await Promise.all([
-        (async () => {
-          try {
-            const value = await window.app?.getVersion?.();
-            return value && typeof value === "string" ? value : "";
-          } catch {
-            return "";
-          }
-        })(),
-        (async () => {
-          try {
-            // Prefer persisted intent if available; fallback to current visibility.
-            const pref = await window.electron?.getFloatingBarEnabled?.();
-            if (pref && typeof pref.enabled === "boolean") {
-              return pref.enabled;
-            }
-            const vis = await window.electron?.isFloatingBarVisible?.();
-            return vis && typeof vis.visible === "boolean" ? vis.visible : true;
-          } catch {
-            return true;
-          }
-        })(),
-        (async () => {
-          try {
-            const result = await window.electron?.getDockVisible?.();
-            return result && typeof result.visible === "boolean"
-              ? result.visible
-              : true;
-          } catch {
-            return true;
-          }
-        })(),
-        (async () => {
-          try {
-            const result = await window.electron?.getAutoSpaceEnabled?.();
-            return result && typeof result.enabled === "boolean"
-              ? result.enabled
-              : true;
-          } catch {
-            return true;
-          }
-        })(),
-      ]);
-
+    void loadSettingsSnapshot().then((snapshot) => {
       if (!isMounted) return;
-      setAppVersion(version);
-      setShowFloatingBar(floatingBar);
-      setShowInDock(dock);
-      setAutoSpace(autoSpaceEnabled);
-    };
-
-    void loadInitialSettings();
-
+      setAppVersion(snapshot.appVersion);
+      setShowFloatingBar(snapshot.showFloatingBar);
+      setShowInDock(snapshot.showInDock);
+      setAutoSpace(snapshot.autoSpace);
+    });
     return () => {
       isMounted = false;
     };

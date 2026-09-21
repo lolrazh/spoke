@@ -7,7 +7,6 @@ import SfIcon from "./icons/SfIcon";
 import { usePermissionsController } from "../state/permissionsContext";
 import { SectionSeparator } from "./SectionSeparator";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
-import { ENABLE_SCREEN_CONTEXT } from "../config/featureFlags";
 import {
   panelCascadeContainer,
   panelCascadeItem,
@@ -16,8 +15,7 @@ import {
 type PermissionKey =
   | "microphone"
   | "accessibility"
-  | "inputMonitoring"
-  | "screenRecording";
+  | "inputMonitoring";
 
 const PERMISSION_COPY: Record<
   PermissionKey,
@@ -50,11 +48,6 @@ const PERMISSION_COPY: Record<
       />
     ),
   },
-  screenRecording: {
-    title: "Smart Context",
-    description: "Capture screen context for better accuracy",
-    icon: <SfIcon name="record.circle" size={18} className="text-primary/70" />,
-  },
 };
 
 interface PermissionsPanelProps {
@@ -71,7 +64,6 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
     requestMicrophone,
     requestAccessibility,
     requestInputMonitoring,
-    requestScreenRecording,
   } = usePermissionsController();
 
   const permissionEntries = useMemo(() => {
@@ -105,16 +97,6 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
       },
     ];
 
-    if (ENABLE_SCREEN_CONTEXT) {
-      entries.push({
-        key: "screenRecording",
-        granted: permissions.screenRecording,
-        loading: ui.screenRecording.loading,
-        disabled: false,
-        onRequest: requestScreenRecording,
-      });
-    }
-
     return entries;
   }, [
     permissions,
@@ -122,7 +104,6 @@ const PermissionsPanel: React.FC<PermissionsPanelProps> = ({
     requestMicrophone,
     requestAccessibility,
     requestInputMonitoring,
-    requestScreenRecording,
   ]);
 
   const contentRef = useRef<HTMLDivElement>(null);

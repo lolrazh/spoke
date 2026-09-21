@@ -185,28 +185,6 @@ contextBridge.exposeInMainWorld("stt", {
     return () =>
       ipcRenderer.removeListener("stt:local-stream-partial", listener);
   },
-  transcribeApiKeyProvider: (
-    providerId: string,
-    payload: {
-      audioBuffer: ArrayBuffer;
-      mimeType?: string;
-      context: unknown;
-    },
-  ) =>
-    ipcRenderer.invoke("stt:transcribe-api-key-provider", {
-      providerId,
-      audioBuffer: new Uint8Array(payload.audioBuffer),
-      mimeType: payload.mimeType,
-      context: payload.context,
-    }),
-  getProviderSettings: () => ipcRenderer.invoke("stt:get-provider-settings"),
-  getPreferredProvider: () => ipcRenderer.invoke("stt:get-preferred-provider"),
-  setPreferredProvider: (providerId: string) =>
-    ipcRenderer.invoke("stt:set-preferred-provider", providerId),
-  setProviderApiKey: (providerId: string, apiKey: string) =>
-    ipcRenderer.invoke("stt:set-provider-api-key", { providerId, apiKey }),
-  clearProviderApiKey: (providerId: string) =>
-    ipcRenderer.invoke("stt:clear-provider-api-key", providerId),
   getModelStatus: () => ipcRenderer.invoke("stt:get-model-status"),
   getModelStatuses: () => ipcRenderer.invoke("stt:get-model-statuses"),
   getModelInfos: () => ipcRenderer.invoke("stt:get-model-infos"),
@@ -242,14 +220,6 @@ contextBridge.exposeInMainWorld("stt", {
       ipcRenderer.removeListener("stt:model-status-changed", handler);
     };
   },
-  enhance: (payload: {
-    text: string;
-    vocabulary?: string[];
-    mode?: "dictation" | "edit";
-    selectionText?: string;
-  }) => ipcRenderer.invoke("stt:enhance", payload),
-  extractOcr: (imageBase64: string) =>
-    ipcRenderer.invoke("stt:extract-ocr", imageBase64),
 });
 
 contextBridge.exposeInMainWorld("electron", {
@@ -277,10 +247,6 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("request-microphone-permission"),
   checkMicrophonePermission: () =>
     ipcRenderer.invoke("check-microphone-permission"),
-  requestScreenRecordingPermission: () =>
-    ipcRenderer.invoke("request-screen-recording-permission"),
-  checkScreenRecordingPermission: () =>
-    ipcRenderer.invoke("check-screen-recording-permission"),
   openSystemPreferences: (pane: string) =>
     ipcRenderer.invoke("open-system-preferences", pane),
   startHelper: () => ipcRenderer.invoke("helper:start"),
@@ -339,12 +305,6 @@ contextBridge.exposeInMainWorld("electron", {
       label,
       rendererMs: Math.round(performance.now()),
     }),
-  // Screenshot capture (Phase 1 OCR)
-  takeScreenshot: (options?: {
-    display?: "active" | number;
-    quality?: number;
-    maxDimension?: number;
-  }) => ipcRenderer.invoke("screenshot:capture", options),
 });
 
 // Expose application metadata

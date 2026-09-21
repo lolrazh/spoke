@@ -1,5 +1,5 @@
 import React from "react";
-import { NativeSelect } from "./ui/native-select";
+import { CompactSelect } from "./ui/compact-select";
 
 type MicrophoneDevice = {
   id: string;
@@ -17,7 +17,7 @@ const OnboardingMicSelector: React.FC<OnboardingMicSelectorProps> = ({
   selectedId,
   onChange,
 }) => (
-  <NativeSelect
+  <CompactSelect
     aria-label="Microphone"
     value={selectedId}
     onValueChange={onChange}

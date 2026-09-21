@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createCapturedAudio } from "../capturedAudio";
-import { TranscriptionSessionError } from "../sessionErrors";
-import { localSttProvider } from "./localSttProvider";
+import { createCapturedAudio } from "./capturedAudio";
+import { TranscriptionSessionError } from "./sessionErrors";
+import { localStt } from "./localStt";
 
-describe("localSttProvider", () => {
+describe("localStt", () => {
   beforeEach(() => {
     Object.defineProperty(window, "stt", {
       value: {
@@ -50,7 +50,7 @@ describe("localSttProvider", () => {
   it("transcribes PCM16 audio through the Electron bridge", async () => {
     const audio = createCapturedAudio(new Int16Array([1, 2, 3, 4]));
 
-    const result = await localSttProvider.transcribe({
+    const result = await localStt.transcribe({
       audio,
       context: { mode: "dictation" },
       prepareResult: preparedLocalModel(),
@@ -69,16 +69,14 @@ describe("localSttProvider", () => {
   });
 
   it("pins the ready local model during preparation", async () => {
-    await expect(
-      localSttProvider.prepare?.({ context: { mode: "dictation" } }),
-    ).resolves.toEqual(preparedLocalModel());
+    await expect(localStt.prepare()).resolves.toEqual(preparedLocalModel());
   });
 
   it("passes the context's sttPrompt through to the Electron bridge", async () => {
     const audio = createCapturedAudio(new Int16Array([1, 2, 3, 4]));
     const sttPrompt = "Your vocabulary includes: Spoke, Sandeep";
 
-    await localSttProvider.transcribe({
+    await localStt.transcribe({
       audio,
       context: { mode: "dictation", sttPrompt },
       prepareResult: preparedLocalModel(),
@@ -95,7 +93,7 @@ describe("localSttProvider", () => {
     const backing = new Int16Array([99, 1, 2, 88]);
     const audio = createCapturedAudio(backing.subarray(1, 3));
 
-    await localSttProvider.transcribe({
+    await localStt.transcribe({
       audio,
       context: { mode: "dictation" },
       prepareResult: preparedLocalModel(),
@@ -136,11 +134,7 @@ describe("localSttProvider", () => {
       error: null,
     });
 
-    await expect(
-      localSttProvider.prepare?.({
-        context: { mode: "dictation" },
-      }),
-    ).rejects.toMatchObject({
+    await expect(localStt.prepare()).rejects.toMatchObject({
       code: "model_not_installed",
       message: "Model unavailable. Open Settings to install.",
     });
@@ -148,7 +142,7 @@ describe("localSttProvider", () => {
 
   it("throws a typed error when PCM audio is missing", async () => {
     await expect(
-      localSttProvider.transcribe({
+      localStt.transcribe({
         context: { mode: "dictation" },
       } as any),
     ).rejects.toBeInstanceOf(TranscriptionSessionError);

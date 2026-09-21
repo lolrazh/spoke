@@ -28,7 +28,8 @@ vi.mock("../utils/vadTrimmer", () => ({
 // tests exercise the fixed-post-roll + trimCapturedAudioWithVad fallback path.
 // Live streaming models intentionally skip this duplicate VAD worker.
 const mockCreateStreamingVadSession = vi.fn(
-  (_options: StreamingVadSessionOptions) => createUnusableStreamingVadSessionFake(),
+  (_options: StreamingVadSessionOptions) =>
+    createUnusableStreamingVadSessionFake(),
 );
 vi.mock("../utils/streamingVad", () => ({
   createStreamingVadSession: (options: StreamingVadSessionOptions) =>
@@ -45,16 +46,19 @@ function createUnusableStreamingVadSessionFake() {
   };
 }
 
-function createUsableStreamingVadSessionFake(overrides: {
-  waitForQuiet?: (maxWaitMs: number) => Promise<number>;
-  finish?: (audio: CapturedAudio) => Promise<VadAudioResult | null>;
-} = {}) {
+function createUsableStreamingVadSessionFake(
+  overrides: {
+    waitForQuiet?: (maxWaitMs: number) => Promise<number>;
+    finish?: (audio: CapturedAudio) => Promise<VadAudioResult | null>;
+  } = {},
+) {
   return {
     isUsable: () => true,
     pushFrame: vi.fn(),
     waitForQuiet: vi.fn(overrides.waitForQuiet ?? (async () => 0)),
     finish: vi.fn(
-      overrides.finish ?? (async (audio: CapturedAudio) => createVadResult(audio, true)),
+      overrides.finish ??
+        (async (audio: CapturedAudio) => createVadResult(audio, true)),
     ),
     dispose: vi.fn(),
   };
@@ -96,16 +100,7 @@ Object.defineProperty(navigator, "mediaDevices", {
 
 // Mock window.electron and window.clipboard
 Object.defineProperty(window, "electron", {
-  value: {
-    takeScreenshot: vi.fn(() =>
-      Promise.resolve({
-        success: true,
-        imageBase64: "fake-screenshot-base64",
-        captureTimeMs: 100,
-        sizeKb: 50,
-      }),
-    ),
-  },
+  value: {},
   writable: true,
 });
 
@@ -125,8 +120,6 @@ Object.defineProperty(window, "notifications", {
 
 Object.defineProperty(window, "stt", {
   value: {
-    getPreferredProvider: vi.fn(() => Promise.resolve("local-stt")),
-    setPreferredProvider: vi.fn(() => Promise.resolve()),
     getModelStatus: vi.fn(() =>
       Promise.resolve({
         state: "ready",
@@ -146,16 +139,9 @@ Object.defineProperty(window, "stt", {
     getModelInfos: vi.fn(() => Promise.resolve([testModelInfo()])),
     startLocalStream: vi.fn(() => Promise.resolve({ sessionId: "stream-1" })),
     pushLocalStream: vi.fn(() => Promise.resolve()),
-    finishLocalStream: vi.fn(() =>
-      Promise.resolve({ text: "", metrics: {} }),
-    ),
+    finishLocalStream: vi.fn(() => Promise.resolve({ text: "", metrics: {} })),
     cancelLocalTranscription: vi.fn(() => Promise.resolve()),
     onLocalStreamPartial: vi.fn(() => () => undefined),
-    enhance: vi.fn(async (payload: { text: string }) => ({
-      text: payload.text,
-      bypassed: true,
-    })),
-    extractOcr: vi.fn(async () => ({ words: [] })),
   },
   writable: true,
 });
@@ -165,7 +151,6 @@ describe("useTranscription", () => {
     vi.clearAllMocks();
     mockFetch.mockClear();
     (globalThis as any).__lastWorklet = null;
-    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
       metrics: {},
@@ -224,7 +209,6 @@ describe("useTranscription", () => {
   });
 
   it("keeps batch results out of live text and ignores duplicate stops", async () => {
-    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockImplementation(
       () =>
         new Promise((resolve) =>
@@ -255,9 +239,6 @@ describe("useTranscription", () => {
     });
 
     expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
-    expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
-    expect(window.stt.extractOcr).not.toHaveBeenCalled();
-    expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -284,8 +265,7 @@ describe("useTranscription", () => {
     });
   });
 
-  it("resolves the stored local provider before the first start call", async () => {
-    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
+  it("transcribes locally on the first start call", async () => {
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "Local on first start",
       metrics: {},
@@ -311,24 +291,14 @@ describe("useTranscription", () => {
       expect(result.current.text).toBe("Local on first start");
     });
     expect(window.stt.transcribeLocal).toHaveBeenCalled();
-    expect(window.electron.takeScreenshot).not.toHaveBeenCalled();
-    expect(window.stt.extractOcr).not.toHaveBeenCalled();
-    expect(window.stt.enhance).not.toHaveBeenCalled();
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it("cleans up recording when provider resolution rejects during stop", async () => {
-    const { defaultTranscriptionSessionOrchestrator } = await import(
-      "../core/transcription/defaultSessionOrchestrator"
-    );
-    const originalResolveProvider =
-      defaultTranscriptionSessionOrchestrator.resolveProvider;
-    const resolveProviderSpy = vi
-      .spyOn(defaultTranscriptionSessionOrchestrator, "resolveProvider")
-      .mockImplementationOnce(originalResolveProvider)
-      .mockImplementationOnce(() => {
-        throw new Error("Provider resolution failed");
-      });
+  it("cleans up recording when transcription rejects during stop", async () => {
+    const { localStt } = await import("../core/transcription/localStt");
+    const transcribeSpy = vi
+      .spyOn(localStt, "transcribe")
+      .mockRejectedValueOnce(new Error("Transcription failed"));
     const trackStop = vi.fn();
     (navigator.mediaDevices.getUserMedia as any).mockResolvedValueOnce({
       getTracks: () => [{ stop: trackStop, readyState: "live" }],
@@ -353,7 +323,7 @@ describe("useTranscription", () => {
 
       expect(result.current.recording).toBe(false);
       expect(result.current.processing).toBe(false);
-      expect(result.current.error).toBe("Provider resolution failed");
+      expect(result.current.error).toBe("Transcription failed");
       expect(trackStop).toHaveBeenCalledOnce();
 
       // A failed stop must not leave stopInFlightRef latched and block the
@@ -365,24 +335,18 @@ describe("useTranscription", () => {
       expect(result.current.recording).toBe(true);
       act(() => result.current.cancel());
     } finally {
-      resolveProviderSpy.mockRestore();
+      transcribeSpy.mockRestore();
     }
   });
 
-  it("discards pending chunk audio when provider resolution rejects during stop", async () => {
-    vi.useFakeTimers();
-    const { defaultTranscriptionSessionOrchestrator } = await import(
-      "../core/transcription/defaultSessionOrchestrator"
-    );
-    const originalResolveProvider =
-      defaultTranscriptionSessionOrchestrator.resolveProvider;
-    const resolveProviderSpy = vi
-      .spyOn(defaultTranscriptionSessionOrchestrator, "resolveProvider")
-      .mockImplementationOnce(originalResolveProvider)
-      .mockImplementationOnce(() => {
-        throw new Error("Provider resolution failed");
-      });
-    let notifySpeechEnd: (() => void) | undefined;
+  it("dispatches no more chunk audio after transcription rejects during stop", async () => {
+    const { localStt } = await import("../core/transcription/localStt");
+    const originalTranscribe = localStt.transcribe;
+    const transcribeSpy = vi
+      .spyOn(localStt, "transcribe")
+      .mockImplementationOnce(originalTranscribe)
+      .mockRejectedValueOnce(new Error("Transcription failed"));
+    let notifySpeechEnd: ((endMs: number) => void) | undefined;
     mockCreateStreamingVadSession.mockImplementationOnce((options) => {
       notifySpeechEnd = options.onSpeechEnd;
       return createUnusableStreamingVadSessionFake();
@@ -401,27 +365,26 @@ describe("useTranscription", () => {
         .__lastWorklet as FakeAudioWorkletNode | null;
       expect(worklet).toBeTruthy();
 
-      // Cross the forced chunk boundary, then leave enough fresh audio for a
-      // delayed natural-boundary timer to dispatch if cleanup misses it.
-      worklet?.emitAudio(new Int16Array(400_000));
+      // Cross the maximum chunk length, then leave a pause-bounded tail that
+      // cleanup must discard rather than dispatch.
+      worklet?.emitAudio(new Int16Array(480_000));
       expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
       (window.stt.transcribeLocal as any).mockClear();
-      worklet?.emitAudio(new Int16Array(128_000));
+      worklet?.emitAudio(new Int16Array(256_000));
       expect(notifySpeechEnd).toBeTypeOf("function");
-      notifySpeechEnd?.();
+      notifySpeechEnd?.(45_000);
 
       await act(async () => {
         await result.current.stop();
       });
 
-      expect(result.current.error).toBe("Provider resolution failed");
+      expect(result.current.error).toBe("Transcription failed");
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_200);
+        await new Promise((resolve) => setTimeout(resolve, 50));
       });
       expect(window.stt.transcribeLocal).not.toHaveBeenCalled();
     } finally {
-      resolveProviderSpy.mockRestore();
-      vi.useRealTimers();
+      transcribeSpy.mockRestore();
     }
   });
 
@@ -813,9 +776,7 @@ describe("useTranscription", () => {
   });
 
   it("disposes streaming VAD when cancel races with finish()", async () => {
-    let resolveFinish:
-      | ((result: VadAudioResult | null) => void)
-      | null = null;
+    let resolveFinish: ((result: VadAudioResult | null) => void) | null = null;
     const usableSession = createUsableStreamingVadSessionFake({
       finish: async () =>
         new Promise((resolve) => {
@@ -865,7 +826,9 @@ describe("useTranscription", () => {
     );
     expect(
       new Int16Array(
-        (window.stt.pushLocalStream as ReturnType<typeof vi.fn>).mock.calls[0][1],
+        (
+          window.stt.pushLocalStream as ReturnType<typeof vi.fn>
+        ).mock.calls[0][1],
       ),
     ).toHaveLength(5_120);
 
@@ -1044,12 +1007,12 @@ function configureStreamingModel(finalText: string) {
       streamingChunkMs: 560,
     },
   ]);
-  (window.stt.onLocalStreamPartial as any).mockImplementation((
-    listener: (payload: { sessionId: string; text: string }) => void,
-  ) => {
-    partialListener = listener;
-    return vi.fn();
-  });
+  (window.stt.onLocalStreamPartial as any).mockImplementation(
+    (listener: (payload: { sessionId: string; text: string }) => void) => {
+      partialListener = listener;
+      return vi.fn();
+    },
+  );
   (window.stt.finishLocalStream as any).mockResolvedValue({
     text: finalText,
     metrics: { inference_ms: 1 },

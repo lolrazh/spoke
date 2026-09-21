@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   installModel: vi.fn(),
   removeModel: vi.fn(),
   setActiveModelId: vi.fn(),
-  isPreferredProviderLocal: vi.fn(),
   getSidecarModelId: vi.fn(),
   isSidecarRunning: vi.fn(),
   killSidecar: vi.fn(),
@@ -30,10 +29,6 @@ vi.mock("./modelManager", () => ({
   installModel: mocks.installModel,
   removeModel: mocks.removeModel,
   setActiveModelId: mocks.setActiveModelId,
-}));
-
-vi.mock("./providerStore", () => ({
-  isPreferredProviderLocal: mocks.isPreferredProviderLocal,
 }));
 
 vi.mock("./sidecarEngine", () => ({
@@ -75,7 +70,6 @@ describe("localSttLifecycle", () => {
     mocks.getModelInstallState.mockReturnValue("ready");
     mocks.installModel.mockResolvedValue(undefined);
     mocks.removeModel.mockResolvedValue(undefined);
-    mocks.isPreferredProviderLocal.mockReturnValue(true);
     mocks.getSidecarModelId.mockReturnValue("current-model");
     mocks.isSidecarRunning.mockReturnValue(false);
     mocks.killSidecar.mockResolvedValue(undefined);
@@ -327,17 +321,6 @@ describe("localSttLifecycle", () => {
     expect(mocks.killSidecar).not.toHaveBeenCalled();
   });
 
-  it("stops the sidecar when syncing a non-local provider", async () => {
-    mocks.isPreferredProviderLocal.mockReturnValue(false);
-    const { syncLocalSidecarForCurrentProvider } = await importLifecycle();
-
-    await syncLocalSidecarForCurrentProvider();
-
-    expect(mocks.setAutoRestart).toHaveBeenCalledWith(false);
-    expect(mocks.killSidecar).toHaveBeenCalledTimes(1);
-    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
-  });
-
   it("stops the sidecar when local is selected but the model is not ready", async () => {
     mocks.getModelInstallState.mockReturnValue("broken");
     const { syncLocalSidecarForCurrentProvider } = await importLifecycle();
@@ -434,15 +417,6 @@ describe("localSttLifecycle", () => {
     });
 
     expect(mocks.spawnSidecar).toHaveBeenCalledWith("current-model");
-  });
-
-  it("does not prewarm when provider is not local", async () => {
-    mocks.isPreferredProviderLocal.mockReturnValue(false);
-    const { prewarmLocalSidecar } = await importLifecycle();
-
-    prewarmLocalSidecar("test");
-
-    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
   });
 
   it("does not prewarm when local model is not ready", async () => {
@@ -580,18 +554,6 @@ describe("localSttLifecycle", () => {
     expect(mocks.killSidecar).not.toHaveBeenCalled();
     expect(mocks.spawnSidecar).not.toHaveBeenCalled();
     expect(mocks.setActiveModelId).not.toHaveBeenCalled();
-  });
-
-  it("persists a ready model without touching the sidecar for a cloud provider", async () => {
-    mocks.isPreferredProviderLocal.mockReturnValue(false);
-    const { selectActiveModel } = await importLifecycle();
-
-    selectActiveModel("model-b");
-
-    expect(mocks.setActiveModelId).toHaveBeenCalledWith("model-b");
-    expect(mocks.killSidecar).not.toHaveBeenCalled();
-    expect(mocks.spawnSidecar).not.toHaveBeenCalled();
-    expect(mocks.setAutoRestart).not.toHaveBeenCalled();
   });
 
   it("rechecks readiness before the background load starts", async () => {

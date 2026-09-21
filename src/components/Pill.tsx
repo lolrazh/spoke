@@ -1,6 +1,5 @@
 import React, {
   useCallback,
-  lazy,
   Suspense,
   useLayoutEffect,
   useRef,
@@ -29,23 +28,21 @@ type PillMetrics = {
 
 import type { PillStateType } from "../state/pillStateMachine";
 
-const SettingsPanel = lazy(() => {
-  window.electron?.bootMark?.("settings-panel:import:start");
-  return import("./SettingsPanel").then((module) => {
-    window.electron?.bootMark?.("settings-panel:import:done");
-    return module;
-  });
-});
+import {
+  PermissionsPanelChunk as PermissionsPanel,
+  SettingsPanelChunk as SettingsPanel,
+  SfIconChunk as SfIcon,
+} from "./panelChunks";
 
-const PermissionsPanel = lazy(() => {
-  window.electron?.bootMark?.("permissions-panel:import:start");
-  return import("./PermissionsPanel").then((module) => {
-    window.electron?.bootMark?.("permissions-panel:import:done");
-    return module;
-  });
-});
-
-const SfIcon = lazy(() => import("./icons/SfIcon"));
+// The idle content crossfades between its own states, but when the pill is
+// expanding it must get out of the way at once: with AnimatePresence in
+// "wait" mode the panel cannot mount until this exit completes.
+const idleContentVariants = {
+  exit: (expanding: boolean) => ({
+    opacity: 0,
+    transition: { duration: expanding ? 0 : MOTION.durations.fast / 2 },
+  }),
+};
 
 const PanelLoadingFallback: React.FC = () => (
   <div className="flex h-full w-full items-center justify-center text-[13px] text-primary/50">
@@ -356,7 +353,7 @@ const Pill: React.FC<PillProps> = ({
           <span className="sr-only" role="status">
             {hasLiveTranscript ? "Live transcription active" : ""}
           </span>
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="wait" custom={isExpanded}>
             {isExpanded ? (
               <m.div
                 key="panel-content"
@@ -411,7 +408,8 @@ const Pill: React.FC<PillProps> = ({
                 }
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                variants={idleContentVariants}
+                exit="exit"
                 transition={{ duration: MOTION.durations.fast / 2 }}
               >
                 {pillContext.notifMsg}
@@ -426,7 +424,8 @@ const Pill: React.FC<PillProps> = ({
                 }
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                variants={idleContentVariants}
+                exit="exit"
                 transition={{ duration: MOTION.durations.fast / 2 }}
               >
                 {/* Visuals for non-notification states */}

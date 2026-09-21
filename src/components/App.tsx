@@ -30,6 +30,7 @@ import {
   PERMISSION_NOTIFICATION_INTERACTION_DELAY_MS,
 } from "../hooks/usePermissionNotifications";
 import { usePillMachine } from "../state/pillStateMachine";
+import { prefetchPanel, schedulePanelPrefetch } from "../state/panelPrefetch";
 export type {
   PillStateType,
   PillEvent,
@@ -543,7 +544,12 @@ const AppInner: React.FC = () => {
     [pillDispatch],
   );
 
+  // Bring the panel's code and data into memory while the renderer is idle
+  // after boot, so the first open never waits on a chunk read or the bridge.
+  useEffect(() => schedulePanelPrefetch(), []);
+
   const handleExpand = useCallback(() => {
+    void prefetchPanel();
     // Check if paste shortcut was pressed within last 5 seconds
     const pasteTs = lastPasteShortcutTsRef.current;
     const withinWindow = pasteTs && Date.now() - pasteTs < 5000;

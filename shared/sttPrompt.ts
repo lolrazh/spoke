@@ -1,8 +1,3 @@
-export type SttPromptIdentity = {
-  name?: string | null;
-  email?: string | null;
-};
-
 export const DEFAULT_STT_PROMPT = "Your vocabulary includes: Spoke";
 
 const MAX_TOKEN_LENGTH = 80;
@@ -16,7 +11,6 @@ const MAX_PROMPT_LENGTH = 400;
 type BuildOptions = {
   basePrompt?: string | null | undefined;
   extraVocab?: Array<string | null | undefined> | null | undefined;
-  identity?: SttPromptIdentity | null | undefined;
 };
 
 function sanitizeToken(token: string): string | null {
@@ -58,19 +52,7 @@ function baseVocabularyTokens(base: string): string[] {
 export function buildSTTPrompt(options?: BuildOptions): string {
   const base = (options?.basePrompt ?? DEFAULT_STT_PROMPT).trim();
 
-  // Split name by whitespace into separate vocabulary tokens
-  // e.g., "Sandeep Rajkumar" → ["Sandeep", "Rajkumar"]
-  // e.g., "John Doe Smith" → ["John", "Doe", "Smith"]
-  const nameTokens = options?.identity?.name
-    ? options.identity.name.split(/\s+/).filter(Boolean)
-    : [];
-
-  const identityTokens = formatTokens([
-    ...nameTokens,
-    options?.identity?.email ?? null,
-  ]);
-  const extraTokens = formatTokens(options?.extraVocab ?? []);
-  const combined = [...identityTokens, ...extraTokens];
+  const combined = formatTokens(options?.extraVocab ?? []);
   if (combined.length === 0) return base;
 
   const baseTokens = new Set(
@@ -82,8 +64,8 @@ export function buildSTTPrompt(options?: BuildOptions): string {
   if (filtered.length === 0) return base;
 
   // Add tokens one at a time, stopping before the prompt would exceed the
-  // length cap, so identity tokens (highest priority) are kept over
-  // lower-priority extra vocabulary when the list is long.
+  // length cap, so earlier (higher-priority) vocabulary survives when the
+  // list is long.
   let result = base;
   for (const token of filtered) {
     const candidate = `${result}, ${token}`;
