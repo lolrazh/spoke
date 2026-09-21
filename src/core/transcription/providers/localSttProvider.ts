@@ -7,7 +7,6 @@ export const localSttProvider: TranscriptionProvider = {
     id: LOCAL_STT_PROVIDER_ID,
     displayName: "Local Whisper",
     kind: "local",
-    requiresApiKey: false,
   },
   getAvailability: () => {
     const available =

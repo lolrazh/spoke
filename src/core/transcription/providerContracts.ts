@@ -10,7 +10,6 @@ export interface TranscriptionProviderDescriptor {
   id: string;
   displayName: string;
   kind: TranscriptionProviderKind;
-  requiresApiKey: boolean;
 }
 
 export interface TranscriptionProviderAvailability {

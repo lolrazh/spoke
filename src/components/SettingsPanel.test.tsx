@@ -3,8 +3,6 @@ import { waitFor } from "@testing-library/react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createRoot } from "react-dom/client";
 import { PermissionsProvider } from "../state/permissionsContext";
-import { buildTranscriptionProviderSettingsSnapshot } from "../core/transcription/providerCatalog";
-import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
 import {
   listModelInfos,
   DEFAULT_MODEL_ID,
@@ -80,16 +78,9 @@ describe("components/SettingsPanel", () => {
       onSelectedChanged: (_cb: (p: { id: string }) => void) => () => {},
       updateDevices: (_d: any, _s?: string) => {},
     } as any;
-    const providerSettings = buildTranscriptionProviderSettingsSnapshot({
-      preferredProviderId: LOCAL_STT_PROVIDER_ID,
-      localModelInstalled: false,
-    });
     const modelInfos = listModelInfos();
     (window as any).stt = {
       ...(window as any).stt,
-      getProviderSettings: vi.fn(async () => providerSettings),
-      setProviderApiKey: vi.fn(async () => providerSettings),
-      clearProviderApiKey: vi.fn(async () => providerSettings),
       getModelInfos: vi.fn(async () => modelInfos),
       getModelStatuses: vi.fn(async () =>
         modelInfos.map((info): import("../types/shared").ModelStatus => ({

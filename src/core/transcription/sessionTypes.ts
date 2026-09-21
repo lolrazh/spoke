@@ -3,7 +3,7 @@ import type { LocalModelTarget } from "../../types/shared";
 
 export type TranscriptionMode = "dictation" | "edit";
 
-export type TranscriptionProviderKind = "local" | "cloud";
+export type TranscriptionProviderKind = "local";
 
 export interface TranscriptionContext {
   mode: TranscriptionMode;

@@ -12,7 +12,6 @@ import { execSync } from "child_process";
 import fs from "node:fs";
 
 import { logger } from "./utils/logger";
-import { initProviderStore } from "./main/providerStore";
 import {
   stopLocalSidecar,
   syncLocalSidecarForCurrentProvider,
@@ -110,11 +109,10 @@ registerInsertTextAtCursorIpc();
 app.whenReady().then(async () => {
   installMainConsoleFileSink();
   bootTimeline.mark("app:when-ready");
-  // Initialize preferences and provider store
+  // Initialize preferences
   const userDataPath = app.getPath("userData");
   bootTimeline.measureSync("startup:init-preferences", () => {
     initPreferences(userDataPath);
-    initProviderStore(userDataPath);
   });
   bootTimeline.measureSync("startup:init-model-manager", () => {
     // Broadcast model download progress to every window. The model install runs
@@ -214,7 +212,7 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Stop the sidecar if current provider/model state cannot use it. Do not
+  // Stop the sidecar if the active model cannot use it. Do not
   // pre-spawn on startup; packaged PyInstaller + MLX cold starts can starve
   // first paint and make onboarding feel frozen.
   bootTimeline.mark("startup:sync-sidecar-scheduled");
@@ -229,9 +227,6 @@ app.whenReady().then(async () => {
   const fontSrc = "font-src 'self' data:";
   const connect = [
     "connect-src 'self'",
-    "https://api.openai.com",
-    "https://api.groq.com",
-    "https://api.deepgram.com",
     ...(isDev
       ? [
           "http://localhost:*",

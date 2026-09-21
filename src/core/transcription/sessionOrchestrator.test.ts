@@ -11,27 +11,25 @@ const localProvider: TranscriptionProvider = {
     id: "local",
     displayName: "Local",
     kind: "local",
-    requiresApiKey: false,
   },
   transcribe: async () => ({ text: "local transcript" }),
 };
 
-const cloudProvider: TranscriptionProvider = {
+const secondaryProvider: TranscriptionProvider = {
   descriptor: {
-    id: "cloud",
-    displayName: "Cloud",
-    kind: "cloud",
-    requiresApiKey: true,
+    id: "secondary",
+    displayName: "Secondary",
+    kind: "local",
   },
   prepare: async () => ({}),
-  transcribe: async () => ({ text: "cloud transcript" }),
+  transcribe: async () => ({ text: "secondary transcript" }),
 };
 
 describe("createSessionOrchestrator", () => {
   it("uses the configured default provider", async () => {
     const orchestrator = createSessionOrchestrator({
-      providers: [localProvider, cloudProvider],
-      defaultProviderId: "cloud",
+      providers: [localProvider, secondaryProvider],
+      defaultProviderId: "secondary",
     });
 
     const result = await orchestrator.transcribe(undefined, {
@@ -39,8 +37,8 @@ describe("createSessionOrchestrator", () => {
       context: { mode: "dictation" },
     });
 
-    expect(orchestrator.defaultProviderId).toBe("cloud");
-    expect(result.text).toBe("cloud transcript");
+    expect(orchestrator.defaultProviderId).toBe("secondary");
+    expect(result.text).toBe("secondary transcript");
   });
 
   it("returns null when a provider has no prepare phase", async () => {

@@ -185,28 +185,6 @@ contextBridge.exposeInMainWorld("stt", {
     return () =>
       ipcRenderer.removeListener("stt:local-stream-partial", listener);
   },
-  transcribeApiKeyProvider: (
-    providerId: string,
-    payload: {
-      audioBuffer: ArrayBuffer;
-      mimeType?: string;
-      context: unknown;
-    },
-  ) =>
-    ipcRenderer.invoke("stt:transcribe-api-key-provider", {
-      providerId,
-      audioBuffer: new Uint8Array(payload.audioBuffer),
-      mimeType: payload.mimeType,
-      context: payload.context,
-    }),
-  getProviderSettings: () => ipcRenderer.invoke("stt:get-provider-settings"),
-  getPreferredProvider: () => ipcRenderer.invoke("stt:get-preferred-provider"),
-  setPreferredProvider: (providerId: string) =>
-    ipcRenderer.invoke("stt:set-preferred-provider", providerId),
-  setProviderApiKey: (providerId: string, apiKey: string) =>
-    ipcRenderer.invoke("stt:set-provider-api-key", { providerId, apiKey }),
-  clearProviderApiKey: (providerId: string) =>
-    ipcRenderer.invoke("stt:clear-provider-api-key", providerId),
   getModelStatus: () => ipcRenderer.invoke("stt:get-model-status"),
   getModelStatuses: () => ipcRenderer.invoke("stt:get-model-statuses"),
   getModelInfos: () => ipcRenderer.invoke("stt:get-model-infos"),

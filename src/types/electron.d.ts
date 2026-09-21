@@ -9,15 +9,6 @@ import type {
   TranscriptionItem,
   LocalTranscribeResult,
 } from "./shared";
-import type {
-  ApiKeyTranscriptionProviderId,
-  TranscriptionProviderSettingsSnapshot,
-} from "../core/transcription/providerCatalog";
-import type { PreferredTranscriptionProviderId } from "../core/transcription/providerPreferences";
-import type {
-  TranscriptionContext,
-  TranscriptionResult,
-} from "../core/transcription/sessionTypes";
 
 type UpdateStatus =
   | "idle"
@@ -200,26 +191,6 @@ declare global {
       onLocalStreamPartial: (
         cb: (payload: { sessionId: string; text: string }) => void,
       ) => () => void;
-      transcribeApiKeyProvider: (
-        providerId: ApiKeyTranscriptionProviderId,
-        payload: {
-          audioBuffer: ArrayBuffer;
-          mimeType?: string;
-          context: TranscriptionContext;
-        },
-      ) => Promise<TranscriptionResult>;
-      getProviderSettings: () => Promise<TranscriptionProviderSettingsSnapshot>;
-      getPreferredProvider: () => Promise<PreferredTranscriptionProviderId>;
-      setPreferredProvider: (
-        providerId: PreferredTranscriptionProviderId,
-      ) => Promise<void>;
-      setProviderApiKey: (
-        providerId: ApiKeyTranscriptionProviderId,
-        apiKey: string,
-      ) => Promise<TranscriptionProviderSettingsSnapshot>;
-      clearProviderApiKey: (
-        providerId: ApiKeyTranscriptionProviderId,
-      ) => Promise<TranscriptionProviderSettingsSnapshot>;
       getModelStatus: () => Promise<import("./shared").ModelStatus>;
       getModelStatuses: () => Promise<import("./shared").ModelStatus[]>;
       getModelInfos: () => Promise<import("./shared").LocalModelInfo[]>;

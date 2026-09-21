@@ -1,5 +1,4 @@
 import type { LocalTranscribeResult } from "../types/shared";
-import { isPreferredProviderLocal } from "./providerStore";
 import {
   getActiveModelId,
   getModelStatus,
@@ -240,10 +239,7 @@ function queueLocalSidecarPrewarm(
     }
 
     const modelId = getActiveModelId();
-    if (
-      !isPreferredProviderLocal() ||
-      getModelInstallState(modelId) !== "ready"
-    ) {
+    if (getModelInstallState(modelId) !== "ready") {
       releaseQueuedPrewarm();
       return;
     }
@@ -260,7 +256,6 @@ function queueLocalSidecarPrewarm(
         task.cancelled ||
         generation !== prewarmGeneration ||
         getActiveModelId() !== modelId ||
-        !isPreferredProviderLocal() ||
         getModelInstallState(modelId) !== "ready"
       ) {
         return;
@@ -284,18 +279,16 @@ function queueLocalSidecarPrewarm(
 }
 
 export function prewarmLocalSidecar(reason: string): void {
-  if (isPreferredProviderLocal()) {
-    const modelId = getActiveModelId();
-    if (
-      isSidecarRunning() &&
-      getSidecarModelId() === modelId &&
-      getModelInstallState(modelId) === "ready"
-    ) {
-      // A warm sidecar needs no lifecycle queue work. PTT calls this on every
-      // key-down, so only refresh the idle watchdog in the common case.
-      armIdleTimer();
-      return;
-    }
+  const modelId = getActiveModelId();
+  if (
+    isSidecarRunning() &&
+    getSidecarModelId() === modelId &&
+    getModelInstallState(modelId) === "ready"
+  ) {
+    // A warm sidecar needs no lifecycle queue work. PTT calls this on every
+    // key-down, so only refresh the idle watchdog in the common case.
+    armIdleTimer();
+    return;
   }
   queueLocalSidecarPrewarm(reason, prewarmGeneration, Promise.resolve());
 }
@@ -318,7 +311,7 @@ export function abortLocalSidecarTranscription(): void {
 }
 
 export async function syncLocalSidecarForCurrentProvider(): Promise<void> {
-  if (!isPreferredProviderLocal() || getModelInstallState() !== "ready") {
+  if (getModelInstallState() !== "ready") {
     await stopLocalSidecar();
   }
 }
@@ -371,7 +364,6 @@ export function selectActiveModel(modelId: string): void {
   }
 
   setActiveModelId(modelId);
-  if (!isPreferredProviderLocal()) return;
 
   clearIdleTimer();
   const stalePrewarmStop = cancelPendingPrewarm();
