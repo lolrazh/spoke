@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { AnimatePresence, m } from "framer-motion";
 import { Switch } from "./ui/switch";
-import { NativeSelect } from "./ui/native-select";
+import { CompactSelect } from "./ui/compact-select";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
 import Spinner from "./ui/Spinner";
@@ -126,12 +126,12 @@ const SelectField: React.FC<{
       }
       inGroup={inGroup}
     >
-      <NativeSelect
+      <CompactSelect
         aria-label={label}
         value={value}
         onValueChange={onChange}
         options={options}
-        className="ml-2 w-48"
+        className="ml-2 w-44"
       />
     </SettingsCard>
   );
