@@ -1,6 +1,5 @@
 import React, {
   useCallback,
-  lazy,
   Suspense,
   useLayoutEffect,
   useRef,
@@ -29,23 +28,11 @@ type PillMetrics = {
 
 import type { PillStateType } from "../state/pillStateMachine";
 
-const SettingsPanel = lazy(() => {
-  window.electron?.bootMark?.("settings-panel:import:start");
-  return import("./SettingsPanel").then((module) => {
-    window.electron?.bootMark?.("settings-panel:import:done");
-    return module;
-  });
-});
-
-const PermissionsPanel = lazy(() => {
-  window.electron?.bootMark?.("permissions-panel:import:start");
-  return import("./PermissionsPanel").then((module) => {
-    window.electron?.bootMark?.("permissions-panel:import:done");
-    return module;
-  });
-});
-
-const SfIcon = lazy(() => import("./icons/SfIcon"));
+import {
+  PermissionsPanelChunk as PermissionsPanel,
+  SettingsPanelChunk as SettingsPanel,
+  SfIconChunk as SfIcon,
+} from "./panelChunks";
 
 // The idle content crossfades between its own states, but when the pill is
 // expanding it must get out of the way at once: with AnimatePresence in
