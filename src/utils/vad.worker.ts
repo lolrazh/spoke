@@ -32,34 +32,18 @@ function post(response: VadWorkerResponse): void {
 }
 
 // NonRealTimeVAD keeps every processed frame so it can return speech audio.
-// StreamingVAD only consumes boundary events, so release those frame views
-// after each model call while keeping the small isSpeech history intact.
-let releasedAudioBuffer:
-  | FrameProcessorWithAudioBuffer["audioBuffer"]
-  | null = null;
-let releasedAudioFrameCount = 0;
-
+// StreamingVAD only consumes boundary events, and each frame's buffer is
+// transferred back to the renderer after the model call, so every retained
+// view must be dropped before then. FrameProcessor shifts its pre-speech
+// window while idle, which a cursor cannot track reliably; the buffer is at
+// most a few hundred entries, so releasing all of them each call is cheap.
 function releaseBufferedAudioFrames(): void {
   const frameProcessor = vad?.frameProcessor as unknown as
     | FrameProcessorWithAudioBuffer
     | undefined;
   const audioBuffer = frameProcessor?.audioBuffer;
   if (!audioBuffer) return;
-
-  // FrameProcessor replaces audioBuffer when a segment ends, and may shift
-  // its short pre-speech window while idle. Reset the cursor for either case.
-  if (
-    releasedAudioBuffer !== audioBuffer ||
-    releasedAudioFrameCount > audioBuffer.length
-  ) {
-    releasedAudioBuffer = audioBuffer;
-    releasedAudioFrameCount = 0;
-  }
-
-  for (let index = releasedAudioFrameCount; index < audioBuffer.length; index++) {
-    audioBuffer[index].frame = EMPTY_AUDIO_FRAME;
-  }
-  releasedAudioFrameCount = audioBuffer.length;
+  for (const entry of audioBuffer) entry.frame = EMPTY_AUDIO_FRAME;
 }
 
 const EMPTY_AUDIO_FRAME = new Float32Array(0);
