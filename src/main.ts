@@ -74,10 +74,6 @@ bootTimeline.mark("main:module-loaded", {
   pid: process.pid,
 });
 
-// Disable Chromium's HTTP cache. Must be set before app is ready — command
-// line switches appended after that point are silently ignored.
-app.commandLine.appendSwitch("disable-http-cache");
-
 // Ensure a single running app instance.
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
