@@ -27,9 +27,6 @@ import {
   isOnboardingStep,
   type OnboardingStep,
 } from "./onboardingFlow";
-import {
-  ENABLE_SCREEN_CONTEXT,
-} from "../config/featureFlags";
 import { HOLD_DURATION_MS, DOUBLE_TAP_MS } from "../constants/gestures";
 import { createLogger } from "../utils/logger";
 import {
@@ -77,14 +74,6 @@ const mockPermissions: PermissionProvider & { resetPermissions?: () => void } =
       granted: false,
     }),
     requestMicrophonePermission: async () => ({ success: true, granted: true }),
-    checkScreenRecordingPermission: async () => ({
-      status: "denied",
-      granted: false,
-    }),
-    requestScreenRecordingPermission: async () => ({
-      success: true,
-      granted: true,
-    }),
     askIM: async () => ({ success: true, status: "authorized" }),
     requestAccessibilityPermission: async () => ({ success: true }),
     openSystemPreferences: () => undefined,
@@ -127,10 +116,6 @@ const Onboarding: React.FC = () => {
           checkMicrophonePermission: mockPermissions.checkMicrophonePermission,
           requestMicrophonePermission:
             mockPermissions.requestMicrophonePermission,
-          checkScreenRecordingPermission:
-            mockPermissions.checkScreenRecordingPermission,
-          requestScreenRecordingPermission:
-            mockPermissions.requestScreenRecordingPermission,
           askIM: mockPermissions.askIM,
           requestAccessibilityPermission:
             mockPermissions.requestAccessibilityPermission,
@@ -145,10 +130,7 @@ const Onboarding: React.FC = () => {
     requestAccessibility,
     requestInputMonitoring,
     setPermissions,
-  } = usePermissions(mockProvider, {
-    pollIntervalMs: 1000,
-    includeScreenRecording: ENABLE_SCREEN_CONTEXT,
-  });
+  } = usePermissions(mockProvider, { pollIntervalMs: 1000 });
   const isDev = devFlags.isDevelopment;
   const [pttApiReady, setPttApiReady] = useState(false);
   const [optKeyPressed, setOptKeyPressed] = useState(false);
@@ -254,8 +236,7 @@ const Onboarding: React.FC = () => {
   const allPermissionsGranted =
     permissions.microphone &&
     permissions.accessibility &&
-    permissions.inputMonitoring &&
-    (!ENABLE_SCREEN_CONTEXT || permissions.screenRecording);
+    permissions.inputMonitoring;
   useEffect(() => {
     if (currentStep !== "transcription-setup") return;
     if (!transcriptionSetupReady) return;
@@ -711,7 +692,6 @@ const Onboarding: React.FC = () => {
                     // Quick reset for development
                     setPermissions({
                       microphone: false,
-                      screenRecording: false,
                       accessibility: false,
                       inputMonitoring: false,
                     });

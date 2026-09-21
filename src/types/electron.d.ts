@@ -105,15 +105,6 @@ declare global {
         status: string;
         granted: boolean;
       }>;
-      requestScreenRecordingPermission: () => Promise<{
-        success: boolean;
-        granted?: boolean;
-        error?: string;
-      }>;
-      checkScreenRecordingPermission: () => Promise<{
-        status: string;
-        granted: boolean;
-      }>;
       openSystemPreferences: (pane: string) => Promise<void>;
       startHelper: () => Promise<void>;
       preparePill: () => Promise<{ success: boolean; error?: string } | void>;

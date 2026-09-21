@@ -18,14 +18,6 @@ function createProvider(): PermissionProvider {
       success: true,
       granted: true,
     })),
-    checkScreenRecordingPermission: vi.fn(async () => ({
-      granted: true,
-      status: "granted",
-    })),
-    requestScreenRecordingPermission: vi.fn(async () => ({
-      success: true,
-      granted: true,
-    })),
     askIM: vi.fn(async () => ({
       success: true,
       status: "authorized",
@@ -49,7 +41,7 @@ describe("usePermissions", () => {
     let renders = 0;
     const { result } = renderHook(() => {
       renders += 1;
-      return usePermissions(provider, { includeScreenRecording: true });
+      return usePermissions(provider);
     });
 
     await act(async () => {
@@ -67,7 +59,6 @@ describe("usePermissions", () => {
     expect(renders).toBe(rendersAfterFirstInit);
     expect(provider.checkPermissions).toHaveBeenCalledTimes(2);
     expect(provider.checkMicrophonePermission).toHaveBeenCalledTimes(2);
-    expect(provider.checkScreenRecordingPermission).toHaveBeenCalledTimes(2);
   });
 
   it("coalesces concurrent permission initializations", async () => {
@@ -78,9 +69,7 @@ describe("usePermissions", () => {
       isDev?: boolean;
     }>();
     provider.checkPermissions = vi.fn(() => systemCheck.promise);
-    const { result } = renderHook(() =>
-      usePermissions(provider, { includeScreenRecording: true }),
-    );
+    const { result } = renderHook(() => usePermissions(provider));
 
     const first = result.current.init();
     const second = result.current.init();
@@ -88,7 +77,6 @@ describe("usePermissions", () => {
     expect(second).toBe(first);
     expect(provider.checkPermissions).toHaveBeenCalledOnce();
     expect(provider.checkMicrophonePermission).toHaveBeenCalledOnce();
-    expect(provider.checkScreenRecordingPermission).toHaveBeenCalledOnce();
 
     await act(async () => {
       systemCheck.resolve({ needAX: false, needIM: false, isDev: false });
