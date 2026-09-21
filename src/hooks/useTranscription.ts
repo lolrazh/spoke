@@ -37,11 +37,9 @@ import { setLiveTranscript } from "../state/liveTranscript";
 import {
   POST_ROLL_MS,
   LOCAL_DICTATION_MAX_DURATION_MS,
-  LOCAL_STT_CHUNK_NATURAL_START_MS,
-  LOCAL_STT_CHUNK_FORCED_MS,
-  LOCAL_STT_CHUNK_MIN_NATURAL_MS,
-  LOCAL_STT_CHUNK_OVERLAP_MS,
-  LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
+  LOCAL_STT_CHUNK_MIN_MS,
+  LOCAL_STT_CHUNK_MAX_MS,
+  LOCAL_STT_CHUNK_PAUSE_GUARD_MS,
   TARGET_SAMPLE_RATE_HZ,
 } from "../config/audio";
 import type {
@@ -373,12 +371,9 @@ export function useTranscription(
       if (provider.descriptor.kind === "local" && !localStreamingDictation) {
         localChunkedDictation = await createLocalChunkedDictation({
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
-          naturalChunkingStartMs: LOCAL_STT_CHUNK_NATURAL_START_MS,
-          minNaturalChunkMs: LOCAL_STT_CHUNK_MIN_NATURAL_MS,
-          forcedChunkMs: LOCAL_STT_CHUNK_FORCED_MS,
-          overlapMs: LOCAL_STT_CHUNK_OVERLAP_MS,
-          naturalBoundaryDelayMs:
-            LOCAL_STT_CHUNK_NATURAL_BOUNDARY_DELAY_MS,
+          minChunkMs: LOCAL_STT_CHUNK_MIN_MS,
+          maxChunkMs: LOCAL_STT_CHUNK_MAX_MS,
+          pauseGuardMs: LOCAL_STT_CHUNK_PAUSE_GUARD_MS,
           maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
           transcribe: (audio) => {
             return orchestrator.transcribe(providerId, {
@@ -404,8 +399,8 @@ export function useTranscription(
       const streamingVadSession = localStreamingDictation
         ? null
         : await loadStreamingVadSession({
-            onSpeechStart: () => localChunkedDictation?.cancelNaturalBoundary(),
-            onSpeechEnd: () => localChunkedDictation?.requestNaturalBoundary(),
+            onSpeechStart: () => localChunkedDictation?.noteSpeechStart(),
+            onSpeechEnd: (endMs) => localChunkedDictation?.noteSpeechEnd(endMs),
           });
       streamingVadRef.current = streamingVadSession;
 

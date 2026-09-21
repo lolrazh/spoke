@@ -7,53 +7,60 @@ import { Pcm16Accumulator } from "../../utils/pcm16Accumulator";
 
 export interface LocalChunkedDictationOptions {
   sampleRateHz: number;
-  minNaturalChunkMs: number;
-  naturalChunkingStartMs?: number;
-  forcedChunkMs: number;
-  overlapMs: number;
-  naturalBoundaryDelayMs?: number;
+  /** Shortest chunk a sentence pause may close. Shorter recordings stay single-shot. */
+  minChunkMs: number;
+  /** Longest chunk before the pending audio is cut at its most recent pause. */
+  maxChunkMs: number;
+  /** Silence that must follow a VAD speech end before it counts as a sentence pause. */
+  pauseGuardMs?: number;
   maxDurationMs: number;
   transcribe: (audio: CapturedAudio) => Promise<TranscriptionResult>;
   onLimitReached: () => void;
 }
 
+// A tail shorter than this with no detected speech is silence or a breath;
+// sending it only invites a hallucinated word.
+const MIN_UNVOICED_TAIL_MS = 500;
+
 /**
- * Holds only the current local-STT request while recording. Completed chunks
- * are immediately handed to the caller, so a long dictation never becomes one
- * enormous renderer buffer or one unbounded sidecar inference.
+ * Cuts a long dictation into bounded sidecar requests at points where the
+ * speaker is silent, so no audio is ever transcribed twice and no word is
+ * split across two requests.
+ *
+ * - A sentence pause (VAD speech end followed by `pauseGuardMs` of silence)
+ *   closes the pending audio once it is at least `minChunkMs` long.
+ * - If the speaker never pauses that long, the pending audio is cut at its
+ *   most recent VAD speech end once it reaches `maxChunkMs`. Only a speaker
+ *   who produces no detectable gap at all is cut mid-stream.
  */
 export class LocalChunkedDictation {
   private readonly pendingPcm = new Pcm16Accumulator();
   private readonly chunkTasks: Promise<
     { result: TranscriptionResult } | { error: unknown }
   >[] = [];
-  private pendingSamples = 0;
-  private freshSamples = 0;
   private totalSamples = 0;
-  private naturalBoundaryRequested = false;
-  private naturalBoundaryReady = false;
-  private naturalBoundaryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Absolute sample index where the pending audio begins. */
+  private sealedSamples = 0;
+  /** Absolute sample index of the latest VAD speech end inside pending audio. */
+  private lastSpeechEndSample: number | null = null;
+  private speaking = false;
+  private speechInPending = false;
+  private pauseTimer: ReturnType<typeof setTimeout> | null = null;
   private limitReached = false;
   private finished = false;
   private dispatchedChunkCount = 0;
   private readonly maxSamples: number;
-  private readonly minNaturalChunkSamples: number;
-  private readonly naturalChunkingStartSamples: number;
-  private readonly forcedChunkSamples: number;
+  private readonly minChunkSamples: number;
+  private readonly maxChunkSamples: number;
+  private readonly minUnvoicedTailSamples: number;
 
   constructor(private readonly options: LocalChunkedDictationOptions) {
     const samplesPerMs = options.sampleRateHz / 1000;
-    this.maxSamples = Math.round(
-      (options.maxDurationMs * options.sampleRateHz) / 1000,
-    );
-    this.minNaturalChunkSamples = Math.ceil(
-      options.minNaturalChunkMs * samplesPerMs,
-    );
-    this.naturalChunkingStartSamples = Math.ceil(
-      (options.naturalChunkingStartMs ?? 0) * samplesPerMs,
-    );
-    this.forcedChunkSamples = Math.ceil(
-      options.forcedChunkMs * samplesPerMs,
+    this.maxSamples = Math.round(options.maxDurationMs * samplesPerMs);
+    this.minChunkSamples = Math.ceil(options.minChunkMs * samplesPerMs);
+    this.maxChunkSamples = Math.ceil(options.maxChunkMs * samplesPerMs);
+    this.minUnvoicedTailSamples = Math.ceil(
+      MIN_UNVOICED_TAIL_MS * samplesPerMs,
     );
   }
 
@@ -67,9 +74,11 @@ export class LocalChunkedDictation {
       frame.length <= remainingSamples
         ? frame
         : frame.subarray(0, remainingSamples);
+    // Never let a chunk grow past the maximum: cut before this frame lands.
+    if (this.pendingSamples + acceptedFrame.length > this.maxChunkSamples) {
+      this.sealAtLastPause();
+    }
     this.pendingPcm.append(acceptedFrame);
-    this.pendingSamples += acceptedFrame.length;
-    this.freshSamples += acceptedFrame.length;
     this.totalSamples += acceptedFrame.length;
 
     if (!this.limitReached && this.totalSamples >= this.maxSamples) {
@@ -77,59 +86,53 @@ export class LocalChunkedDictation {
       this.options.onLimitReached();
     }
 
-    if (this.pendingSamples >= this.forcedChunkSamples) {
-      this.seal();
-    } else if (
-      this.naturalBoundaryReady &&
-      this.pendingSamples >= this.minNaturalChunkSamples
-    ) {
-      this.seal();
+    if (this.pendingSamples >= this.maxChunkSamples) {
+      this.sealAtLastPause();
     }
   }
 
-  /** Called by streaming VAD after it confirms a speech segment ended. */
-  requestNaturalBoundary(): void {
-    if (
-      this.finished ||
-      this.totalSamples < this.naturalChunkingStartSamples
-    ) {
-      return;
-    }
-
-    if (this.naturalBoundaryRequested) return;
-    this.naturalBoundaryRequested = true;
-
-    const delayMs = this.options.naturalBoundaryDelayMs ?? 0;
-    if (delayMs <= 0) {
-      this.naturalBoundaryReady = true;
-      this.trySealNaturalBoundary();
-      return;
-    }
-
-    this.naturalBoundaryTimer = setTimeout(() => {
-      this.naturalBoundaryTimer = null;
-      this.naturalBoundaryReady = true;
-      this.trySealNaturalBoundary();
-    }, delayMs);
+  /** Called by streaming VAD when speech resumes after a pause. */
+  noteSpeechStart(): void {
+    this.speaking = true;
+    this.speechInPending = true;
+    this.clearPauseTimer();
   }
 
-  /** Called by streaming VAD when speech resumes during the pause guard. */
-  cancelNaturalBoundary(): void {
-    this.clearNaturalBoundaryTimer();
-    this.naturalBoundaryRequested = false;
-    this.naturalBoundaryReady = false;
+  /** Called by streaming VAD once a speech segment ended at `endMs`. */
+  noteSpeechEnd(endMs: number): void {
+    if (this.finished) return;
+    this.speaking = false;
+
+    const endSample = Math.min(
+      this.totalSamples,
+      Math.round((endMs * this.options.sampleRateHz) / 1000),
+    );
+    // A late event for audio that was already sealed carries no boundary.
+    if (endSample <= this.sealedSamples) return;
+    this.lastSpeechEndSample = endSample;
+
+    if (this.pendingSamples < this.minChunkSamples) return;
+    this.clearPauseTimer();
+    const guardMs = this.options.pauseGuardMs ?? 0;
+    if (guardMs <= 0) {
+      this.seal(this.pendingSamples);
+      return;
+    }
+    this.pauseTimer = setTimeout(() => {
+      this.pauseTimer = null;
+      if (!this.finished && this.pendingSamples >= this.minChunkSamples) {
+        this.seal(this.pendingSamples);
+      }
+    }, guardMs);
   }
 
   /** Stop future chunk dispatches when the caller is using single-shot audio. */
   discardPendingAudio(): void {
     if (this.finished) return;
     this.finished = true;
-    this.clearNaturalBoundaryTimer();
-    this.naturalBoundaryRequested = false;
-    this.naturalBoundaryReady = false;
+    this.clearPauseTimer();
     this.pendingPcm.clear();
-    this.pendingSamples = 0;
-    this.freshSamples = 0;
+    this.sealedSamples = this.totalSamples;
   }
 
   /**
@@ -143,11 +146,8 @@ export class LocalChunkedDictation {
     }
 
     this.finished = true;
-    this.clearNaturalBoundaryTimer();
-    this.naturalBoundaryRequested = false;
-    this.naturalBoundaryReady = false;
-    this.pendingSamples = 0;
-    this.freshSamples = 0;
+    this.clearPauseTimer();
+    this.sealedSamples = this.totalSamples;
 
     return createCapturedAudio(this.pendingPcm.take(), {
       sampleRateHz: this.options.sampleRateHz,
@@ -157,9 +157,15 @@ export class LocalChunkedDictation {
   async finish(): Promise<TranscriptionResult[]> {
     if (!this.finished) {
       this.finished = true;
-      this.clearNaturalBoundaryTimer();
-      if (this.freshSamples > 0) {
-        this.seal();
+      this.clearPauseTimer();
+      const tail = this.pendingSamples;
+      if (
+        tail > 0 &&
+        (this.speechInPending || this.speaking || tail >= this.minUnvoicedTailSamples)
+      ) {
+        this.seal(tail);
+      } else {
+        this.pendingPcm.clear();
       }
     }
     const settled = await Promise.all(this.chunkTasks);
@@ -181,27 +187,40 @@ export class LocalChunkedDictation {
     return this.dispatchedChunkCount > 0;
   }
 
-  private seal(): void {
-    if (this.freshSamples === 0) return;
+  private get pendingSamples(): number {
+    return this.totalSamples - this.sealedSamples;
+  }
 
-    this.clearNaturalBoundaryTimer();
-    const pcm16 = this.pendingPcm.take();
-    const overlapSamples = Math.min(
-      pcm16.length,
-      Math.round((this.options.overlapMs * this.options.sampleRateHz) / 1000),
-    );
-    // Keep the overlap as a view. The next accumulator copies it into its own
-    // storage, so allocating a separate sliced buffer here only adds one
-    // temporary allocation and copy per sealed chunk.
-    const overlap =
-      overlapSamples > 0 ? pcm16.subarray(-overlapSamples) : null;
-    if (overlap && overlap.length > 0) this.pendingPcm.append(overlap);
-    this.pendingSamples = overlap?.length ?? 0;
-    this.freshSamples = 0;
-    this.naturalBoundaryRequested = false;
-    this.naturalBoundaryReady = false;
+  /** The pending audio hit its cap without a sentence pause; cut at the last gap. */
+  private sealAtLastPause(): void {
+    const cutSample =
+      this.lastSpeechEndSample !== null
+        ? this.lastSpeechEndSample - this.sealedSamples
+        : 0;
+    // A gap early in the chunk would leave an oversized remainder, which
+    // would only be cut mid-stream a moment later. Prefer one clean cut now.
+    const usable = cutSample >= this.minChunkSamples;
+    this.seal(usable ? cutSample : this.pendingSamples);
+  }
 
-    const audio = createCapturedAudio(pcm16, {
+  private seal(chunkSamples: number): void {
+    if (chunkSamples <= 0) return;
+
+    this.clearPauseTimer();
+    const pending = this.pendingPcm.take();
+    const chunk =
+      chunkSamples >= pending.length ? pending : pending.subarray(0, chunkSamples);
+    if (chunkSamples < pending.length) {
+      // The remainder starts the next chunk. Copy it into fresh storage so the
+      // sealed chunk's buffer is released once its request completes.
+      this.pendingPcm.append(pending.subarray(chunkSamples));
+    }
+    this.sealedSamples += chunk.length;
+    this.lastSpeechEndSample = null;
+    // Speech in progress at the cut continues into the remainder.
+    this.speechInPending = this.speaking;
+
+    const audio = createCapturedAudio(chunk, {
       sampleRateHz: this.options.sampleRateHz,
     });
     this.dispatchedChunkCount += 1;
@@ -216,57 +235,41 @@ export class LocalChunkedDictation {
     );
   }
 
-  private trySealNaturalBoundary(): void {
-    if (
-      !this.finished &&
-      this.naturalBoundaryReady &&
-      this.pendingSamples >= this.minNaturalChunkSamples
-    ) {
-      this.seal();
+  private clearPauseTimer(): void {
+    if (this.pauseTimer !== null) {
+      clearTimeout(this.pauseTimer);
+      this.pauseTimer = null;
     }
   }
-
-  private clearNaturalBoundaryTimer(): void {
-    if (this.naturalBoundaryTimer !== null) {
-      clearTimeout(this.naturalBoundaryTimer);
-      this.naturalBoundaryTimer = null;
-    }
-  }
-
 }
 
-/** Join chunk results without repeating words generated from the overlap. */
+const SENTENCE_END_RE = /[.!?…]["'”’)\]]*$/;
+// "I", "I'm", "I'll"... or a token with a second capital (an acronym) keeps
+// its case; anything else starting a chunk mid-sentence is a plain word.
+const KEEP_CASE_RE = /^(?:I(?=$|[^\p{L}])|\S*\p{Lu}\S*\p{Lu})/u;
+
+/**
+ * Join chunk texts. Chunks never share audio, so there is nothing to dedupe;
+ * the only seam work is lowercasing a chunk that resumes a sentence the
+ * previous chunk left open, since a fresh request always starts with a capital.
+ */
 export function mergeLocalChunkTexts(
   results: readonly TranscriptionResult[],
 ): string {
-  const merged: string[] = [];
+  let merged = "";
   for (const result of results) {
-    const trimmed = result.text.trim();
-    if (trimmed.length === 0) continue;
-    const next = trimmed.split(/\s+/);
-    const maxOverlap = Math.min(12, merged.length, next.length);
-    let overlap = 0;
-    for (let size = maxOverlap; size > 0; size--) {
-      let matches = true;
-      for (let index = 0; index < size; index++) {
-        const previousWord = normalizeWord(merged[merged.length - size + index]);
-        if (previousWord !== normalizeWord(next[index])) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) {
-        overlap = size;
-        break;
-      }
+    let text = result.text.trim();
+    if (text.length === 0) continue;
+    if (merged.length > 0 && !SENTENCE_END_RE.test(merged)) {
+      text = lowercaseContinuation(text);
     }
-    for (let index = overlap; index < next.length; index++) {
-      merged.push(next[index]);
-    }
+    merged = merged.length === 0 ? text : `${merged} ${text}`;
   }
-  return merged.join(" ");
+  return merged;
 }
 
-function normalizeWord(word: string): string {
-  return word.toLowerCase().replace(/^\p{P}+|\p{P}+$/gu, "");
+function lowercaseContinuation(text: string): string {
+  const firstWord = text.split(/\s+/, 1)[0];
+  if (KEEP_CASE_RE.test(firstWord)) return text;
+  return text[0].toLowerCase() + text.slice(1);
 }

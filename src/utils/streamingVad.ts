@@ -77,8 +77,8 @@ export interface StreamingVadSessionHandle {
 export interface StreamingVadSessionOptions {
   /** Invoked when VAD detects speech resuming after a pause. */
   onSpeechStart?: () => void;
-  /** Invoked after the VAD confirms a speech segment ended. */
-  onSpeechEnd?: () => void;
+  /** Invoked after the VAD confirms a speech segment ended at `endMs`. */
+  onSpeechEnd?: (endMs: number) => void;
 }
 
 export function createStreamingVadSession(
@@ -145,7 +145,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
     private readonly preSpeechPadMs = VAD_PRE_SPEECH_PAD_MS,
     private readonly redemptionMs = VAD_REDEMPTION_MS,
     private readonly onSpeechStart?: () => void,
-    private readonly onSpeechEnd?: () => void,
+    private readonly onSpeechEnd?: (endMs: number) => void,
   ) {
     this.initializePromise = this.initialize();
   }
@@ -329,7 +329,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
         this.segments.push({ startMs, endMs });
         this.speaking = false;
         this.speechEndAtMs = endMs;
-        this.onSpeechEnd?.();
+        this.onSpeechEnd?.(endMs);
         break;
       }
       case "misfire":

@@ -382,7 +382,7 @@ describe("useTranscription", () => {
       .mockImplementationOnce(() => {
         throw new Error("Provider resolution failed");
       });
-    let notifySpeechEnd: (() => void) | undefined;
+    let notifySpeechEnd: ((endMs: number) => void) | undefined;
     mockCreateStreamingVadSession.mockImplementationOnce((options) => {
       notifySpeechEnd = options.onSpeechEnd;
       return createUnusableStreamingVadSessionFake();
@@ -401,14 +401,14 @@ describe("useTranscription", () => {
         .__lastWorklet as FakeAudioWorkletNode | null;
       expect(worklet).toBeTruthy();
 
-      // Cross the forced chunk boundary, then leave enough fresh audio for a
-      // delayed natural-boundary timer to dispatch if cleanup misses it.
-      worklet?.emitAudio(new Int16Array(400_000));
+      // Cross the maximum chunk length, then leave enough fresh audio for a
+      // delayed sentence-pause timer to dispatch if cleanup misses it.
+      worklet?.emitAudio(new Int16Array(480_000));
       expect(window.stt.transcribeLocal).toHaveBeenCalledTimes(1);
       (window.stt.transcribeLocal as any).mockClear();
-      worklet?.emitAudio(new Int16Array(128_000));
+      worklet?.emitAudio(new Int16Array(256_000));
       expect(notifySpeechEnd).toBeTypeOf("function");
-      notifySpeechEnd?.();
+      notifySpeechEnd?.(45_000);
 
       await act(async () => {
         await result.current.stop();
