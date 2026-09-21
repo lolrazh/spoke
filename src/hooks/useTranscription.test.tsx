@@ -117,8 +117,6 @@ Object.defineProperty(window, "notifications", {
 
 Object.defineProperty(window, "stt", {
   value: {
-    getPreferredProvider: vi.fn(() => Promise.resolve("local-stt")),
-    setPreferredProvider: vi.fn(() => Promise.resolve()),
     getModelStatus: vi.fn(() =>
       Promise.resolve({
         state: "ready",
@@ -152,7 +150,6 @@ describe("useTranscription", () => {
     vi.clearAllMocks();
     mockFetch.mockClear();
     (globalThis as any).__lastWorklet = null;
-    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "",
       metrics: {},
@@ -211,7 +208,6 @@ describe("useTranscription", () => {
   });
 
   it("keeps batch results out of live text and ignores duplicate stops", async () => {
-    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockImplementation(
       () =>
         new Promise((resolve) =>
@@ -269,7 +265,6 @@ describe("useTranscription", () => {
   });
 
   it("resolves the stored local provider before the first start call", async () => {
-    (window.stt.getPreferredProvider as any).mockResolvedValue("local-stt");
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "Local on first start",
       metrics: {},

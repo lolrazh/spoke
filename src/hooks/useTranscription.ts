@@ -16,10 +16,7 @@ import type {
 } from "../core/transcription/sessionTypes";
 import type { CapturedAudio } from "../core/transcription/capturedAudio";
 import { isTranscriptionSessionError } from "../core/transcription/sessionErrors";
-import {
-  LOCAL_STT_PROVIDER_ID,
-  type PreferredTranscriptionProviderId,
-} from "../core/transcription/providerPreferences";
+import { LOCAL_STT_PROVIDER_ID } from "../core/transcription/providerPreferences";
 import { DEFAULT_STT_PROMPT } from "../../shared/sttPrompt";
 import type { AudioCaptureSession } from "../utils/audioCaptureSession";
 import type { VadAudioResult } from "../utils/vadTrimmer";
@@ -168,9 +165,6 @@ export function useTranscription(
   const nativeCaptureAvailableRef = useRef(false);
   const activeProviderIdRef = useRef<string | null>(null);
   const prepareResultRef = useRef<PrepareTranscriptionResult | null>(null);
-  const preferredProviderIdRef = useRef<PreferredTranscriptionProviderId>(
-    LOCAL_STT_PROVIDER_ID,
-  );
 
   const reportTranscriptionError = useCallback((message: string) => {
     setError(message);
@@ -244,14 +238,6 @@ export function useTranscription(
     };
   }, [initStream, options.autoInitStream]);
 
-  const resolveActiveProviderId = useCallback(async () => {
-    const storedProviderId = await window.stt?.getPreferredProvider?.();
-    const resolvedProviderId =
-      storedProviderId ?? preferredProviderIdRef.current;
-    preferredProviderIdRef.current = resolvedProviderId;
-    return resolvedProviderId;
-  }, []);
-
   const buildTranscriptionContext = useCallback(
     (): TranscriptionContext => ({
       mode: DICTATION_MODE,
@@ -289,8 +275,8 @@ export function useTranscription(
     setError(null);
 
     try {
-      const providerId = await resolveActiveProviderId();
-      if (!isCurrentStart()) return;
+      // The app is local-only; there is no provider preference to consult.
+      const providerId = LOCAL_STT_PROVIDER_ID;
       const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
       if (!isCurrentStart()) return;
       const provider = orchestrator.resolveProvider(providerId);
@@ -448,7 +434,6 @@ export function useTranscription(
     processing,
     reportTranscriptionError,
     recording,
-    resolveActiveProviderId,
   ]);
 
   // Shared tail of the stop() pipeline: publish text, record history, paste,
@@ -562,10 +547,7 @@ export function useTranscription(
       streamingVadSession = streamingVadRef.current;
       localStreamingDictation = localStreamingDictationRef.current;
 
-      const providerId =
-        activeProviderIdRef.current ?? (await resolveActiveProviderId());
-      // cancel() already reset all state if it fired during the await above
-      if (isCancelled()) return;
+      const providerId = LOCAL_STT_PROVIDER_ID;
       const orchestrator = await loadDefaultTranscriptionSessionOrchestrator();
       if (isCancelled()) return;
       const provider = orchestrator.resolveProvider(providerId);
@@ -919,7 +901,6 @@ export function useTranscription(
     finishTranscription,
     recording,
     reportTranscriptionError,
-    resolveActiveProviderId,
   ]);
 
   // A chunker reaches the five-minute guard from the audio worklet callback.
