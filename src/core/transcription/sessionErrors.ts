@@ -1,9 +1,7 @@
 export type TranscriptionSessionErrorCode =
-  | "provider_not_configured"
   | "provider_unavailable"
   | "model_not_installed"
   | "permission_required"
-  | "network_error"
   | "transcription_failed";
 
 export class TranscriptionSessionError extends Error {

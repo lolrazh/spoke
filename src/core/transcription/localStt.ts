@@ -1,25 +1,17 @@
-import type { TranscriptionProvider } from "../providerContracts";
-import { LOCAL_STT_PROVIDER_ID } from "../providerPreferences";
-import { TranscriptionSessionError } from "../sessionErrors";
+import { TranscriptionSessionError } from "./sessionErrors";
+import type {
+  PrepareTranscriptionResult,
+  TranscribeAudioInput,
+  TranscriptionResult,
+} from "./sessionTypes";
 
-export const localSttProvider: TranscriptionProvider = {
-  descriptor: {
-    id: LOCAL_STT_PROVIDER_ID,
-    displayName: "Local Whisper",
-    kind: "local",
-  },
-  getAvailability: () => {
-    const available =
-      typeof window !== "undefined" &&
-      typeof window.stt?.transcribeLocal === "function";
-
-    return {
-      configured: available,
-      available,
-      reason: available ? undefined : "Local Whisper bridge is unavailable.",
-    };
-  },
-  prepare: async () => {
+/**
+ * The local STT sidecar, reached through the preload bridge. `prepare` pins
+ * the installed model for a dictation; `transcribe` sends one PCM16 clip to
+ * that model.
+ */
+export const localStt = {
+  prepare: async (): Promise<PrepareTranscriptionResult> => {
     if (!window.stt?.getModelStatus || !window.stt.getModelInfos) {
       throw new TranscriptionSessionError(
         "provider_unavailable",
@@ -64,7 +56,11 @@ export const localSttProvider: TranscriptionProvider = {
       details: { modelState: status.state },
     });
   },
-  transcribe: async ({ audio, context, prepareResult }) => {
+  transcribe: async ({
+    audio,
+    context,
+    prepareResult,
+  }: TranscribeAudioInput): Promise<TranscriptionResult> => {
     if (!audio) {
       throw new TranscriptionSessionError(
         "transcription_failed",
@@ -97,8 +93,7 @@ export const localSttProvider: TranscriptionProvider = {
     // renderer does not copy the whole chunk before IPC.
     const { pcm16 } = audio;
     const isExact =
-      pcm16.byteOffset === 0 &&
-      pcm16.byteLength === pcm16.buffer.byteLength;
+      pcm16.byteOffset === 0 && pcm16.byteLength === pcm16.buffer.byteLength;
     // Captured PCM is always backed by a plain ArrayBuffer (never a
     // SharedArrayBuffer), so this cast is safe.
     const pcmPayload = isExact
