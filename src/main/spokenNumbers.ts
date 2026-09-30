@@ -273,7 +273,7 @@ function normalizeUnquotedNumbers(text: string): string {
       )
         return match;
       const parts = words(day);
-      const ordinal = ORDINALS[parts.at(-1)!];
+      const ordinal = ORDINALS[parts[parts.length - 1]];
       const tens = parts.length > 1 ? VALUES.get(parts[0]) : 0;
       const value = ordinal + (tens ?? 0);
       return value > 31
@@ -283,7 +283,8 @@ function normalizeUnquotedNumbers(text: string): string {
   );
   text = text.replace(VERSIONS, (match, prefix: string, version: string) => {
     const parts = version.split(/ point /iu);
-    const major = parseSpokenCardinal(parts.shift()!);
+    const major = parseSpokenCardinal(parts[0]);
+    parts.shift();
     const rest = parts.map((part) => {
       const sequence = digits(words(part));
       const cardinal = parseSpokenCardinal(part);
