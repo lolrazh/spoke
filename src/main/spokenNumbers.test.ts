@@ -25,6 +25,13 @@ describe("direct spoken numbers", () => {
     ["review PR two thirty one", "review PR 231"],
     ["review PR two hundred thirty one", "review PR 231"],
     ["review PR two three one", "review PR 231"],
+    ["review PR two 31", "review PR 231"],
+    ["review PR 2 31", "review PR 231"],
+    ["code two three one", "code 231"],
+    [
+      "phone number four one five five five five one two three four",
+      "phone number 4155551234",
+    ],
     ["review PR twelve thirty four", "review PR 1234"],
     ["meet me at two thirty one", "meet me at 2:31"],
     ["five thirty a m", "5:30 AM"],

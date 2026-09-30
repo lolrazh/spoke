@@ -136,6 +136,11 @@ const MIXED_FRACTION = new RegExp(
   `\\b(${PHRASE})[ ]+and[ ]+a[ ]+(half|quarter)\\b`,
   "giu",
 );
+const IDENTIFIER_TOKEN = `(?:${TOKEN}|\\d+)`;
+const IDENTIFIERS = new RegExp(
+  `\\b(PR|code|id|number)[ ]+(?:number[ ]+)?#?[ ]*(${IDENTIFIER_TOKEN}(?:[ ]+(?:and[ ]+)?${IDENTIFIER_TOKEN})*)\\b`,
+  "giu",
+);
 
 function words(phrase: string): string[] {
   return phrase.toLowerCase().split(/[ -]+/u);
@@ -193,7 +198,14 @@ function digits(tokens: string[]): string | null {
 }
 
 function identifier(phrase: string): string | null {
+  if (/^\d+$/u.test(phrase)) return phrase;
   const tokens = words(phrase);
+  if (tokens.length > 1 && tokens.some((token) => /^\d+$/u.test(token))) {
+    const groups = tokens.map((token) =>
+      /^\d+$/u.test(token) ? token : VALUES.get(token),
+    );
+    if (groups.every((group) => group !== undefined)) return groups.join("");
+  }
   if (tokens.length > 1) {
     const sequence = digits(tokens);
     if (sequence !== null) return sequence;
@@ -236,6 +248,18 @@ function clock(phrase: string): string | null {
 }
 
 function normalizeUnquotedNumbers(text: string): string {
+  text = text.replace(
+    IDENTIFIERS,
+    (match, label: string, phrase: string, offset: number, source: string) => {
+      const after = source.slice(
+        offset + match.length,
+        offset + match.length + 20,
+      );
+      if (/^[:.-]|^[ ]+(?:point|[ap]\.?[ ]*m\.?)\b/iu.test(after)) return match;
+      const value = identifier(phrase);
+      return value === null ? match : `${label} ${value}`;
+    },
+  );
   // Dates use a separate bounded pattern so a date ordinal is not treated as
   // an ordinary adjective ("first draft", "second thought").
   text = text.replace(
