@@ -23,6 +23,10 @@ import { getVocabularyDictionary } from "./vocabularyService";
 import { state } from "./windowState";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { getModelFamily } from "./localModelContract";
+import {
+  joinSpelledAcronyms,
+  formatPullRequestReferences,
+} from "./technicalTranscriptNormalizer";
 
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
@@ -49,7 +53,7 @@ async function normalizeTranscriptForModel(
   modelId: string,
   dictionary: readonly string[],
 ): Promise<string> {
-  let normalized = text;
+  let normalized = joinSpelledAcronyms(text);
   const modelFamily = getModelFamily(modelId);
 
   if (modelFamily === "parakeet" || modelFamily === "nemotron") {
@@ -72,6 +76,7 @@ async function normalizeTranscriptForModel(
     }
   }
 
+  normalized = formatPullRequestReferences(joinSpelledAcronyms(normalized));
   if (!Array.isArray(dictionary) || dictionary.length === 0) return normalized;
   try {
     const { correctTranscript } = await import("./dictionaryCorrection");

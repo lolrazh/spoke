@@ -219,6 +219,46 @@ describe("localSttLifecycle", () => {
     warn.mockRestore();
   });
 
+  it.each(["parakeet", "nemotron"])("repairs technical text through the %s finalization path", async (family) => {
+    mocks.getModelFamily.mockReturnValue(family);
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "review P R two thirty one with L O D and M C P",
+      metrics: {},
+    });
+    mocks.normalizeWithItn.mockResolvedValue("review PR 02:31 with LOD and MCP");
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1]));
+    expect(mocks.normalizeWithItn).toHaveBeenCalledWith("review PR two thirty one with LOD and MCP");
+    expect(result.text).toBe(`${family === "parakeet" ? "Review" : "review"} PR #231 with LOD and MCP`);
+  });
+
+  it("repairs technical text when ITN is unavailable", async () => {
+    mocks.transcribeLocal.mockResolvedValue({ text: "review P R 231 with L O D", metrics: {} });
+    mocks.normalizeWithItn.mockRejectedValue(new Error("helper unavailable"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1]));
+    expect(result.text).toBe("review PR #231 with LOD");
+    warn.mockRestore();
+  });
+
+  it("repairs the final streaming transcript", async () => {
+    mocks.streamingFinish.mockResolvedValue({ text: "review P R two thirty one with M C P", metrics: {} });
+    mocks.normalizeWithItn.mockResolvedValue("review PR 02:31 with MCP");
+    const { beginLocalStreamingSession } = await importLifecycle();
+    const session = await beginLocalStreamingSession("current-model", vi.fn());
+    expect((await session.finish()).text).toBe("review PR #231 with MCP");
+  });
+
+  it("repairs written references and acronyms from Whisper", async () => {
+    mocks.getModelFamily.mockReturnValue("whisper");
+    mocks.transcribeLocal.mockResolvedValue({ text: "review PR 231 with M C P", metrics: {} });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1]));
+    expect(result.text).toBe("review PR #231 with MCP");
+    expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
+  });
+
   it("normalizes Parakeet spoken text before returning it", async () => {
     mocks.getModelFamily.mockReturnValue("parakeet");
     mocks.transcribeLocal.mockResolvedValue({
