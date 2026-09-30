@@ -1,0 +1,310 @@
+{
+  "timestamp": "2026-09-30T18:41:58.633Z",
+  "host": {
+    "cpu": "Apple M4",
+    "platform": "darwin",
+    "node": "v22.16.0",
+    "electron": "35.7.5",
+    "chromium": "134.0.6998.205"
+  },
+  "method": {
+    "count": 1000,
+    "warmup": 50,
+    "dictionary": [
+      "Sandheep",
+      "Qwen",
+      "AutoCAD",
+      "Vercel",
+      "skeumorphic",
+      "GitHub"
+    ],
+    "includes": "production normalization + cursor insertion formatting; cold dictionary indexes measured separately",
+    "excludes": "ASR, paste, Electron scheduling, console/file I/O; module startup reported separately"
+  },
+  "cases": [
+    {
+      "name": "short-acronyms-and-PR",
+      "words": 15,
+      "chars": 53,
+      "output": "Please review PR #231 with LOD and MCP",
+      "warm": {
+        "n": 1000,
+        "medianMs": 0.008667000000002645,
+        "p95Ms": 0.014625000000023647,
+        "p99Ms": 0.04216600000000881,
+        "maxMs": 0.42525000000000546,
+        "over5ms": 0
+      },
+      "freshDictionary": {
+        "n": 100,
+        "medianMs": 0.029875000000004093,
+        "p95Ms": 0.15016700000001038,
+        "p99Ms": 0.2695840000000089,
+        "maxMs": 0.385167000000024,
+        "over5ms": 0
+      }
+    },
+    {
+      "name": "paragraph-all-rules",
+      "words": 150,
+      "chars": 801,
+      "output": "Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened.",
+      "warm": {
+        "n": 1000,
+        "medianMs": 0.1376250000000141,
+        "p95Ms": 0.2320839999999862,
+        "p99Ms": 0.32816700000000765,
+        "maxMs": 0.5215420000000108,
+        "over5ms": 0
+      },
+      "freshDictionary": {
+        "n": 100,
+        "medianMs": 0.18812500000001364,
+        "p95Ms": 0.29708400000004076,
+        "p99Ms": 0.356708000000026,
+        "maxMs": 0.45116600000005747,
+        "over5ms": 0
+      }
+    },
+    {
+      "name": "multiple-paragraphs",
+      "words": 297,
+      "chars": 1563,
+      "output": "Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD.",
+      "warm": {
+        "n": 1000,
+        "medianMs": 0.274332999999956,
+        "p95Ms": 0.3885420000000295,
+        "p99Ms": 0.4475840000000062,
+        "maxMs": 0.6142910000000938,
+        "over5ms": 0
+      },
+      "freshDictionary": {
+        "n": 100,
+        "medianMs": 0.4070410000000493,
+        "p95Ms": 0.5787090000000035,
+        "p99Ms": 0.6487910000000738,
+        "maxMs": 1.0193750000000819,
+        "over5ms": 0
+      }
+    },
+    {
+      "name": "long-dictation",
+      "words": 792,
+      "chars": 4168,
+      "output": "Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD. \n\nBefore we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Review PR #231 with LOD and MCP. Meet me at 5:30 AM. The package is 464 MB and progress is 90%. Install version 2.5. Ask Sandheep to check GitHub and AutoCAD.",
+      "warm": {
+        "n": 1000,
+        "medianMs": 1.1069159999999556,
+        "p95Ms": 1.439292000000023,
+        "p99Ms": 1.688041000000112,
+        "maxMs": 1.85550000000012,
+        "over5ms": 0
+      },
+      "freshDictionary": {
+        "n": 100,
+        "medianMs": 1.2240420000002814,
+        "p95Ms": 1.550959000000148,
+        "p99Ms": 1.597707999999784,
+        "maxMs": 1.8922919999999976,
+        "over5ms": 0
+      }
+    },
+    {
+      "name": "plain-prose",
+      "words": 153,
+      "chars": 846,
+      "output": "Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened.",
+      "warm": {
+        "n": 1000,
+        "medianMs": 0.15654199999971752,
+        "p95Ms": 0.22399999999970532,
+        "p99Ms": 0.33829199999991033,
+        "maxMs": 3.679500000000189,
+        "over5ms": 0
+      },
+      "freshDictionary": {
+        "n": 100,
+        "medianMs": 0.1689169999999649,
+        "p95Ms": 0.22579199999972843,
+        "p99Ms": 0.3085419999997612,
+        "maxMs": 0.313792000000376,
+        "over5ms": 0
+      }
+    },
+    {
+      "name": "protected-forms",
+      "words": 100,
+      "chars": 499,
+      "output": "Before we ship this update I want to check the drawing and compare the result with the last saved file. The team needs a clear view of what changed and why the change matters. Please keep the original details so we can review the work again tomorrow without guessing what happened. Type \"um\" in the field. The word uh is present. Visit the ER after the uh-oh moment. The code is thirteen sixty a m. Meet me at 2:31. PR #231 is ready. PR 2:31 PM is a schedule label. Choose a b or c.\nL\nO\nD",
+      "warm": {
+        "n": 1000,
+        "medianMs": 0.09445800000003146,
+        "p95Ms": 0.1427920000000995,
+        "p99Ms": 0.24641700000029232,
+        "maxMs": 0.3487079999999878,
+        "over5ms": 0
+      },
+      "freshDictionary": {
+        "n": 100,
+        "medianMs": 0.17733300000008967,
+        "p95Ms": 0.3669169999998303,
+        "p99Ms": 0.4973750000003747,
+        "maxMs": 0.5517919999997503,
+        "over5ms": 0
+      }
+    }
+  ],
+  "moduleStartupMs": 63.32529099999999,
+  "preparationMs": 6.745874999999955,
+  "firstCallMs": 1.9895420000000286,
+  "p95Pass": true,
+  "stress": [
+    {
+      "dictionarySize": 6,
+      "words": 250,
+      "distinctInputs": 100,
+      "preparationMs": 0.04095900000038455,
+      "timing": {
+        "n": 100,
+        "medianMs": 0.4464170000001104,
+        "p95Ms": 0.66537500000004,
+        "p99Ms": 0.8388749999999163,
+        "maxMs": 1.0062920000000304,
+        "over5ms": 0
+      }
+    },
+    {
+      "dictionarySize": 100,
+      "words": 250,
+      "distinctInputs": 100,
+      "preparationMs": 0.23795800000016243,
+      "timing": {
+        "n": 100,
+        "medianMs": 0.4677080000001297,
+        "p95Ms": 0.6150410000000193,
+        "p99Ms": 0.7987499999999272,
+        "maxMs": 1.2231659999997646,
+        "over5ms": 0
+      }
+    },
+    {
+      "dictionarySize": 1000,
+      "words": 250,
+      "distinctInputs": 100,
+      "preparationMs": 3.079666999999972,
+      "timing": {
+        "n": 100,
+        "medianMs": 0.5162920000002487,
+        "p95Ms": 0.7145829999999478,
+        "p99Ms": 1.520082999999886,
+        "maxMs": 1.9771670000000086,
+        "over5ms": 0
+      }
+    }
+  ],
+  "maxFinalCallMs": 3.679500000000189,
+  "allMeasuredUnder5Ms": true,
+  "sourceCommit": "eda9afb1",
+  "sourceNote": "Runtime source at eda9afb1; later changes add this report and benchmark tooling and update one comment.",
+  "previousNativePath": {
+    "timestamp": "2026-09-30T16:39:19.547Z",
+    "host": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4",
+      "node": "v22.23.1"
+    },
+    "method": {
+      "modelId": "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit",
+      "dictionary": [
+        "Sandheep",
+        "Qwen",
+        "AutoCAD",
+        "Vercel",
+        "skeumorphic",
+        "GitHub"
+      ],
+      "warmSamplesPerCase": 100,
+      "warmupPerCase": 10,
+      "coldStarts": 5,
+      "logging": "bounded memory sink; no terminal or diagnostic file I/O",
+      "excludes": "ASR, audio capture, paste, Electron UI contention; not a fresh machine boot"
+    },
+    "firstPipelineCallMs": 219.63183300000003,
+    "cases": [
+      {
+        "name": "short-acronyms-and-PR",
+        "words": 15,
+        "full": {
+          "n": 100,
+          "medianMs": 4.026124999999865,
+          "p95Ms": 4.360874999999851,
+          "maxMs": 5.989416000000119,
+          "over5ms": 3,
+          "over10ms": 0
+        }
+      },
+      {
+        "name": "paragraph-all-rules",
+        "words": 150,
+        "full": {
+          "n": 100,
+          "medianMs": 44.99895900000047,
+          "p95Ms": 97.84000000000015,
+          "maxMs": 210.74354200000016,
+          "over5ms": 100,
+          "over10ms": 100
+        }
+      },
+      {
+        "name": "multiple-paragraphs",
+        "words": 297,
+        "full": {
+          "n": 100,
+          "medianMs": 200.7207500000004,
+          "p95Ms": 276.0044590000034,
+          "maxMs": 805.6046249999999,
+          "over5ms": 100,
+          "over10ms": 100
+        }
+      },
+      {
+        "name": "long-dictation",
+        "words": 792,
+        "full": {
+          "n": 100,
+          "medianMs": 413.0634160000045,
+          "p95Ms": 736.112958999991,
+          "maxMs": 881.4172499999986,
+          "over5ms": 100,
+          "over10ms": 100
+        }
+      },
+      {
+        "name": "plain-prose",
+        "words": 153,
+        "full": {
+          "n": 100,
+          "medianMs": 43.799041000020225,
+          "p95Ms": 55.74245799999335,
+          "maxMs": 62.35445799998706,
+          "over5ms": 100,
+          "over10ms": 100
+        }
+      },
+      {
+        "name": "protected-forms",
+        "words": 100,
+        "full": {
+          "n": 100,
+          "medianMs": 48.02725000001374,
+          "p95Ms": 121.39191700000083,
+          "maxMs": 468.71329200000037,
+          "over5ms": 100,
+          "over10ms": 100
+        }
+      }
+    ]
+  }
+}

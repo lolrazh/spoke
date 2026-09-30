@@ -1,4 +1,4 @@
-/** Join letter tokens before ITN can interpret them as units or identifiers. */
+/** Join letter tokens before number cleanup can interpret them as units. */
 export function joinSpelledAcronyms(text: string): string {
   return text
     .replace(/\b[A-Za-z](?:[ \t]+[A-Za-z])+\b/gu, (sequence) => {
