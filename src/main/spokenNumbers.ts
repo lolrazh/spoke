@@ -310,12 +310,12 @@ function normalizeUnquotedNumbers(text: string): string {
       const after = source.slice(end, end + 80);
       const negative = /^(minus|negative) /iu.test(match);
       const phrase = match.replace(/^(minus|negative) /iu, "");
-      if (/\bPR[ ]+(?:number[ ]+)?#?[ ]*$/iu.test(before)) {
+      const meridiem = after.match(/^[ ]+([ap])\.?[ ]*m\.?\b/iu);
+      if (!meridiem && /\bPR[ ]+(?:number[ ]+)?#?[ ]*$/iu.test(before)) {
         return negative ? match : (identifier(phrase) ?? match);
       }
       if (YEAR_CONTEXT.test(before)) return identifier(phrase) ?? match;
       if (AFTER_ORDINAL.test(after)) return match;
-      const meridiem = after.match(/^[ ]+([ap])\.?[ ]*m\.?\b/iu);
       if (
         !negative &&
         (meridiem || /\b(?:at|by|until|around)[ ]+$/iu.test(before))

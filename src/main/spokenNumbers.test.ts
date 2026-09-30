@@ -34,6 +34,7 @@ describe("direct spoken numbers", () => {
     ],
     ["review PR twelve thirty four", "review PR 1234"],
     ["meet me at two thirty one", "meet me at 2:31"],
+    ["PR two thirty one PM", "PR 2:31 PM"],
     ["five thirty a m", "5:30 AM"],
     ["thirteen sixty a m", "thirteen sixty a m"],
     ["four hundred sixty four megabytes", "464 MB"],
