@@ -4,7 +4,9 @@ import { normalizeParakeetTranscript } from "./parakeetTranscriptNormalizer";
 describe("main/parakeetTranscriptNormalizer", () => {
   it("removes standalone hesitation fillers and restores sentence casing", () => {
     expect(
-      normalizeParakeetTranscript("um i think, uh, this is ready. ah we can ship it"),
+      normalizeParakeetTranscript(
+        "um i think, uh, this is ready. ah we can ship it",
+      ),
     ).toBe("I think, this is ready. We can ship it");
   });
 
@@ -30,18 +32,18 @@ describe("main/parakeetTranscriptNormalizer", () => {
   });
 
   it("preserves meaningful uppercase and hyphenated forms", () => {
-    expect(normalizeParakeetTranscript("visit the ER after the uh-oh moment")).toBe(
-      "Visit the ER after the uh-oh moment",
-    );
+    expect(
+      normalizeParakeetTranscript("visit the ER after the uh-oh moment"),
+    ).toBe("Visit the ER after the uh-oh moment");
   });
 
   it("normalizes spoken and digit clock times", () => {
     expect(normalizeParakeetTranscript("meet me at five thirty a m")).toBe(
       "Meet me at 5:30 AM",
     );
-    expect(normalizeParakeetTranscript("try again at twelve oh five p.m.")).toBe(
-      "Try again at 12:05 PM.",
-    );
+    expect(
+      normalizeParakeetTranscript("try again at twelve oh five p.m."),
+    ).toBe("Try again at 12:05 PM.");
     expect(normalizeParakeetTranscript("the alarm is for 7 05 a m")).toBe(
       "The alarm is for 7:05 AM",
     );
@@ -74,13 +76,34 @@ describe("main/parakeetTranscriptNormalizer", () => {
 
   it("capitalizes each explicit sentence without title-casing the rest", () => {
     expect(
-      normalizeParakeetTranscript("everything starts lowercase. proper nouns need the dictionary"),
+      normalizeParakeetTranscript(
+        "everything starts lowercase. proper nouns need the dictionary",
+      ),
     ).toBe("Everything starts lowercase. Proper nouns need the dictionary");
   });
 
   it("does not invent terminal punctuation", () => {
     expect(normalizeParakeetTranscript("this is a fragment")).toBe(
       "This is a fragment",
+    );
+  });
+
+  it("does not capitalize words after decimal or version separators", () => {
+    expect(
+      normalizeParakeetTranscript(
+        "install version two point five point one and restart",
+      ),
+    ).toBe("Install version 2.5.1 and restart");
+    expect(
+      normalizeParakeetTranscript(
+        "the value is twenty point five percent today",
+      ),
+    ).toBe("The value is 20.5% today");
+  });
+
+  it("keeps invalid number sequences intact", () => {
+    expect(normalizeParakeetTranscript("twenty twenty megabytes")).toBe(
+      "Twenty twenty megabytes",
     );
   });
 
