@@ -1,176 +1,212 @@
-/**
- * Paste Daemon
- *
- * Manages a pre-spawned native helper process in paste-daemon mode.
- * The daemon stays alive between dictations, receiving "paste\n" commands
- * via stdin and responding with "paste-done" when Cmd+V is complete.
- * This eliminates per-paste spawn latency (~200ms → ~20ms).
- */
-
+/** One persistent native paste helper. Commands and replies are serialized. */
 import * as fs from "fs";
-import { spawn } from "child_process";
-import type { ChildProcess } from "child_process";
+import { performance } from "node:perf_hooks";
+import { spawn, type ChildProcess } from "child_process";
 import { getHelperPath } from "./helperPaths";
 
-// ── Internal state ─────────────────────────────────────────────────────
+type PendingCommand = {
+  lines: string[];
+  end: string;
+  resolve: (output: string) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+type Session = {
+  child: ChildProcess;
+  ready: Promise<void>;
+  readyResolve: () => void;
+  readyReject: (error: Error) => void;
+  buffer: string;
+  pending: PendingCommand | null;
+  closed: boolean;
+  tail: Promise<unknown>;
+};
+let session: Session | null = null;
+const READY_TIMEOUT_MS = 1000;
+const COMMAND_TIMEOUT_MS = 500;
 
-let preSpawnedHelper: ChildProcess | null = null;
-let readyPromise: Promise<void> | null = null;
-let resolveReady: (() => void) | null = null;
-
-// ── Lifecycle ──────────────────────────────────────────────────────────
+function closeSession(current: Session, error: Error): void {
+  if (current.closed) return;
+  current.closed = true;
+  current.readyReject(error);
+  const pending = current.pending;
+  current.pending = null;
+  if (pending) {
+    clearTimeout(pending.timer);
+    pending.reject(error);
+  }
+  // An old process must never clear a replacement's state.
+  if (session === current) session = null;
+}
 
 export function preSpawnPasteHelper(): void {
-  // Clean up any existing pre-spawned helper
-  if (preSpawnedHelper && !preSpawnedHelper.killed) {
-    try {
-      preSpawnedHelper.kill();
-    } catch {
-      // ignore
-    }
-    preSpawnedHelper = null;
-    readyPromise = null;
-    resolveReady = null;
-  }
-
-  const helperPath = getHelperPath();
-  if (!fs.existsSync(helperPath)) {
-    console.error(
-      `[PreSpawn] Paste helper binary not found at path: ${helperPath}`,
-    );
-    return;
-  }
-
-  console.log(`[PreSpawn] Starting paste helper daemon for dictation`);
-
-  preSpawnedHelper = spawn(helperPath, ["--mode=paste-daemon"], {
+  if (session && !session.closed && !session.child.killed) return;
+  const path = getHelperPath();
+  if (!fs.existsSync(path)) return;
+  const started = performance.now();
+  const child = spawn(path, ["--mode=paste-daemon"], {
     stdio: "pipe",
     detached: false,
   });
-
-  readyPromise = new Promise<void>((resolve) => {
-    resolveReady = resolve;
+  let readyResolve!: () => void;
+  let readyReject!: (error: Error) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
   });
-
-  try {
-    const stdout = preSpawnedHelper.stdout;
-    if (stdout) {
-      stdout.setEncoding("utf8");
-      const onData = (data: string | Buffer) => {
-        const out = data.toString().trim();
-        if (out.includes("paste-daemon-ready") && resolveReady) {
-          resolveReady();
-          resolveReady = null;
-        }
-      };
-      stdout.on("data", onData);
-      preSpawnedHelper.once("exit", () => {
-        try {
-          stdout.off("data", onData);
-        } catch {}
-      });
-    }
-  } catch {}
-
-  preSpawnedHelper.once("exit", () => {
-    preSpawnedHelper = null;
-    readyPromise = null;
-    resolveReady = null;
-  });
-}
-
-/** Returns the pre-spawned helper if alive, or null */
-function getPreSpawnedHelper(): ChildProcess | null {
-  if (preSpawnedHelper && !preSpawnedHelper.killed) {
-    return preSpawnedHelper;
-  }
-  return null;
-}
-
-/** Wait for the daemon to signal readiness (with timeout) */
-async function waitForReady(timeoutMs = 300): Promise<void> {
-  const ready = readyPromise;
-  if (!ready) return;
-
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      resolve();
-    };
-    const timeout = setTimeout(finish, timeoutMs);
-    ready.then(finish, finish);
-  });
-}
-
-/**
- * Send a paste command to the daemon and wait for completion.
- * Returns true if the daemon handled it, false if unavailable.
- */
-export async function pasteViaDaemon(): Promise<boolean> {
-  const helper = getPreSpawnedHelper();
-  if (!helper) return false;
-
-  await waitForReady();
-  helper.stdin?.write("paste\n");
-
-  await new Promise<void>((resolve) => {
-    let settled = false;
-    const finish = (message: string) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      helper.stdout?.off("data", onData);
-      console.log(message);
-      resolve();
-    };
-    const onData = (data: Buffer) => {
-      if (data.toString().includes("paste-done")) {
-        finish(`[PasteHelper] Pre-spawned helper completed paste`);
+  // Preparation can fail before a caller awaits readiness.
+  void ready.catch(() => undefined);
+  const current: Session = {
+    child,
+    ready,
+    readyResolve,
+    readyReject,
+    buffer: "",
+    pending: null,
+    closed: false,
+    tail: Promise.resolve(),
+  };
+  session = current;
+  child.stdout?.setEncoding("utf8");
+  child.stdout?.on("data", (chunk: string | Buffer) => {
+    current.buffer += chunk.toString();
+    let end: number;
+    while ((end = current.buffer.indexOf("\n")) !== -1) {
+      const line = current.buffer.slice(0, end).replace(/\r$/u, "");
+      current.buffer = current.buffer.slice(end + 1);
+      if (line === "paste-daemon-ready") {
+        console.info("[Latency] Paste helper ready", {
+          setup_ms: Math.round((performance.now() - started) * 1000) / 1000,
+        });
+        current.readyResolve();
       }
-    };
-    helper.stdout?.on("data", onData);
-
-    const timeout = setTimeout(() => {
-      finish(`[PasteHelper] Pre-spawned helper timeout, assuming success`);
-    }, 1000);
+      const pending = current.pending;
+      if (!pending) continue;
+      if (line === "paste-target-changed") {
+        clearTimeout(pending.timer);
+        current.pending = null;
+        pending.reject(new Error("Paste target changed before insertion."));
+      } else if (line === pending.end) {
+        clearTimeout(pending.timer);
+        current.pending = null;
+        pending.resolve(pending.lines.join("\n"));
+      } else pending.lines.push(line);
+    }
   });
+  child.once("error", (error) => closeSession(current, error));
+  child.once("exit", () =>
+    closeSession(current, new Error("Paste helper exited.")),
+  );
+}
 
+async function request(command: string, end: string): Promise<string> {
+  preSpawnPasteHelper();
+  const current = session;
+  if (!current) throw new Error("Paste helper is unavailable.");
+  const operation = current.tail.then(async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        current.ready,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Paste helper startup timed out.")),
+            READY_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      closeSession(
+        current,
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      current.child.kill();
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (current.closed || current.child.killed)
+      throw new Error("Paste helper is unavailable.");
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        // Late replies cannot be assigned to another command. No retry after
+        // dispatch: a timeout may mean the paste occurred without an ACK.
+        const error = new Error("Paste helper command timed out.");
+        closeSession(current, error);
+        current.child.kill();
+      }, COMMAND_TIMEOUT_MS);
+      current.pending = { lines: [], end, resolve, reject, timer };
+      try {
+        if (!current.child.stdin || current.child.stdin.destroyed)
+          throw new Error("Paste helper input closed.");
+        current.child.stdin.write(command + "\n", (error) => {
+          if (error) {
+            closeSession(current, error);
+            current.child.kill();
+          }
+        });
+      } catch (error) {
+        closeSession(
+          current,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+        current.child.kill();
+      }
+    });
+  });
+  current.tail = operation.catch(() => undefined);
+  return operation;
+}
+
+export async function inspectViaPasteDaemon(
+  contextChars: number,
+): Promise<string> {
+  return request(`inspect:${contextChars}`, "inspect-done");
+}
+
+/** Native snapshot preserves all clipboard formats; restoration uses changeCount. */
+export async function copyViaPasteDaemon(
+  text: string,
+): Promise<() => Promise<void>> {
+  preSpawnPasteHelper();
+  const owner = session;
+  const output = await request(
+    `copy:${Buffer.from(text, "utf8").toString("base64")}`,
+    "copy-done",
+  );
+  const match = output.match(/^clipboard-token:(\d+)$/mu);
+  if (!match) throw new Error("Native clipboard write failed.");
+  return async () => {
+    if (owner && session === owner && !owner.closed && !owner.child.killed)
+      await request(`restore:${match[1]}`, "restore-done");
+  };
+}
+
+/** ACK means keyboard events posted, not that the app displayed the text. */
+export async function pasteViaDaemon(targetPid?: number): Promise<boolean> {
+  await request(
+    targetPid ? `paste-target:${targetPid}` : "paste",
+    "paste-done",
+  );
   return true;
 }
 
-/** Kill the daemon and clean up state */
 export function killPasteDaemon(): void {
-  if (preSpawnedHelper && !preSpawnedHelper.killed) {
-    const helper = preSpawnedHelper;
-    try {
-      helper.stdin?.write("exit\n");
-    } catch {}
-
-    // Don't trust "exit\n" alone: if the daemon hasn't exited within a
-    // grace period, force-kill it so we never leave an orphan behind.
-    const forceKillTimer = setTimeout(() => {
-      try {
-        if (!helper.killed) {
-          console.warn(
-            "[PasteDaemon] Daemon did not exit after 'exit' command, sending SIGKILL",
-          );
-          helper.kill("SIGKILL");
-        }
-      } catch {}
-    }, 1500);
-    forceKillTimer.unref?.();
-    helper.once("exit", () => clearTimeout(forceKillTimer));
-
-    preSpawnedHelper = null;
+  const current = session;
+  if (!current) return;
+  closeSession(current, new Error("Paste helper stopped."));
+  try {
+    current.child.stdin?.write("exit\n");
+  } catch {
+    /* already closed */
   }
-  readyPromise = null;
-  resolveReady = null;
+  const timer = setTimeout(() => {
+    if (!current.child.killed) current.child.kill("SIGKILL");
+  }, 500);
+  timer.unref?.();
+  current.child.once("exit", () => clearTimeout(timer));
 }
 
-/** Respawn the daemon (for post-permission-grant refresh) */
 export function respawnPasteDaemon(): void {
   killPasteDaemon();
   preSpawnPasteHelper();

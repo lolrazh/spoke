@@ -10,11 +10,13 @@ import * as fs from "fs";
 import { spawn } from "child_process";
 import type { SelectionInspectSnapshot } from "../types/shared";
 import { getHelperPath } from "./helperPaths";
+import { inspectViaPasteDaemon } from "./pasteDaemon";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
 export type SelectionInspectOptions = {
   contextChars?: number;
+  passive?: boolean;
 };
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -123,6 +125,8 @@ export function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
     source,
     rawOutput: normalized,
   };
+  const pid = normalized.match(/^targetPid:(\d+)$/mu);
+  if (pid && Number(pid[1]) > 0) result.targetPid = Number(pid[1]);
 
   if (!ok) {
     result.error = status;
@@ -136,6 +140,10 @@ export function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
 export async function inspectFocusedSelection(
   options?: SelectionInspectOptions,
 ): Promise<SelectionInspectSnapshot> {
+  if (options?.passive) {
+    const output = await inspectViaPasteDaemon(clampInspectContextChars(options.contextChars));
+    return parseInspectOutput(output);
+  }
   const helperPath = getHelperPath();
   if (!fs.existsSync(helperPath)) {
     return {

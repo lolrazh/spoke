@@ -17,6 +17,7 @@ static bool g_debug_text = false;
 static void requireAX(void);
 static void cmdV(void);
 static void cmdC(void);
+static void cmdVToPid(pid_t pid);
 
 static AXUIElementRef ax_focused_app_element(void) {
     // Prefer app-specific path via NSWorkspace (more reliable than system-wide attribute)
@@ -339,32 +340,70 @@ static CFStringRef clipboard_copy_selected_text(bool *outSuccess) {
     }
 }
 
-static int inspect_text_core(int context_chars) {
-    requireAX();
+// Retain only the last passive target, never its text. This guards a field or
+// caret change between context formatting and keyboard dispatch.
+static AXUIElementRef pasteFocus = NULL;
+static pid_t pasteFocusPid = 0;
+static CFRange pasteRange;
+static bool pasteHasRange = false;
+
+static bool paste_target_matches(pid_t pid) {
+    if (pasteFocusPid != pid || !pasteFocus) return true;
+    AXUIElementRef app = AXUIElementCreateApplication(pid);
+    AXUIElementSetMessagingTimeout(app, 0.03f);
+    AXUIElementRef focus = NULL;
+    AXError error = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute, (CFTypeRef *)&focus);
+    bool matches = error == kAXErrorSuccess && focus && CFEqual(focus, pasteFocus);
+    if (matches && pasteHasRange) {
+        AXUIElementSetMessagingTimeout(focus, 0.03f);
+        CFRange range;
+        matches = ax_get_selected_range_cf(focus, &range) && range.location == pasteRange.location && range.length == pasteRange.length;
+    }
+    if (focus) CFRelease(focus);
+    CFRelease(app);
+    return matches;
+}
+
+static int inspect_text_core(int context_chars, bool probe_clipboard) {
+    if (probe_clipboard) requireAX();
+    if (!probe_clipboard) {
+        if (pasteFocus) CFRelease(pasteFocus);
+        pasteFocus = NULL; pasteFocusPid = 0; pasteHasRange = false;
+    }
     AXUIElementRef appEl = ax_focused_app_element();
     if (!appEl) { puts("read:err:no-app"); fflush(stdout); return 2; }
-    AXUIElementRef el = ax_focused_element_from_app(appEl);
+    pid_t targetPid = 0;
+    AXUIElementGetPid(appEl, &targetPid);
+    printf("targetPid:%d\n", targetPid);
+    if (!probe_clipboard) AXUIElementSetMessagingTimeout(appEl, 0.03f);
+    AXUIElementRef el = NULL;
+    if (probe_clipboard) el = ax_focused_element_from_app(appEl);
+    else AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el);
     if (!el) { CFRelease(appEl); puts("read:err:no-focus"); fflush(stdout); return 2; }
     if (ax_is_secure(el)) { CFRelease(el); CFRelease(appEl); puts("read:err:secure-field"); fflush(stdout); return 3; }
 
-    CFStringRef value = ax_copy_value(el);
+    if (!probe_clipboard) AXUIElementSetMessagingTimeout(el, 0.03f);
+    CFStringRef value = probe_clipboard ? ax_copy_value(el) : NULL;
     CFRange sel = {0,0};
     bool haveSel = ax_get_selected_range_cf(el, &sel);
     bool rangeValid = haveSel && sel.location >= 0 && sel.length >= 0;
     bool hasSelectionRange = rangeValid && sel.length > 0;
+    if (!probe_clipboard) {
+        pasteFocus = (AXUIElementRef)CFRetain(el);
+        pasteFocusPid = targetPid;
+        pasteRange = sel;
+        pasteHasRange = rangeValid;
+    }
 
     CFStringRef selectedText = NULL;
     const char *source = "none";
     bool clipboardOk = false;
 
-    // Always probe clipboard first - this handles Electron apps (Cursor, Raycast, VS Code, etc.)
-    // that return {location:0, length:0} from AX API even when text IS selected.
-    // The clipboard probe is non-invasive: it snapshots, attempts Cmd+C, polls for 180ms,
-    // and restores the original clipboard. Since this happens during dictation start,
-    // the latency is invisible to users.
-    selectedText = clipboard_copy_selected_text(&clipboardOk);
+    // Explicit selection inspection retains the clipboard fallback. Final
+    // insertion uses passive AX reads and never sends Cmd+C.
+    if (probe_clipboard) selectedText = clipboard_copy_selected_text(&clipboardOk);
 
-    if (!clipboardOk && hasSelectionRange) {
+    if (!clipboardOk && hasSelectionRange && (probe_clipboard || sel.length <= context_chars)) {
         selectedText = ax_copy_selected_text_attribute(el);
         if (!selectedText) {
             selectedText = ax_copy_string_for_range(el, sel);
@@ -384,6 +423,16 @@ static int inspect_text_core(int context_chars) {
 
     CFRange outputRange = rangeValid ? sel : (CFRange){ -1, -1 };
     CFIndex len = value ? CFStringGetLength(value) : -1;
+    if (!probe_clipboard) {
+        CFTypeRef count = NULL;
+        if (AXUIElementCopyAttributeValue(el, kAXNumberOfCharactersAttribute, &count) == kAXErrorSuccess && count) {
+            if (CFGetTypeID(count) == CFNumberGetTypeID()) CFNumberGetValue((CFNumberRef)count, kCFNumberCFIndexType, &len);
+            CFRelease(count);
+        }
+        // Some editors expose Value but not StringForRange. Only read a
+        // whole value when the reported document size is already bounded.
+        if (len >= 0 && len <= 4096) value = ax_copy_value(el);
+    }
 
     printf("read:ok\n");
     printf("selectedRange:%ld:%ld\n", (long)outputRange.location, (long)outputRange.length);
@@ -415,10 +464,12 @@ static int inspect_text_core(int context_chars) {
             CFStringRef beforeText = beforeLength > 0
                 ? ax_copy_string_for_range(el, CFRangeMake(contextStart, beforeLength))
                 : NULL;
-            CFStringRef selectedContextText = sel.length > 0
+            CFStringRef selectedContextText = sel.length > 0 && (probe_clipboard || sel.length <= context_chars)
                 ? ax_copy_string_for_range(el, CFRangeMake(sel.location, sel.length))
                 : NULL;
-            CFStringRef afterText = ax_copy_string_for_range(el, CFRangeMake(selectionEnd, context_chars));
+            CFIndex afterLength = context_chars;
+            if (len >= 0 && selectionEnd + afterLength > len) afterLength = MAX(0, len - selectionEnd);
+            CFStringRef afterText = afterLength > 0 ? ax_copy_string_for_range(el, CFRangeMake(selectionEnd, afterLength)) : NULL;
 
             context = cfstring_concat3(beforeText, selectedContextText, afterText);
 
@@ -658,6 +709,17 @@ static void cmdV(void) {
     CFRelease(src);
 }
 
+static void cmdVToPid(pid_t pid) {
+    CGEventSourceRef src = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+    CGEventRef down = CGEventCreateKeyboardEvent(src, 0x09, true);
+    CGEventRef up = CGEventCreateKeyboardEvent(src, 0x09, false);
+    CGEventSetFlags(down, kCGEventFlagMaskCommand);
+    CGEventSetFlags(up, kCGEventFlagMaskCommand);
+    CGEventPostToPid(pid, down);
+    CGEventPostToPid(pid, up);
+    CFRelease(down); CFRelease(up); CFRelease(src);
+}
+
 int main(int argc, char *argv[]) {
     signal(SIGTERM, handle_signal);   // respond to normal shutdown
     signal(SIGINT,  handle_signal);
@@ -705,23 +767,106 @@ int main(int argc, char *argv[]) {
     // New: daemon mode for pre-spawned paste helper
     if (argc > 1 && strcmp(argv[1], "--mode=paste-daemon") == 0) {
         requireAX();
+        // Resolve Cocoa/event-server startup before final insertion arrives.
+        (void)[[NSWorkspace sharedWorkspace] frontmostApplication];
+        CGEventSourceRef warmSource = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+        if (warmSource) {
+            CGEventRef warmKey = CGEventCreateKeyboardEvent(warmSource, 0x09, false);
+            if (warmKey) CFRelease(warmKey);
+            CFRelease(warmSource);
+        }
+        AXUIElementRef warmApp = ax_focused_app_element();
+        if (warmApp) {
+            AXUIElementSetMessagingTimeout(warmApp, 0.03f);
+            AXUIElementRef warmFocus = NULL;
+            AXUIElementCopyAttributeValue(warmApp, kAXFocusedUIElementAttribute, (CFTypeRef *)&warmFocus);
+            if (warmFocus) {
+                AXUIElementSetMessagingTimeout(warmFocus, 0.03f);
+                CFRange warmRange;
+                ax_get_selected_range_cf(warmFocus, &warmRange);
+                CFRelease(warmFocus);
+            }
+            CFRelease(warmApp);
+        }
+        // Prime the event-server connection with a null event. It has no key
+        // code and cannot insert text or invoke an app shortcut.
+        CGEventRef warmEvent = CGEventCreate(NULL);
+        pid_t warmPid = [[NSWorkspace sharedWorkspace] frontmostApplication].processIdentifier;
+        if (warmEvent) {
+            CGEventPostToPid(warmPid > 0 ? warmPid : getpid(), warmEvent);
+            CFRelease(warmEvent);
+        }
+        @autoreleasepool {
+            NSPasteboard *warmClipboard = [NSPasteboard generalPasteboard];
+            (void)warmClipboard.changeCount;
+            (void)warmClipboard.pasteboardItems;
+            (void)[warmClipboard stringForType:NSPasteboardTypeString];
+        }
         puts("paste-daemon-ready");
         fflush(stdout);
         
-        // Wait for paste command via stdin
-        char command[1024];
-        while (fgets(command, sizeof(command), stdin)) {
+        NSArray *savedClipboard = nil;
+        NSInteger ownedChangeCount = -1;
+        unsigned long clipboardToken = 0;
+        char *command = NULL;
+        size_t capacity = 0;
+        ssize_t bytes;
+        while ((bytes = getline(&command, &capacity, stdin)) > 0) {
+            if (bytes > 1024 * 1024) break;
             // Trim newline
             command[strcspn(command, "\n")] = 0;
-            
-            if (strcmp(command, "paste") == 0) {
+            @autoreleasepool {
+            if (strncmp(command, "copy:", 5) == 0) {
+                @autoreleasepool {
+                    NSData *data = [[NSData alloc] initWithBase64EncodedString:[NSString stringWithUTF8String:command + 5] options:0];
+                    NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+                    if (text) {
+                        NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                        // Repeated Spoke pastes retain the user's original data.
+                        // Any external clipboard change establishes a new original.
+                        if (!savedClipboard || pb.changeCount != ownedChangeCount) savedClipboard = clipboard_snapshot(pb);
+                        [pb clearContents];
+                        if ([pb setString:text forType:NSPasteboardTypeString]) {
+                            ownedChangeCount = pb.changeCount;
+                            clipboardToken++;
+                            printf("clipboard-token:%lu\n", clipboardToken);
+                        } else puts("copy-error");
+                    } else puts("copy-error");
+                    puts("copy-done"); fflush(stdout);
+                }
+            } else if (strncmp(command, "restore:", 8) == 0) {
+                unsigned long token = strtoul(command + 8, NULL, 10);
+                NSPasteboard *pb = [NSPasteboard generalPasteboard];
+                if (savedClipboard && token == clipboardToken) {
+                    if (pb.changeCount == ownedChangeCount) clipboard_restore(pb, savedClipboard);
+                    savedClipboard = nil;
+                    ownedChangeCount = -1;
+                }
+                puts("restore-done"); fflush(stdout);
+            } else if (strncmp(command, "inspect:", 8) == 0) {
+                int context = atoi(command + 8);
+                if (context < 1 || context > 512) context = 96;
+                inspect_text_core(context, false);
+                puts("inspect-done"); fflush(stdout);
+            } else if (strncmp(command, "paste-target:", 13) == 0) {
+                pid_t expectedPid = atoi(command + 13);
+                pid_t currentPid = [[NSWorkspace sharedWorkspace] frontmostApplication].processIdentifier;
+                if (expectedPid > 0 && currentPid == expectedPid && paste_target_matches(currentPid)) {
+                    cmdVToPid(currentPid);
+                    puts("paste-done");
+                } else puts("paste-target-changed");
+                fflush(stdout);
+            } else if (strcmp(command, "paste") == 0) {
                 cmdV();
                 puts("paste-done");
                 fflush(stdout);
             } else if (strcmp(command, "exit") == 0) {
                 break;
             }
+            }
         }
+        free(command);
+        if (pasteFocus) CFRelease(pasteFocus);
         return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--inspect-text") == 0) {
@@ -730,7 +875,7 @@ int main(int argc, char *argv[]) {
             int parsed = atoi(argv[2]);
             if (parsed > 0 && parsed < 2048) ctx = parsed;
         }
-        return inspect_text_core(ctx);
+        return inspect_text_core(ctx, true);
     }
     
     // NEW: Add support for requesting Input Monitoring permission

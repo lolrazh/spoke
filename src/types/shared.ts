@@ -15,6 +15,7 @@ export type PttTarget = "auto" | "onboarding" | "main";
 export type SelectionRange = { location: number; length: number };
 
 export type SelectionInspectSnapshot = {
+  targetPid?: number;
   ok: boolean;
   status: string;
   range: SelectionRange | null;

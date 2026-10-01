@@ -10,6 +10,7 @@ describe("main/selectionInspect parseInspectOutput", () => {
     const parsed = parseInspectOutput(
       [
         "read:ok",
+        "targetPid:42",
         "selectedRange:12:0",
         "selectionSource:none",
         "selectedTextB64:",
@@ -19,6 +20,7 @@ describe("main/selectionInspect parseInspectOutput", () => {
     );
 
     expect(parsed.ok).toBe(true);
+    expect(parsed.targetPid).toBe(42);
     expect(parsed.range).toEqual({ location: 12, length: 0 });
     expect(parsed.context).toBe("Hello there world");
     expect(parsed.hadSelection).toBe(false);

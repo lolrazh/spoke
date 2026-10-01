@@ -25,6 +25,13 @@ vi.mock("./helperProcess", () => ({
 
 vi.mock("./pasteDaemon", () => ({
   pasteViaDaemon: vi.fn(async () => true),
+  copyViaPasteDaemon: vi.fn(async (payload: string) => {
+    const original = clipboardStore.text;
+    clipboardStore.text = payload;
+    return async () => {
+      if (clipboardStore.text === payload) clipboardStore.text = original;
+    };
+  }),
 }));
 
 vi.mock("./selectionInspect", () => ({
@@ -50,6 +57,7 @@ vi.mock("./windowState", () => ({
 }));
 
 import { clipboard } from "electron";
+import { copyViaPasteDaemon, pasteViaDaemon } from "./pasteDaemon";
 import { insertTextAtCursor } from "./pasteOrchestrator";
 import { applyAutoSpace } from "./contextualDictationFormatter";
 import { inspectFocusedSelection } from "./selectionInspect";
@@ -80,9 +88,13 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     clipboardStore.text = "";
     state.appPreferences = {};
     vi.mocked(clipboard.writeText).mockClear();
+    vi.mocked(copyViaPasteDaemon).mockClear();
+    vi.mocked(pasteViaDaemon).mockClear();
+    vi.mocked(pasteViaDaemon).mockResolvedValue(true);
     vi.mocked(inspectFocusedSelection).mockResolvedValue({
       ok: false,
       status: "unsupported",
+      targetPid: 42,
       range: null,
       selectedText: null,
       context: null,
@@ -101,7 +113,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
   it("pastes with a trailing space by default", async () => {
     const result = await insertTextAtCursor("Hello world.");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
+    expect(vi.mocked(copyViaPasteDaemon).mock.calls[0][0]).toBe(
       "Hello world. ",
     );
   });
@@ -110,15 +122,13 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     state.appPreferences.autoSpace = false;
     const result = await insertTextAtCursor("Hello world.");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
-      "Hello world.",
-    );
+    expect(vi.mocked(copyViaPasteDaemon).mock.calls[0][0]).toBe("Hello world.");
   });
 
   it("does not add a space after a trailing newline", async () => {
     const result = await insertTextAtCursor("Hello world.\n");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
+    expect(vi.mocked(copyViaPasteDaemon).mock.calls[0][0]).toBe(
       "Hello world.\n",
     );
   });
@@ -135,6 +145,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     vi.mocked(inspectFocusedSelection).mockResolvedValue({
       ok: true,
       status: "read:ok",
+      targetPid: 42,
       range: { location: "It was".length, length: 0 },
       selectedText: null,
       context: "It was",
@@ -146,15 +157,14 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
 
     const result = await insertTextAtCursor("Wonderful");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
-      " wonderful ",
-    );
+    expect(vi.mocked(copyViaPasteDaemon).mock.calls[0][0]).toBe(" wonderful ");
   });
 
   it("does not add a trailing space before existing punctuation", async () => {
     vi.mocked(inspectFocusedSelection).mockResolvedValue({
       ok: true,
       status: "read:ok",
+      targetPid: 42,
       range: { location: "It was ".length, length: 0 },
       selectedText: null,
       context: "It was , truly",
@@ -166,6 +176,74 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
 
     const result = await insertTextAtCursor("Wonderful");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe("wonderful");
+    expect(vi.mocked(copyViaPasteDaemon).mock.calls[0][0]).toBe("wonderful");
+  });
+  it("uses passive context reads and targets the inspected app", async () => {
+    vi.mocked(inspectFocusedSelection).mockResolvedValue({
+      ok: true,
+      status: "read:ok",
+      targetPid: 42,
+      range: null,
+      selectedText: null,
+      context: null,
+      valueLength: null,
+      hadSelection: false,
+      source: "none",
+      rawOutput: "",
+    });
+    expect((await insertTextAtCursor("Hello")).success).toBe(true);
+    expect(inspectFocusedSelection).toHaveBeenCalledWith({
+      contextChars: 96,
+      passive: true,
+    });
+    expect(pasteViaDaemon).toHaveBeenCalledWith(42);
+  });
+
+  it("reports a dispatch failure without retrying or restoring manual-paste text", async () => {
+    vi.mocked(pasteViaDaemon).mockRejectedValueOnce(
+      new Error("Paste target changed"),
+    );
+    const result = await insertTextAtCursor("Hello");
+    expect(result.success).toBe(false);
+    expect(pasteViaDaemon).toHaveBeenCalledTimes(1);
+    vi.runAllTimers();
+    expect(clipboardStore.text).toBe("Hello ");
+  });
+
+  it("does not send global keys when the target app is unknown", async () => {
+    vi.mocked(inspectFocusedSelection).mockResolvedValueOnce({
+      ok: false,
+      status: "no-app",
+      range: null,
+      selectedText: null,
+      context: null,
+      valueLength: null,
+      hadSelection: false,
+      source: "none",
+      rawOutput: "",
+    });
+    expect((await insertTextAtCursor("Hello")).success).toBe(false);
+    expect(pasteViaDaemon).not.toHaveBeenCalled();
+  });
+
+  it("serializes the entire insertion transaction", async () => {
+    let release!: () => void;
+    vi.mocked(pasteViaDaemon).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(true);
+        }),
+    );
+    const first = insertTextAtCursor("First"),
+      second = insertTextAtCursor("Second");
+    await vi.waitFor(() => expect(copyViaPasteDaemon).toHaveBeenCalledTimes(1));
+    expect(clipboardStore.text).toBe("First ");
+    release();
+    await first;
+    await second;
+    expect(vi.mocked(copyViaPasteDaemon).mock.calls.map((x) => x[0])).toEqual([
+      "First ",
+      "Second ",
+    ]);
   });
 });
