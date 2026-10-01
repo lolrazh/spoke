@@ -448,11 +448,6 @@ export function useTranscription(
         window.notifications?.send?.("Boo");
       }
 
-      // Add to history (fire-and-forget)
-      addTranscriptionToHistory(finalText, DICTATION_MODE).catch((err) =>
-        log.warn("Failed to record transcription history:", err),
-      );
-
       const insertText = window.clipboard?.insertText;
       timing.pasteStartedAt = performance.now();
       try {
@@ -467,6 +462,12 @@ export function useTranscription(
       } finally {
         timing.pasteDoneAt = performance.now();
       }
+      // History storage uses synchronous disk writes in the main process.
+      // Queue it after paste settles so it cannot delay native IPC replies.
+      // Save the transcript even when paste fails or times out.
+      addTranscriptionToHistory(finalText, DICTATION_MODE).catch((err) =>
+        log.warn("Failed to record transcription history:", err),
+      );
       logTranscriptionLatency({
         status: "done",
         timing,

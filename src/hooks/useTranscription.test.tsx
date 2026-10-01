@@ -850,6 +850,45 @@ describe("useTranscription", () => {
     expect(window.clipboard.insertText).toHaveBeenCalledWith("hello world");
   });
 
+  it.each([false, true])(
+    "saves history after paste settles (failure=%s)",
+    async (failed) => {
+      configureStreamingModel("Save after paste");
+      let finishPaste: () => void = () => {
+        throw new Error("Paste has not started");
+      };
+      vi.mocked(window.clipboard.insertText).mockImplementationOnce(
+        () =>
+          new Promise((resolve, reject) => {
+            finishPaste = () =>
+              failed
+                ? reject(new Error("Paste failed"))
+                : resolve({ success: true });
+          }),
+      );
+      const { result } = renderHook(() => useTranscription());
+      await act(async () => result.current.start());
+      await emitPcmFrame([1, 2, 3, 4]);
+      await act(async () => {
+        result.current.stop();
+        await waitFor(() =>
+          expect(window.clipboard.insertText).toHaveBeenCalledOnce(),
+        );
+      });
+      expect(addTranscription).not.toHaveBeenCalled();
+      await act(async () => {
+        finishPaste();
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(addTranscription).toHaveBeenCalledWith(
+          "Save after paste",
+          "dictation",
+        ),
+      );
+    },
+  );
+
   it("finishes a live stream without starting duplicate VAD", async () => {
     configureStreamingModel("Recovered live stream");
 
