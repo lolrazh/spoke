@@ -25,7 +25,7 @@ vi.mock("../utils/vadTrimmer", () => ({
 }));
 
 // By default the streaming VAD session reports itself as unusable, so batch
-// tests exercise the fixed-post-roll + trimCapturedAudioWithVad fallback path.
+// tests exercise the trimCapturedAudioWithVad fallback path.
 // Live streaming models intentionally skip this duplicate VAD worker.
 const mockCreateStreamingVadSession = vi.fn(
   (_options: StreamingVadSessionOptions) =>
@@ -579,7 +579,7 @@ describe("useTranscription", () => {
     expect(result.current.text).toBe("");
   });
 
-  it("falls back to the fixed post-roll and post-hoc VAD when streaming VAD never becomes usable", async () => {
+  it("stops without a tail wait and uses post-hoc VAD when streaming VAD is unavailable", async () => {
     (window.stt.transcribeLocal as any).mockResolvedValue({
       text: "Fallback path",
       metrics: {},
@@ -592,22 +592,19 @@ describe("useTranscription", () => {
       await emitPcmFrame([1, 2, 3, 4]);
     });
 
-    const stopStartedAt = performance.now();
     await act(async () => {
       result.current.stop();
       await new Promise((resolve) => setTimeout(resolve, 600));
     });
-    const elapsed = performance.now() - stopStartedAt;
 
     await waitFor(() => {
       expect(result.current.text).toBe("Fallback path");
     });
     expect(trimCapturedAudioWithVad).toHaveBeenCalledTimes(1);
-    // Fell all the way through today's exact fixed post-roll wait (~240ms).
-    expect(elapsed).toBeGreaterThanOrEqual(200);
+    expect(mockCreateStreamingVadSession.mock.results.at(-1)?.value.waitForQuiet).not.toHaveBeenCalled();
   });
 
-  it("skips the post-roll wait and post-hoc VAD when the streaming VAD already confirmed speech ended", async () => {
+  it("finishes usable streaming VAD without a tail wait", async () => {
     const usableSession = createUsableStreamingVadSessionFake({
       waitForQuiet: async () => 0,
     });
@@ -635,25 +632,24 @@ describe("useTranscription", () => {
     await waitFor(() => {
       expect(result.current.text).toBe("Adaptive path");
     });
-    expect(usableSession.waitForQuiet).toHaveBeenCalledWith(240);
+    expect(usableSession.waitForQuiet).not.toHaveBeenCalled();
     expect(usableSession.finish).toHaveBeenCalledTimes(1);
-    // The old fixed post-roll fallback never ran.
+    // Usable streaming VAD trims the completed buffer.
     expect(trimCapturedAudioWithVad).not.toHaveBeenCalled();
-    // The latency log's post_roll_ms honestly reflects the actual
-    // (near-zero) adaptive wait, not the old fixed POST_ROLL_MS.
+    // Key release never adds a deliberate capture tail.
     const latencyCall = consoleInfoSpy.mock.calls.find(
       (call) => call[0] === "[Latency]",
     );
     const payload = latencyCall?.[2]
       ? (JSON.parse(String(latencyCall[2])) as { post_roll_ms: number })
       : undefined;
-    expect(payload?.post_roll_ms).toBeLessThan(50);
+    expect(payload?.post_roll_ms).toBe(0);
     consoleInfoSpy.mockRestore();
   });
 
-  it("caps the adaptive post-roll wait at POST_ROLL_MS when the streaming VAD never settles", async () => {
+  it("stops immediately even when streaming VAD never settles", async () => {
     const usableSession = createUsableStreamingVadSessionFake({
-      waitForQuiet: async (maxWaitMs) => maxWaitMs,
+      waitForQuiet: async () => new Promise<number>(() => undefined),
     });
     mockCreateStreamingVadSession.mockReturnValueOnce(usableSession);
     (window.stt.transcribeLocal as any).mockResolvedValue({
@@ -676,7 +672,7 @@ describe("useTranscription", () => {
     await waitFor(() => {
       expect(result.current.text).toBe("Capped wait");
     });
-    expect(usableSession.waitForQuiet).toHaveBeenCalledWith(240);
+    expect(usableSession.waitForQuiet).not.toHaveBeenCalled();
   });
 
   it("falls back to post-hoc VAD if the streaming session's finish() rejects", async () => {

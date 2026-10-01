@@ -4,11 +4,9 @@
  * recording to stop and re-scanning the whole clip (see vadTrimmer.ts for
  * that post-hoc path, kept as a fallback).
  *
- * This lets useTranscription.ts make an adaptive post-roll decision at
- * key-release: if the model already confirmed speech ended a redemption
- * window ago, the trailing audio is already captured and no extra wait is
- * needed. If speech is still active (or the model hasn't caught up yet), we
- * keep capturing until it settles, capped at POST_ROLL_MS.
+ * Recording stops at key release and flushes its existing audio. This
+ * session trims that completed clip. Its optional quiet-wait helper can be
+ * used by other endpoint policies, but push-to-talk does not wait for VAD.
  *
  * The worker owns both onnxruntime-web and its WASM heap. Each session owns
  * one worker and terminates it when the session finishes or is cancelled, so

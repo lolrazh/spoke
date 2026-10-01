@@ -27,7 +27,6 @@ import { invokedBloodyMary } from "../utils/easterEggs";
 import { setAudioLevel } from "../state/audioLevel";
 import { setLiveTranscript } from "../state/liveTranscript";
 import {
-  POST_ROLL_MS,
   LOCAL_DICTATION_MAX_DURATION_MS,
   LOCAL_STT_CHUNK_MIN_MS,
   LOCAL_STT_CHUNK_MAX_MS,
@@ -532,29 +531,10 @@ export function useTranscription(
 
       const prepareResult = prepareResultRef.current;
 
-      // Batch paths need a short tail for VAD trimming. Live Nemotron adds
-      // its own bounded final silence inside the sidecar, so do not start a
-      // duplicate VAD worker or add another post-roll delay.
+      // Key release is the capture cutoff. Flush audio already captured,
+      // rather than deliberately recording another 240 ms of future audio.
+      // VAD still trims the completed buffer below.
       timing.postRollStartedAt = performance.now();
-      if (!localStreamingDictation) {
-        if (streamingVadSession && streamingVadSession.isUsable()) {
-          try {
-            await streamingVadSession.waitForQuiet(POST_ROLL_MS);
-          } catch (vadError) {
-            // VAD is an optional latency optimization. Preserve the full tail
-            // and continue if its worker fails while the key-up settles.
-            vadLog.warn(
-              "Streaming VAD post-roll failed; using fixed post-roll:",
-              vadError,
-            );
-            const elapsedMs = performance.now() - timing.postRollStartedAt;
-            const remainingMs = Math.max(0, POST_ROLL_MS - elapsedMs);
-            await new Promise((resolve) => setTimeout(resolve, remainingMs));
-          }
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
-        }
-      }
       timing.postRollDoneAt = performance.now();
       if (isCancelled()) return;
 
