@@ -1075,3 +1075,32 @@ Validation:
 
 Real terminal/browser acceptance remains open. This improves delivery handling;
 it is not a claim of parity with either competitor's complete implementation.
+
+
+### Key-release overhead audit — 2026-10-02
+
+A live batch sample reported total 552 ms, STT wall 279 ms, post-roll 254 ms,
+PCM readiness 12 ms, VAD wall 1 ms and paste 5 ms. Its 273 ms outside-STT gap
+is almost entirely the deliberate 240 ms capture tail plus timer scheduling.
+The remaining approximately 19 ms is flush, VAD, paste and glue. VAD engine time
+is part of VAD wall time; trimmed_audio_ms is audio duration, not wall latency.
+The 30 ms between sidecar inference 249 and STT wall 279 is already inside STT
+wall, not an additional part of the 273 ms gap.
+
+Key release now requests capture stop without a fixed or adaptive tail wait.
+VAD still trims captured audio. This changes the cutoff: speech after release
+is not deliberately captured. With all other stages held fixed, this sample
+would fall to approximately 298 ms total; that is a projection, not a new live
+measurement. Absolute zero outside STT is not established.
+
+A meaningful final-flush test found that NativePcmCaptureSession previously
+rejected final frames immediately when stop began. It now accepts frames until
+the native stopped event, while cancellation and listener cleanup still reject
+later audio. This preserves already-captured samples without recording another
+240 ms of future audio. Native Swift still drains and flushes its converter
+before sending the stopped event. Browser capture already keeps flush frames.
+
+Validation: 559 tests / 60 files pass; TypeScript passes; lint has no errors and
+18 existing warnings; diff check passes. Tests cover unusable VAD, VAD that
+never reaches quiet, post_roll_ms=0, and retention of the final native frame.
+Live final-word quality and new end-to-end timing still need manual testing.
