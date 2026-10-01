@@ -52,6 +52,7 @@ declare global {
       showPill: () => void;
     };
     clipboard: {
+      prewarm?: () => Promise<{ ok: boolean }>;
       insertText: (
         text: string,
       ) => Promise<{ success: boolean; error?: string }>;
@@ -176,9 +177,7 @@ declare global {
         sessionId: string,
         pcmBuffer: ArrayBuffer,
       ) => Promise<void>;
-      finishLocalStream: (
-        sessionId: string,
-      ) => Promise<LocalTranscribeResult>;
+      finishLocalStream: (sessionId: string) => Promise<LocalTranscribeResult>;
       onLocalStreamPartial: (
         cb: (payload: { sessionId: string; text: string }) => void,
       ) => () => void;

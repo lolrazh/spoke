@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("contextMenu", {
 });
 
 contextBridge.exposeInMainWorld("clipboard", {
+  prewarm: () => ipcRenderer.invoke("clipboard:prewarm"),
   insertText: (text: string) =>
     ipcRenderer.invoke("insert-text-at-cursor", text),
   writeText: (text: string) => ipcRenderer.invoke("clipboard:write-text", text),
@@ -155,23 +156,13 @@ contextBridge.exposeInMainWorld("stt", {
     modelId: string,
     pcmBuffer: ArrayBuffer | Uint8Array,
     prompt?: string,
-  ) =>
-    ipcRenderer.invoke(
-      "stt:transcribe-local",
-      modelId,
-      pcmBuffer,
-      prompt,
-    ),
+  ) => ipcRenderer.invoke("stt:transcribe-local", modelId, pcmBuffer, prompt),
   cancelLocalTranscription: () =>
     ipcRenderer.invoke("stt:cancel-local-transcription"),
   startLocalStream: (modelId: string): Promise<{ sessionId: string }> =>
     ipcRenderer.invoke("stt:start-local-stream", modelId),
   pushLocalStream: (sessionId: string, pcmBuffer: ArrayBuffer) =>
-    ipcRenderer.invoke(
-      "stt:push-local-stream",
-      sessionId,
-      pcmBuffer,
-    ),
+    ipcRenderer.invoke("stt:push-local-stream", sessionId, pcmBuffer),
   finishLocalStream: (sessionId: string) =>
     ipcRenderer.invoke("stt:finish-local-stream", sessionId),
   onLocalStreamPartial: (
@@ -326,7 +317,10 @@ contextBridge.exposeInMainWorld("update", {
 
 // Transcription history storage bridge
 contextBridge.exposeInMainWorld("transcriptions", {
-  getPage: (offset?: number, limit?: number): Promise<TranscriptionHistoryPage> =>
+  getPage: (
+    offset?: number,
+    limit?: number,
+  ): Promise<TranscriptionHistoryPage> =>
     ipcRenderer.invoke("transcriptions:get-page", { offset, limit }),
   save: (payload: {
     text: string;

@@ -269,6 +269,11 @@ export function useTranscription(
       const prepareResult = await localStt.prepare();
       if (!isCurrentStart()) return;
       prepareResultRef.current = prepareResult;
+      // Button starts also prepare paste while the user records. Hotkey starts
+      // already do this in fnListener; a live helper is reused.
+      void window.clipboard
+        ?.prewarm?.()
+        .catch((error) => log.warn("Paste helper preparation failed:", error));
 
       if (prepareResult.localModel?.streaming) {
         localStreamingDictation = await createLocalStreamingDictation({

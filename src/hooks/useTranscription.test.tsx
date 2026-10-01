@@ -107,6 +107,7 @@ Object.defineProperty(window, "electron", {
 Object.defineProperty(window, "clipboard", {
   value: {
     insertText: vi.fn(() => Promise.resolve()),
+    prewarm: vi.fn(async () => ({ ok: true })),
   },
   writable: true,
 });
@@ -820,6 +821,7 @@ describe("useTranscription", () => {
     const { result } = renderHook(() => useTranscription());
     await act(async () => result.current.start());
     expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
+    expect(window.clipboard.prewarm).toHaveBeenCalledOnce();
     await emitPcmFrame(new Array(17_920).fill(1));
     await waitFor(() =>
       expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2),

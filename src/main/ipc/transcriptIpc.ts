@@ -5,11 +5,7 @@
  * backed by lib/transcriptionStorage.
  */
 
-import {
-  clipboard,
-  ipcMain,
-  type IpcMainInvokeEvent,
-} from "electron";
+import { clipboard, ipcMain, type IpcMainInvokeEvent } from "electron";
 
 import {
   getTranscriptionsPage,
@@ -17,6 +13,7 @@ import {
   deleteTranscription,
 } from "../../lib/transcriptionStorage";
 import { bootTimeline } from "../bootTimeline";
+import { preSpawnPasteHelper } from "../pasteDaemon";
 import { insertTextAtCursor } from "../pasteOrchestrator";
 import { saveAppPreferences } from "../preferences";
 import {
@@ -30,6 +27,10 @@ import { state } from "../windowState";
 // Registered at module load (not inside app.whenReady()), matching the
 // original main.ts evaluation order.
 export function registerInsertTextAtCursorIpc(): void {
+  ipcMain.handle("clipboard:prewarm", () => {
+    preSpawnPasteHelper();
+    return { ok: true };
+  });
   ipcMain.handle(
     "insert-text-at-cursor",
     async (_event: IpcMainInvokeEvent, text: string) => {
@@ -109,5 +110,4 @@ export function registerTranscriptIpc(): void {
   ipcMain.handle("transcriptions:delete", (_event, payload: { id: string }) => {
     return deleteTranscription(payload.id);
   });
-
 }
