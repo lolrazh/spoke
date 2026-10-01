@@ -1,9 +1,9 @@
 /**
  * Selection Inspection
  *
- * Spawns the native helper binary to inspect the currently focused text field
- * and extract selection range, selected text, and surrounding context via
- * macOS Accessibility APIs. Output is parsed from the helper's stdout.
+ * Reads passive insertion context through the persistent helper. Explicit
+ * edit-selection reads use a one-shot helper with the clipboard fallback.
+ * Both paths parse the same macOS Accessibility output.
  */
 
 import * as fs from "fs";

@@ -380,17 +380,19 @@ static int inspect_text_core(int context_chars, bool probe_clipboard) {
     if (probe_clipboard) el = ax_focused_element_from_app(appEl);
     else AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el);
     if (!el) { CFRelease(appEl); puts("read:err:no-focus"); fflush(stdout); return 2; }
+    if (!probe_clipboard) {
+        AXUIElementSetMessagingTimeout(el, 0.03f);
+        pasteFocus = (AXUIElementRef)CFRetain(el);
+        pasteFocusPid = targetPid;
+    }
     if (ax_is_secure(el)) { CFRelease(el); CFRelease(appEl); puts("read:err:secure-field"); fflush(stdout); return 3; }
 
-    if (!probe_clipboard) AXUIElementSetMessagingTimeout(el, 0.03f);
     CFStringRef value = probe_clipboard ? ax_copy_value(el) : NULL;
     CFRange sel = {0,0};
     bool haveSel = ax_get_selected_range_cf(el, &sel);
     bool rangeValid = haveSel && sel.location >= 0 && sel.length >= 0;
     bool hasSelectionRange = rangeValid && sel.length > 0;
     if (!probe_clipboard) {
-        pasteFocus = (AXUIElementRef)CFRetain(el);
-        pasteFocusPid = targetPid;
         pasteRange = sel;
         pasteHasRange = rangeValid;
     }
