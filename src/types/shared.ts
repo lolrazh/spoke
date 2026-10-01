@@ -16,6 +16,8 @@ export type SelectionRange = { location: number; length: number };
 
 export type SelectionInspectSnapshot = {
   targetPid?: number;
+  /** Passive context contains only the text before and after the selection. */
+  contextExcludesSelection?: boolean;
   ok: boolean;
   status: string;
   range: SelectionRange | null;

@@ -31,6 +31,19 @@ function format(text: string, before: string, after = "", selection = "") {
 }
 
 describe("main/contextualDictationFormatter", () => {
+  it("keeps both boundaries when passive context omits a large selection", () => {
+    const selection = snapshot("It is a", ", indeed.", "x".repeat(50000));
+    selection.context = "It is a, indeed.";
+    selection.contextExcludesSelection = true;
+    expect(
+      formatDictationForInsertion("Wonderful", {
+        autoSpace: true,
+        selection,
+        contextChars: 96,
+      }),
+    ).toBe(" wonderful");
+  });
+
   it("keeps the existing fallback behavior when no context is available", () => {
     expect(
       formatDictationForInsertion("Hello world.", { autoSpace: true }),
@@ -72,11 +85,7 @@ describe("main/contextualDictationFormatter", () => {
 
   it("removes sentence punctuation when inserting before continuing text", () => {
     expect(
-      format(
-        "and improved.",
-        "Hey, um, this is a new",
-        " transcription test.",
-      ),
+      format("and improved.", "Hey, um, this is a new", " transcription test."),
     ).toBe(" and improved");
   });
 
@@ -105,9 +114,7 @@ describe("main/contextualDictationFormatter", () => {
   });
 
   it("replaces selected text using the text around the selection", () => {
-    expect(format("small", "This is ", " sentence.", "BIG")).toBe(
-      "small",
-    );
+    expect(format("small", "This is ", " sentence.", "BIG")).toBe("small");
   });
 
   it("does not lowercase first-person I or acronyms", () => {

@@ -406,7 +406,7 @@ static int inspect_text_core(int context_chars, bool probe_clipboard) {
     // insertion uses passive AX reads and never sends Cmd+C.
     if (probe_clipboard) selectedText = clipboard_copy_selected_text(&clipboardOk);
 
-    if (!clipboardOk && hasSelectionRange && (probe_clipboard || sel.length <= context_chars)) {
+    if (!clipboardOk && hasSelectionRange && probe_clipboard) {
         selectedText = ax_copy_selected_text_attribute(el);
         if (!selectedText) {
             selectedText = ax_copy_string_for_range(el, sel);
@@ -440,6 +440,7 @@ static int inspect_text_core(int context_chars, bool probe_clipboard) {
     printf("read:ok\n");
     printf("selectedRange:%ld:%ld\n", (long)outputRange.location, (long)outputRange.length);
     printf("selectionSource:%s\n", source);
+    if (!probe_clipboard) puts("contextExcludesSelection:1");
 
     // Always output base64-encoded selectedText for edit mode to work
     // (base64 prevents issues with newlines/special chars in IPC parsing)
@@ -459,7 +460,15 @@ static int inspect_text_core(int context_chars, bool probe_clipboard) {
             if (contextEnd > len) contextEnd = len;
             if (contextEnd < contextStart) contextEnd = contextStart;
 
-            context = cfstring_substring_safe(value, CFRangeMake(contextStart, contextEnd - contextStart));
+            if (probe_clipboard) {
+                context = cfstring_substring_safe(value, CFRangeMake(contextStart, contextEnd - contextStart));
+            } else {
+                CFStringRef before = cfstring_substring_safe(value, CFRangeMake(contextStart, sel.location - contextStart));
+                CFStringRef after = cfstring_substring_safe(value, CFRangeMake(selectionEnd, contextEnd - selectionEnd));
+                context = cfstring_concat3(before, NULL, after);
+                if (before) CFRelease(before);
+                if (after) CFRelease(after);
+            }
         } else {
             CFIndex beforeLength = sel.location - contextStart;
             if (beforeLength < 0) beforeLength = 0;
@@ -467,7 +476,7 @@ static int inspect_text_core(int context_chars, bool probe_clipboard) {
             CFStringRef beforeText = beforeLength > 0
                 ? ax_copy_string_for_range(el, CFRangeMake(contextStart, beforeLength))
                 : NULL;
-            CFStringRef selectedContextText = sel.length > 0 && (probe_clipboard || sel.length <= context_chars)
+            CFStringRef selectedContextText = sel.length > 0 && probe_clipboard
                 ? ax_copy_string_for_range(el, CFRangeMake(sel.location, sel.length))
                 : NULL;
             CFIndex afterLength = context_chars;

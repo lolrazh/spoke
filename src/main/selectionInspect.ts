@@ -125,6 +125,8 @@ export function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
     source,
     rawOutput: normalized,
   };
+  if (/^contextExcludesSelection:1$/mu.test(normalized))
+    result.contextExcludesSelection = true;
   const pid = normalized.match(/^targetPid:(\d+)$/mu);
   if (pid && Number(pid[1]) > 0) result.targetPid = Number(pid[1]);
 
@@ -141,7 +143,9 @@ export async function inspectFocusedSelection(
   options?: SelectionInspectOptions,
 ): Promise<SelectionInspectSnapshot> {
   if (options?.passive) {
-    const output = await inspectViaPasteDaemon(clampInspectContextChars(options.contextChars));
+    const output = await inspectViaPasteDaemon(
+      clampInspectContextChars(options.contextChars),
+    );
     return parseInspectOutput(output);
   }
   const helperPath = getHelperPath();
