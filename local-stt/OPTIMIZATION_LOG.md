@@ -889,3 +889,84 @@ Remaining acceptance work:
   context.
 - Add explicit pronunciation aliases only after real transcripts identify the
   repeated acoustic forms. Keep aliases separate from broad fuzzy matching.
+
+
+## Paste pipeline audit — 2026-10-01
+
+Status: implemented; automated checks and owned-app probes pass. Manual testing
+in Terminal, iTerm and VS Code is still required.
+
+The original app logs were real: 100 completed insertions had a 403 ms median
+and 608 ms p95. Five dev samples had a 362 ms median. These spans measured
+completion of the paste request, not screen paint. A matched scratch-window
+benchmark isolates the paste path from transcription and compares the same
+five cases with 1,000 dictionary entries on an Apple M4, macOS 27.0,
+Electron 35.7.5. Each version has 100 samples.
+
+| Measurement | Before | After |
+| --- | ---: | ---: |
+| Renderer request median | 226.2 ms | 3.4 ms |
+| Renderer request p95 | 242.5 ms | 4.8 ms |
+| Renderer request maximum | 331.6 ms | 6.1 ms |
+| Main-process median | 225.0 ms | 2.76 ms |
+| Main-process p95 | 240.2 ms | 4.17 ms |
+| Text input event median | 225.8 ms | 9.8 ms |
+| Text input event p95 | 242.4 ms | 11.4 ms |
+
+Median request time fell by 98.5%, about 66.5 times faster. Two of 100 new
+requests exceeded 5 ms. This meets a p95 target below 5 ms in this fixture;
+it does not establish a hard deadline. The first input event took 41.4 ms.
+The independent external-app probe used one Node monotonic clock for both
+ends: five requests had a 2.97 ms acknowledgement median and 8.29 ms input
+receipt median. Its first/cold receipt maximum was 49.87 ms.
+
+Changes:
+
+- Remove the passive Cmd+C selection probe and its six 30 ms clipboard waits.
+  Keep explicit selection inspection available for edit commands.
+- Reuse one native helper. Buffer responses, install listeners before writes,
+  serialize requests, and prevent an old helper exit from clearing a new one.
+- Read the live focused app through Accessibility. A persistent helper cannot
+  depend on cached NSWorkspace notifications while its input loop is blocked.
+- Read at most 96 characters on each side of the selection. Do not read the
+  selected text on the passive path. Limit whole-value fallback to 4,096
+  characters. Large-document and 50,000-character selection probes pass.
+- Copy text and post Command-V in one native command. Check the app, focused
+  field and available selection range before posting. Preserve native undo.
+- Restore all clipboard formats only when the helper still owns the clipboard.
+  The 300 ms restore timer runs after acknowledgement. It never accounted for
+  300 ms of awaited paste latency.
+- Report helper failures instead of treating timeouts as success. Do not retry
+  a paste whose delivery is uncertain. Leave the text on the clipboard for a
+  manual paste.
+- Start helper preparation during recording for both hotkey and button starts.
+  Save transcript history after insertion settles, so synchronous history writes
+  cannot block the paste request.
+
+The helper preparation took 77.9 ms in the main fixture. It normally overlaps
+recording. A cold helper or a first history paste can still pay this setup cost.
+The acknowledgement means key events were posted. It cannot prove that the
+app received the text, and it does not measure screen paint. Clipboard size,
+app response and system load can change the time.
+
+A direct Accessibility text setter was rejected: it reported success in an
+Electron textarea without changing the DOM or sending an input event. The
+production path uses the normal paste shortcut.
+
+Reproduce on macOS, one run at a time:
+
+- `node scripts/benchmark-paste.mjs --baseline`
+- `node scripts/benchmark-paste.mjs`
+- `node scripts/benchmark-paste-external.mjs`
+
+The baseline is built from `origin/main`. Both native helpers use the same
+compiler flags and app bundle layout. The scripts use owned scratch windows
+and stop if focus changes. Results are written under ignored `research/`.
+The saved numeric results and source revisions are in
+`scripts/fixtures/paste-benchmark-results.json`. The `visible_ms` sample field
+records the input event, not screen paint. Native clipboard/dispatch phase
+spans are included in main handoff time; do not add them again.
+
+Validation: 60 test files / 545 tests pass; TypeScript passes; lint has no
+errors and 18 existing warnings; `git diff --check` passes. Real-app manual
+acceptance remains open. Marble/Marvel correction learning is separate work.
