@@ -19,28 +19,29 @@ static void cmdV(void);
 static void cmdC(void);
 static void cmdVToPid(pid_t pid);
 
+// NSWorkspace caches frontmostApplication until its run loop handles focus
+// notifications. This daemon blocks on stdin, so query AX synchronously instead.
 static AXUIElementRef ax_focused_app_element(void) {
-    // Prefer app-specific path via NSWorkspace (more reliable than system-wide attribute)
-    @autoreleasepool {
-        NSRunningApplication *front = [[NSWorkspace sharedWorkspace] frontmostApplication];
-        if (front) {
-            pid_t pid = front.processIdentifier;
-            if (pid > 0) {
-                AXUIElementRef appEl = AXUIElementCreateApplication(pid);
-                if (appEl) return appEl;
-            }
-        }
-    }
-    // Fallback to system-wide attribute if NSWorkspace path fails
     AXUIElementRef sys = AXUIElementCreateSystemWide();
     if (!sys) return NULL;
+    AXUIElementSetMessagingTimeout(sys, 0.03f);
     AXUIElementRef appEl = NULL;
-    if (AXUIElementCopyAttributeValue(sys, kAXFocusedApplicationAttribute, (CFTypeRef *)&appEl) != kAXErrorSuccess) {
-        CFRelease(sys);
+    AXError error = AXUIElementCopyAttributeValue(sys, kAXFocusedApplicationAttribute, (CFTypeRef *)&appEl);
+    CFRelease(sys);
+    if (error != kAXErrorSuccess) {
+        if (appEl) CFRelease(appEl);
         return NULL;
     }
-    CFRelease(sys);
-    return appEl; // caller CFRelease
+    return appEl;
+}
+
+static pid_t ax_frontmost_pid(void) {
+    AXUIElementRef app = ax_focused_app_element();
+    if (!app) return 0;
+    pid_t pid = 0;
+    AXUIElementGetPid(app, &pid);
+    CFRelease(app);
+    return pid;
 }
 
 // Recursive helper to search for focusable elements in web content
@@ -770,7 +771,6 @@ int main(int argc, char *argv[]) {
     if (argc > 1 && strcmp(argv[1], "--mode=paste-daemon") == 0) {
         requireAX();
         // Resolve Cocoa/event-server startup before final insertion arrives.
-        (void)[[NSWorkspace sharedWorkspace] frontmostApplication];
         CGEventSourceRef warmSource = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
         if (warmSource) {
             CGEventRef warmKey = CGEventCreateKeyboardEvent(warmSource, 0x09, false);
@@ -793,7 +793,7 @@ int main(int argc, char *argv[]) {
         // Prime the event-server connection with a null event. It has no key
         // code and cannot insert text or invoke an app shortcut.
         CGEventRef warmEvent = CGEventCreate(NULL);
-        pid_t warmPid = [[NSWorkspace sharedWorkspace] frontmostApplication].processIdentifier;
+        pid_t warmPid = ax_frontmost_pid();
         if (warmEvent) {
             CGEventPostToPid(warmPid > 0 ? warmPid : getpid(), warmEvent);
             CFRelease(warmEvent);
@@ -852,7 +852,7 @@ int main(int argc, char *argv[]) {
                 puts("inspect-done"); fflush(stdout);
             } else if (strncmp(command, "paste-target:", 13) == 0) {
                 pid_t expectedPid = atoi(command + 13);
-                pid_t currentPid = [[NSWorkspace sharedWorkspace] frontmostApplication].processIdentifier;
+                pid_t currentPid = ax_frontmost_pid();
                 if (expectedPid > 0 && currentPid == expectedPid && paste_target_matches(currentPid)) {
                     cmdVToPid(currentPid);
                     puts("paste-done");
