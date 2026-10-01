@@ -20,8 +20,18 @@ static void cmdV(void);
 static void cmdC(void);
 static void cmdVToPid(pid_t pid);
 
-// NSWorkspace caches frontmostApplication until its run loop handles focus
-// notifications. This daemon blocks on stdin, so query AX synchronously instead.
+// AX focus is optional metadata. Some apps (and focus transitions) do not
+// expose a focused AX application even though they can receive Command-V.
+// Service workspace notifications before using its fallback; stdin otherwise
+// leaves frontmostApplication cached across app switches.
+static pid_t workspace_frontmost_pid(void) {
+    NSWorkspace *workspace = [NSWorkspace sharedWorkspace];
+    for (int i = 0; i < 16; i++) {
+        if (CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, true) != kCFRunLoopRunHandledSource) break;
+    }
+    return workspace.frontmostApplication.processIdentifier;
+}
+
 static AXUIElementRef ax_focused_app_element(void) {
     AXUIElementRef sys = AXUIElementCreateSystemWide();
     if (!sys) return NULL;
@@ -31,7 +41,8 @@ static AXUIElementRef ax_focused_app_element(void) {
     CFRelease(sys);
     if (error != kAXErrorSuccess) {
         if (appEl) CFRelease(appEl);
-        return NULL;
+        pid_t pid = workspace_frontmost_pid();
+        return pid > 0 ? AXUIElementCreateApplication(pid) : NULL;
     }
     return appEl;
 }
@@ -852,13 +863,16 @@ int main(int argc, char *argv[]) {
                 } else {
                     uint64_t copied = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                     pid_t currentPid = ax_frontmost_pid();
-                    if (currentPid == expectedPid && paste_target_matches(currentPid)) {
+                    bool fieldMatches = paste_target_matches(currentPid);
+                    if (currentPid == expectedPid && fieldMatches) {
                         cmdVToPid(currentPid);
                         uint64_t posted = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                         printf("clipboard-token:%lu\nclipboard-ms:%.3f\ndispatch-ms:%.3f\n",
                                clipboardToken, (copied - started) / 1e6, (posted - copied) / 1e6);
                         puts("paste-done");
-                    } else puts("paste-target-changed");
+                    } else {
+                        puts("paste-target-changed");
+                    }
                 }
                 fflush(stdout);
             } else if (strncmp(command, "copy:", 5) == 0) {

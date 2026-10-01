@@ -11,6 +11,8 @@ import assert from "node:assert/strict";
 const dir = await mkdtemp(join(tmpdir(), "spoke-paste-production-"));
 if (process.platform !== "darwin")
   throw new Error("This benchmark requires macOS.");
+const forceNoAxFocus = process.argv.includes("--no-ax-focus");
+const forceNoAxApp = process.argv.includes("--no-ax-app") || forceNoAxFocus;
 const count = Number(process.env.SPOKE_PASTE_SAMPLES || 5);
 if (!Number.isInteger(count) || count < 1 || count > 1000)
   throw new Error("Use 1–1000 samples.");
@@ -60,7 +62,52 @@ function client(p) {
   };
 }
 const root = process.cwd();
+let helperOverride = null;
 try {
+  if (forceNoAxApp) {
+    const contents = join(dir, "Spoke Helper.app", "Contents");
+    await mkdir(join(contents, "MacOS"), { recursive: true });
+    await writeFile(
+      join(contents, "Info.plist"),
+      await readFile(
+        resolve("native/bin/Spoke Helper.app/Contents/Info.plist"),
+      ),
+    );
+    const source = await readFile(resolve("native/spoke-helper.c"), "utf8");
+    const call =
+      "AXUIElementCopyAttributeValue(sys, kAXFocusedApplicationAttribute, (CFTypeRef *)&appEl)";
+    assert(source.includes(call), "Cannot install AX app failure fixture");
+    const native = join(dir, "no-ax-app.c");
+    let fixtureSource = source.replace(call, "kAXErrorFailure");
+    if (forceNoAxFocus) {
+      fixtureSource = fixtureSource.replaceAll(
+        "AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el)",
+        "(void)0",
+      );
+      report.forced_ax_field_failure = true;
+    }
+    await writeFile(native, fixtureSource);
+    helperOverride = join(contents, "MacOS", "Spoke Helper");
+    execFileSync("clang", [
+      "-x",
+      "objective-c",
+      "-fobjc-arc",
+      "-framework",
+      "Foundation",
+      "-framework",
+      "AppKit",
+      "-framework",
+      "ApplicationServices",
+      "-framework",
+      "IOKit",
+      "-framework",
+      "CoreGraphics",
+      native,
+      "-o",
+      helperOverride,
+    ]);
+    report.forced_ax_app_failure = true;
+  }
   const clipboardBinary = join(dir, "clipboard-guard");
   execFileSync("clang", [
     "-fobjc-arc",
@@ -92,6 +139,16 @@ try {
       {
         name: "fixture-environment",
         setup(b) {
+          if (helperOverride) {
+            b.onResolve({ filter: /helperPaths$/ }, () => ({
+              path: "helper",
+              namespace: "helper-fixture",
+            }));
+            b.onLoad({ filter: /.*/, namespace: "helper-fixture" }, () => ({
+              contents: `export const getHelperPath=()=>${JSON.stringify(helperOverride)};`,
+              loader: "js",
+            }));
+          }
           b.onLoad({ filter: /\/selectionInspect\.ts$/ }, async (args) => {
             const source = await readFile(args.path, "utf8");
             const declaration =
@@ -174,46 +231,48 @@ try {
       max_ms: v.at(-1),
     };
   }
-  const largeText =
-    "SpokeBenchmark paragraph. ".repeat(3000) + "continue here ";
-  target.p.stdin.write(
-    JSON.stringify({ action: "reset", text: largeText }) + "\n",
-  );
-  await target.next();
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  const largeContext = await api.inspectViaPasteDaemon(96);
-  assert.equal(
-    Number(largeContext.match(/^targetPid:(\d+)$/m)?.[1]),
-    ready.pid,
-  );
-  assert(
-    largeContext.length < 2048,
-    "Large document inspection returned unbounded data.",
-  );
-  const context = Buffer.from(
-    largeContext.match(/^contextB64:(.*)$/m)?.[1] || "",
-    "base64",
-  ).toString("utf8");
-  assert.equal(
-    context,
-    largeText.slice(-96),
-    "Large document lost caret context.",
-  );
-  report.bounded_large_context = true;
-  const selectedText = "It is a" + "x".repeat(50000) + ", indeed.";
-  target.p.stdin.write(
-    JSON.stringify({
-      action: "reset",
-      text: selectedText,
-      start: 7,
-      end: 50007,
-    }) + "\n",
-  );
-  await target.next();
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert((await api.insertTextAtCursor("Wonderful")).success);
-  assert.equal((await target.next()).text, "It is a wonderful, indeed.");
-  report.large_selection_boundaries = true;
+  if (!forceNoAxFocus) {
+    const largeText =
+      "SpokeBenchmark paragraph. ".repeat(3000) + "continue here ";
+    target.p.stdin.write(
+      JSON.stringify({ action: "reset", text: largeText }) + "\n",
+    );
+    await target.next();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const largeContext = await api.inspectViaPasteDaemon(96);
+    assert.equal(
+      Number(largeContext.match(/^targetPid:(\d+)$/m)?.[1]),
+      ready.pid,
+    );
+    assert(
+      largeContext.length < 2048,
+      "Large document inspection returned unbounded data.",
+    );
+    const context = Buffer.from(
+      largeContext.match(/^contextB64:(.*)$/m)?.[1] || "",
+      "base64",
+    ).toString("utf8");
+    assert.equal(
+      context,
+      largeText.slice(-96),
+      "Large document lost caret context.",
+    );
+    report.bounded_large_context = true;
+    const selectedText = "It is a" + "x".repeat(50000) + ", indeed.";
+    target.p.stdin.write(
+      JSON.stringify({
+        action: "reset",
+        text: selectedText,
+        start: 7,
+        end: 50007,
+      }) + "\n",
+    );
+    await target.next();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert((await api.insertTextAtCursor("Wonderful")).success);
+    assert.equal((await target.next()).text, "It is a wonderful, indeed.");
+    report.large_selection_boundaries = true;
+  }
 
   // Keep the same helper while a different owned app takes focus. Verify that
   // Focus reads stay current even though the daemon blocks on stdin.
@@ -269,7 +328,11 @@ try {
     encoding: "utf8",
   }).trim();
   await writeFile(
-    "research/paste-external-production-probe.json",
+    forceNoAxFocus
+      ? "research/paste-no-ax-focus-probe.json"
+      : forceNoAxApp
+        ? "research/paste-no-ax-app-probe.json"
+        : "research/paste-external-production-probe.json",
     JSON.stringify(report, null, 2) + "\n",
   );
   await rm(dir, {

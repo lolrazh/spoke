@@ -111,6 +111,27 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     vi.useRealTimers();
   });
 
+  it.each(["read:err:no-focus", "read:err:no-app"])(
+    "pastes with a known app even when context inspection reports %s",
+    async (status) => {
+      vi.mocked(inspectFocusedSelection).mockResolvedValue({
+        ok: false,
+        status,
+        targetPid: 42,
+        range: null,
+        selectedText: null,
+        context: null,
+        valueLength: null,
+        hadSelection: false,
+        source: "none",
+        rawOutput: "",
+      });
+      const result = await insertTextAtCursor("Hello world.");
+      expect(result.success).toBe(true);
+      expect(insertViaPasteDaemon).toHaveBeenCalledWith("Hello world. ", 42);
+    },
+  );
+
   it("pastes with a trailing space by default", async () => {
     const result = await insertTextAtCursor("Hello world.");
     expect(result.success).toBe(true);

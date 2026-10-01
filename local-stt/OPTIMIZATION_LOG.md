@@ -987,3 +987,48 @@ model startup no longer logs a false model failure. Vite prepares the lazy VAD
 dependency at startup. The full suite passes: 60 files / 551 tests, including
 active and pending reload, crash, close, duplicate startup and normal navigation
 cases. Type checking and lint pass (18 existing warnings).
+
+
+### Paste compatibility and local binary audit — 2026-10-02
+
+Live testing found a compatibility regression. Two requests failed with `Paste
+target is unavailable` before copying or dispatching. The optimized pipeline
+required AXFocusedApplication to report an app. Some focus states do not expose
+that AX metadata even though the front app can accept Command-V. An owned
+Electron textarea with complete Accessibility support did not test this case.
+
+The native helper now falls back to NSWorkspace for the front app. Before that
+read it services pending run-loop sources without a fixed wait, because this
+stdin daemon otherwise keeps a cached front app across switches. Both context
+inspection and dispatch use the same fallback. Unknown text context does not
+block paste when the app PID is known. App-change checks remain active; available
+field/range checks remain active. No paste retry is added.
+
+The external benchmark now supports `--no-ax-app` and `--no-ax-focus`. Each builds
+a temporary helper from the production source and replaces only the relevant AX
+lookup in that test binary. Production code has no test bypass. The fixtures
+verify actual input receipt and stale-app refusal, not just acknowledgement.
+The full suite passes: 60 files / 553 tests. Type checking and lint pass with
+18 existing warnings.
+
+Read-only local app audit:
+
+- Willow Voice 2.5.1: Mach-O imports include keyboard event creation, event
+  flags and CGEventPost. Strings identify a Command-V utility, a fast paste
+  session and plain/RTF clipboard writes. This supports clipboard-plus-keyboard
+  insertion; it does not prove exact delays, ordering or enabled code paths.
+  Binary SHA-256: a9921e816f2f45da9aa9fb5ae7f0afa41c01d15ac0e58e60577da6d56a9add3e.
+- Wispr Flow 1.6.7: the installed Electron archive defines native PasteText,
+  PasteOutcome and PasteAnalytics messages. The Swift helper imports CGEventPost
+  and contains focused-element/window/app fallback diagnostics. Its delayed
+  clipboard provider diagnostics describe supplying text when the receiver
+  requests it, a failed-read timer, and asynchronous restoration after 500 ms.
+  The JS analytics fields separately record clipboard-read success and elapsed
+  time. This is evidence of a delivery signal beyond key posting, not proof of
+  their live latency or which feature path is currently enabled.
+  Swift-helper SHA-256: d0a80de36be29f6e3f91a6d9ecb0669fe2d1a5e1283a36473198b1ffc935eb49.
+
+Both apps use the same broad clipboard/keyboard mechanism. The practical
+lessons are fallback behavior and separating dispatch from delivery. Binary
+inspection does not establish that either app completes every paste below
+5 ms. No competitor code or binary is included in this change.

@@ -47,7 +47,8 @@ async function performInsertion(
       contextChars: INSERTION_CONTEXT_CHARS,
     });
     contextDone = performance.now();
-    if (!selection.targetPid) throw new Error("Paste target is unavailable.");
+    if (!selection.targetPid)
+      throw new Error(`Paste target is unavailable (${selection.status}).`);
     method = "targeted-cmd-v";
     const receipt = await insertViaPasteDaemon(payload, selection.targetPid);
     handoffDone = performance.now();
