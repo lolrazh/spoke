@@ -13,6 +13,7 @@ export interface InsertTextAtCursorResult {
 }
 const INSERTION_CONTEXT_CHARS = 96;
 let insertionTail: Promise<unknown> = Promise.resolve();
+let latestInsertion = 0;
 
 export function insertTextAtCursor(
   text: string,
@@ -27,6 +28,7 @@ async function performInsertion(
 ): Promise<InsertTextAtCursorResult> {
   if (typeof text !== "string" || !text)
     return { success: false, error: "Cannot insert empty text." };
+  const insertionId = ++latestInsertion;
   const started = performance.now();
   let contextDone: number | null = null,
     handoffDone: number | null = null,
@@ -56,13 +58,25 @@ async function performInsertion(
     dispatchMs = receipt.dispatchMs;
     dispatchDone = handoffDone;
     const restoreClipboard = receipt.restoreClipboard;
-    // Do not await restoration, and never overwrite a newer clipboard value.
-    const timer = setTimeout(() => {
-      void restoreClipboard().catch((error) =>
-        console.warn("[Paste] Clipboard restore failed:", error),
-      );
-    }, 300);
-    timer.unref?.();
+    // Dispatch stays fast. Observe clipboard consumption separately; leave
+    // dictation available for manual paste if no reader requests it.
+    void receipt.clipboardRead.then((read) => {
+      console.info("[Paste] Clipboard read", { observed: read });
+      if (!read) {
+        if (insertionId !== latestInsertion) return;
+        state.mainWindow?.webContents.send(
+          "notify",
+          "Paste not confirmed. Text remains on clipboard.",
+        );
+        return;
+      }
+      const timer = setTimeout(() => {
+        void restoreClipboard().catch((error) =>
+          console.warn("[Paste] Clipboard restore failed:", error),
+        );
+      }, 500);
+      timer.unref?.();
+    });
     return { success: true, verified: false };
   } catch (error) {
     // Never retry a dispatched paste: the target may have received it even

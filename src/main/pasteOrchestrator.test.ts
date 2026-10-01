@@ -28,6 +28,7 @@ vi.mock("./pasteDaemon", () => ({
     const original = clipboardStore.text;
     clipboardStore.text = payload;
     return {
+      clipboardRead: Promise.resolve(true),
       clipboardMs: 0.1,
       dispatchMs: 0.1,
       restoreClipboard: async () => {
@@ -252,6 +253,42 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     expect(insertViaPasteDaemon).not.toHaveBeenCalled();
   });
 
+  it("restores only after a clipboard read plus the restoration delay", async () => {
+    let read!: (observed: boolean) => void;
+    const clipboardRead = new Promise<boolean>((resolve) => {
+      read = resolve;
+    });
+    const restore = vi.fn(async () => undefined);
+    vi.mocked(insertViaPasteDaemon).mockResolvedValueOnce({
+      clipboardRead,
+      restoreClipboard: restore,
+      clipboardMs: 0.1,
+      dispatchMs: 0.1,
+    });
+    expect((await insertTextAtCursor("Hello")).success).toBe(true);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(restore).not.toHaveBeenCalled();
+    read(true);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(restore).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(restore).toHaveBeenCalledOnce();
+  });
+  it("leaves the clipboard intact when no read is observed", async () => {
+    const restore = vi.fn(async () => undefined);
+    vi.mocked(insertViaPasteDaemon).mockResolvedValueOnce({
+      clipboardRead: Promise.resolve(false),
+      restoreClipboard: restore,
+      clipboardMs: 0.1,
+      dispatchMs: 0.1,
+    });
+    const result = await insertTextAtCursor("Hello");
+    expect(result).toEqual({ success: true, verified: false });
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(restore).not.toHaveBeenCalled();
+    expect(insertViaPasteDaemon).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes the entire insertion transaction", async () => {
     let release!: () => void;
     vi.mocked(insertViaPasteDaemon).mockImplementationOnce((payload) => {
@@ -259,6 +296,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
       return new Promise((resolve) => {
         release = () =>
           resolve({
+            clipboardRead: Promise.resolve(true),
             clipboardMs: 0.1,
             dispatchMs: 0.1,
             restoreClipboard: async () => undefined,

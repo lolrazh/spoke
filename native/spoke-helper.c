@@ -377,17 +377,54 @@ static bool paste_target_matches(pid_t pid) {
     return matches;
 }
 
+// Supply plain text only when a reader requests it. This is a clipboard-read
+// signal, not proof of a DOM edit: macOS does not identify the requesting app.
+@interface SpokePasteProvider : NSObject <NSPasteboardItemDataProvider>
+@property(nonatomic, copy) NSString *text;
+@property(nonatomic) unsigned long token;
+@property(nonatomic) BOOL readReported;
+@property(nonatomic, strong) NSPasteboardItem *item;
+@end
+@implementation SpokePasteProvider
+- (void)pasteboard:(NSPasteboard *)pasteboard item:(NSPasteboardItem *)item provideDataForType:(NSPasteboardType)type {
+    if ([item setString:self.text forType:type] && !self.readReported) {
+        self.readReported = YES;
+        printf("clipboard-read:%lu\n", self.token);
+        fflush(stdout);
+    }
+}
+- (void)pasteboardFinishedWithDataProvider:(NSPasteboard *)pasteboard {
+    self.item = nil;
+}
+@end
+static SpokePasteProvider *pasteProvider = nil;
+static void materialize_paste_provider(void) {
+    if (pasteProvider) [pasteProvider.item setString:pasteProvider.text forType:NSPasteboardTypeString];
+    pasteProvider = nil;
+}
+
 static bool copy_encoded_text(const char *encoded, NSArray *__strong *saved,
-                              NSInteger *ownedCount, unsigned long *token) {
+                              NSInteger *ownedCount, unsigned long *token, bool delayed) {
     NSData *data = [[NSData alloc] initWithBase64EncodedString:[NSString stringWithUTF8String:encoded] options:0];
     NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
     if (!text) return false;
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     if (!*saved || pb.changeCount != *ownedCount) *saved = clipboard_snapshot(pb);
     [pb clearContents];
-    if (![pb setString:text forType:NSPasteboardTypeString]) return false;
-    *ownedCount = pb.changeCount;
+    pasteProvider = nil;
     (*token)++;
+    if (delayed) {
+        SpokePasteProvider *provider = [SpokePasteProvider new];
+        provider.text = text;
+        provider.token = *token;
+        provider.item = [NSPasteboardItem new];
+        [provider.item setDataProvider:provider forTypes:@[NSPasteboardTypeString]];
+        // Discourage clipboard history tools from reading temporary dictation.
+        [provider.item setData:[NSData data] forType:@"org.nspasteboard.TransientType"];
+        if (![pb writeObjects:@[provider.item]]) return false;
+        pasteProvider = provider;
+    } else if (![pb setString:text forType:NSPasteboardTypeString]) return false;
+    *ownedCount = pb.changeCount;
     return true;
 }
 
@@ -842,9 +879,12 @@ int main(int argc, char *argv[]) {
         puts("paste-daemon-ready");
         fflush(stdout);
         
-        NSArray *savedClipboard = nil;
-        NSInteger ownedChangeCount = -1;
-        unsigned long clipboardToken = 0;
+        // Main must service AppKit's pasteboard provider and focus notifications
+        // while input is idle. The input reader submits serial commands to it.
+        dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        __block NSArray *savedClipboard = nil;
+        __block NSInteger ownedChangeCount = -1;
+        __block unsigned long clipboardToken = 0;
         char *command = NULL;
         size_t capacity = 0;
         ssize_t bytes;
@@ -852,13 +892,15 @@ int main(int argc, char *argv[]) {
             if (bytes > 1024 * 1024) break;
             // Trim newline
             command[strcspn(command, "\n")] = 0;
+            __block bool shouldExit = false;
+            dispatch_sync(dispatch_get_main_queue(), ^{
             @autoreleasepool {
             if (strncmp(command, "paste-text:", 11) == 0) {
                 char *separator = NULL;
                 pid_t expectedPid = (pid_t)strtol(command + 11, &separator, 10);
                 uint64_t started = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                 if (!separator || *separator != ':' || expectedPid <= 0 ||
-                    !copy_encoded_text(separator + 1, &savedClipboard, &ownedChangeCount, &clipboardToken)) {
+                    !copy_encoded_text(separator + 1, &savedClipboard, &ownedChangeCount, &clipboardToken, true)) {
                     puts("paste-error");
                 } else {
                     uint64_t copied = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
@@ -871,12 +913,13 @@ int main(int argc, char *argv[]) {
                                clipboardToken, (copied - started) / 1e6, (posted - copied) / 1e6);
                         puts("paste-done");
                     } else {
+                        materialize_paste_provider();
                         puts("paste-target-changed");
                     }
                 }
                 fflush(stdout);
             } else if (strncmp(command, "copy:", 5) == 0) {
-                if (copy_encoded_text(command + 5, &savedClipboard, &ownedChangeCount, &clipboardToken))
+                if (copy_encoded_text(command + 5, &savedClipboard, &ownedChangeCount, &clipboardToken, false))
                     printf("clipboard-token:%lu\n", clipboardToken);
                 else puts("copy-error");
                 puts("copy-done"); fflush(stdout);
@@ -885,6 +928,7 @@ int main(int argc, char *argv[]) {
                 NSPasteboard *pb = [NSPasteboard generalPasteboard];
                 if (savedClipboard && token == clipboardToken) {
                     if (pb.changeCount == ownedChangeCount) clipboard_restore(pb, savedClipboard);
+                    pasteProvider = nil;
                     savedClipboard = nil;
                     ownedChangeCount = -1;
                 }
@@ -907,12 +951,20 @@ int main(int argc, char *argv[]) {
                 puts("paste-done");
                 fflush(stdout);
             } else if (strcmp(command, "exit") == 0) {
-                break;
+                shouldExit = true;
             }
             }
+            });
+            if (shouldExit) break;
         }
         free(command);
-        if (pasteFocus) CFRelease(pasteFocus);
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            materialize_paste_provider();
+            if (pasteFocus) { CFRelease(pasteFocus); pasteFocus = NULL; }
+        });
+        exit(0);
+        });
+        CFRunLoopRun();
         return 0;
     }
     if (argc > 1 && strcmp(argv[1], "--inspect-text") == 0) {

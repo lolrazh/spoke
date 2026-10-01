@@ -11,6 +11,7 @@ vi.mock("fs", () => ({
 }));
 vi.mock("./helperPaths", () => ({ getHelperPath: () => "/helper" }));
 import {
+  CLIPBOARD_READ_TIMEOUT_MS,
   copyViaPasteDaemon,
   inspectViaPasteDaemon,
   insertViaPasteDaemon,
@@ -84,6 +85,38 @@ describe("persistent paste helper", () => {
     await receipt.restoreClipboard();
     expect(child.stdin.write.mock.calls[1][0]).toBe("restore:1\n");
   });
+  it("observes a read before the dispatch response and keeps it out of command output", async () => {
+    const child = ready();
+    child.stdin.write.mockImplementation((_command, callback) => {
+      callback?.();
+      child.stdout.emit(
+        "data",
+        "clipboard-read:7\nclipboard-token:7\npaste-done\n",
+      );
+    });
+    const receipt = await insertViaPasteDaemon("Hello", 42);
+    await expect(receipt.clipboardRead).resolves.toBe(true);
+  });
+  it("observes a later read without adding it to a different pending command", async () => {
+    const child = ready();
+    const receipt = await insertViaPasteDaemon("Hello", 42);
+    child.stdout.emit("data", "clipboard-read:1\n");
+    await expect(receipt.clipboardRead).resolves.toBe(true);
+  });
+  it("reports an unread clipboard without retrying paste", async () => {
+    const child = ready();
+    const receipt = await insertViaPasteDaemon("Hello", 42);
+    await vi.advanceTimersByTimeAsync(CLIPBOARD_READ_TIMEOUT_MS);
+    await expect(receipt.clipboardRead).resolves.toBe(false);
+    expect(child.stdin.write).toHaveBeenCalledTimes(1);
+  });
+  it("settles a read observer when its helper closes", async () => {
+    const child = ready();
+    const receipt = await insertViaPasteDaemon("Hello", 42);
+    child.emit("exit", 1);
+    await expect(receipt.clipboardRead).resolves.toBe(false);
+  });
+
   it("rejects a combined clipboard failure instead of assuming paste", async () => {
     const child = ready();
     child.stdin.write.mockImplementation((_command, callback) => {

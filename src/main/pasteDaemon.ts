@@ -20,6 +20,8 @@ type Session = {
   pending: PendingCommand | null;
   closed: boolean;
   tail: Promise<unknown>;
+  reads: Set<string>;
+  readWaiters: Map<string, (read: boolean) => void>;
 };
 let session: Session | null = null;
 const READY_TIMEOUT_MS = 1000;
@@ -28,6 +30,9 @@ const COMMAND_TIMEOUT_MS = 500;
 function closeSession(current: Session, error: Error): void {
   if (current.closed) return;
   current.closed = true;
+  for (const settle of current.readWaiters.values()) settle(false);
+  current.readWaiters.clear();
+  current.reads.clear();
   current.readyReject(error);
   const pending = current.pending;
   current.pending = null;
@@ -65,6 +70,8 @@ export function preSpawnPasteHelper(): void {
     pending: null,
     closed: false,
     tail: Promise.resolve(),
+    reads: new Set(),
+    readWaiters: new Map(),
   };
   session = current;
   child.stdout?.setEncoding("utf8");
@@ -79,6 +86,20 @@ export function preSpawnPasteHelper(): void {
           setup_ms: Math.round((performance.now() - started) * 1000) / 1000,
         });
         current.readyResolve();
+      }
+      const read = line.match(/^clipboard-read:(\d+)$/u);
+      if (read) {
+        const token = read[1];
+        const settle = current.readWaiters.get(token);
+        if (settle) settle(true);
+        else {
+          current.reads.add(token);
+          if (current.reads.size > 64) {
+            const oldest = current.reads.values().next().value;
+            if (oldest !== undefined) current.reads.delete(oldest);
+          }
+        }
+        continue;
       }
       const pending = current.pending;
       if (!pending) continue;
@@ -195,12 +216,33 @@ function clipboardRestorer(
   };
 }
 
+export const CLIPBOARD_READ_TIMEOUT_MS = 2000;
+function observeClipboardRead(
+  output: string,
+  owner: Session | null,
+): Promise<boolean> {
+  const token = output.match(/^clipboard-token:(\d+)$/mu)?.[1];
+  if (!token || !owner || owner.closed) return Promise.resolve(false);
+  if (owner.reads.delete(token)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const settle = (read: boolean) => {
+      clearTimeout(timer);
+      owner.readWaiters.delete(token);
+      resolve(read);
+    };
+    const timer = setTimeout(() => settle(false), CLIPBOARD_READ_TIMEOUT_MS);
+    timer.unref?.();
+    owner.readWaiters.set(token, settle);
+  });
+}
+
 /** Copy and dispatch share one native request; phase timings use one native clock. */
 export async function insertViaPasteDaemon(
   text: string,
   targetPid: number,
 ): Promise<{
   restoreClipboard: () => Promise<void>;
+  clipboardRead: Promise<boolean>;
   clipboardMs: number | null;
   dispatchMs: number | null;
 }> {
@@ -218,6 +260,7 @@ export async function insertViaPasteDaemon(
   };
   return {
     restoreClipboard: clipboardRestorer(output, owner),
+    clipboardRead: observeClipboardRead(output, owner),
     clipboardMs: phase("clipboard"),
     dispatchMs: phase("dispatch"),
   };
