@@ -970,3 +970,20 @@ spans are included in main handoff time; do not add them again.
 Validation: 60 test files / 545 tests pass; TypeScript passes; lint has no
 errors and 18 existing warnings; `git diff --check` passes. Real-app manual
 acceptance remains open. Marble/Marvel correction learning is separate work.
+
+
+### Dev recording reload follow-up — 2026-10-01
+
+The first recording loaded the lazy VAD dependency. Vite then optimized it and
+reloaded the renderer. Native capture had no document lifecycle cleanup, so
+main retained an active capture while the new document lost its session.
+Repeated starts failed with `A native audio capture is already running`.
+The VAD disposed warning was cleanup after that failed start.
+
+Native capture now reserves ownership before asynchronous startup and releases
+capture on main-document navigation, renderer crash or destruction. Old helper
+packets and exits cannot modify a replacement capture. VAD cancellation during
+model startup no longer logs a false model failure. Vite prepares the lazy VAD
+dependency at startup. The full suite passes: 60 files / 551 tests, including
+active and pending reload, crash, close, duplicate startup and normal navigation
+cases. Type checking and lint pass (18 existing warnings).

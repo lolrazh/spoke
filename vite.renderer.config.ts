@@ -10,6 +10,9 @@ export default defineConfig(({ mode }) => ({
   // Vite copies public/ to the renderer root by default. Keep those assets
   // there instead of maintaining a second copy pipeline.
   plugins: [react()],
+  // This lazy VAD import must not trigger dependency optimization and a page
+  // reload in the middle of the first recording.
+  optimizeDeps: { include: ["@ricky0123/vad-web"] },
   resolve: {
     alias: {
       "@": join(__dirname, "src"), // Example alias

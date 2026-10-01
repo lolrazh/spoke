@@ -165,6 +165,7 @@ class StreamingVadSession implements StreamingVadSessionHandle {
       this.status = "ready";
       this.drainPendingWindows();
     } catch (error) {
+      if (this.cancelled) return;
       this.status = "failed";
       this.clearPendingWindows();
       this.queueDepth = 0;

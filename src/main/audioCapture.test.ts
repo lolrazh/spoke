@@ -1,3 +1,5 @@
+import { EventEmitter } from "node:events";
+import type { WebContents } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const electronApp = vi.hoisted(() => ({
@@ -7,6 +9,7 @@ const electronApp = vi.hoisted(() => ({
 const originalResourcesPath = process.resourcesPath;
 
 vi.mock("electron", () => ({ app: electronApp }));
+vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true) }));
 
 import {
   getAudioCapturePath,
@@ -166,5 +169,113 @@ describe("getAudioCapturePath", () => {
       state.stdoutBuffer = Buffer.alloc(0);
       state.target = null;
     }
+  });
+});
+
+describe("native capture document ownership", () => {
+  const manager = nativeAudioCapture as unknown as {
+    process: {
+      stdin: { destroyed: boolean; write: ReturnType<typeof vi.fn> };
+      kill: ReturnType<typeof vi.fn>;
+    } | null;
+    ready: Promise<void> | null;
+    active: boolean;
+    ensureProcess: () => Promise<void>;
+    handleEvent: (type: number, payload: Buffer) => void;
+  };
+  function setup(ready = Promise.resolve()) {
+    const owner = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    });
+    const child = {
+      stdin: { destroyed: false, write: vi.fn() },
+      kill: vi.fn(),
+    };
+    manager.process = child;
+    manager.ready = ready;
+    vi.spyOn(manager, "ensureProcess").mockReturnValue(ready);
+    return { owner, child };
+  }
+  afterEach(() => {
+    nativeAudioCapture.cancel();
+    manager.process = null;
+    manager.ready = null;
+    vi.restoreAllMocks();
+  });
+  it.each(["destroyed", "render-process-gone", "reload"])(
+    "releases an active capture on %s and allows another recording",
+    async (event) => {
+      const { owner, child } = setup();
+      const started = nativeAudioCapture.start(
+        owner as unknown as WebContents,
+        "default",
+      );
+      await Promise.resolve();
+      manager.handleEvent(2, Buffer.alloc(0));
+      await started;
+      if (event === "reload")
+        owner.emit("did-start-navigation", {
+          isMainFrame: true,
+          isSameDocument: false,
+        });
+      else owner.emit(event);
+      expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+      expect(manager.active).toBe(false);
+      expect(owner.listenerCount("did-start-navigation")).toBe(0);
+      const next = setup();
+      const restarted = nativeAudioCapture.start(
+        next.owner as unknown as WebContents,
+        "default",
+      );
+      await Promise.resolve();
+      manager.handleEvent(2, Buffer.alloc(0));
+      await expect(restarted).resolves.toBeUndefined();
+    },
+  );
+  it("reserves startup and rejects a second start before the helper is ready", async () => {
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { owner } = setup(ready);
+    const first = nativeAudioCapture.start(
+      owner as unknown as WebContents,
+      "default",
+    );
+    await expect(
+      nativeAudioCapture.start(owner as unknown as WebContents, "default"),
+    ).rejects.toThrow("already running");
+    owner.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: false,
+    });
+    release();
+    await expect(first).rejects.toThrow("cancelled during startup");
+    expect(manager.active).toBe(false);
+  });
+  it("ignores in-page and subframe navigation and removes listeners on stop", async () => {
+    const { owner, child } = setup();
+    const start = nativeAudioCapture.start(
+      owner as unknown as WebContents,
+      "default",
+    );
+    await Promise.resolve();
+    manager.handleEvent(2, Buffer.alloc(0));
+    await start;
+    owner.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: true,
+    });
+    owner.emit("did-start-navigation", {
+      isMainFrame: false,
+      isSameDocument: false,
+    });
+    expect(child.kill).not.toHaveBeenCalled();
+    const stop = nativeAudioCapture.stop();
+    manager.handleEvent(4, Buffer.alloc(0));
+    await stop;
+    expect(owner.listenerCount("did-start-navigation")).toBe(0);
+    expect(owner.listenerCount("destroyed")).toBe(0);
   });
 });
