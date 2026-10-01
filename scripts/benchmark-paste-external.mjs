@@ -88,9 +88,13 @@ try {
         "(void)currentPid;",
       );
     if (forceNoAxFocus) {
+      fixtureSource = fixtureSource.replace(
+        "static bool g_debug_keys",
+        "static AXError suppressedFocusLookup(void) { return kAXErrorFailure; }\nstatic bool g_debug_keys",
+      );
       fixtureSource = fixtureSource.replaceAll(
         "AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el)",
-        "(void)0",
+        "suppressedFocusLookup()",
       );
       report.forced_ax_field_failure = true;
     }
@@ -331,7 +335,13 @@ try {
     report.app_focus_guard = true;
     report.summary = { ack: stats("ack_ms"), receipt: stats("receipt_ms") };
   }
-  savedInfo(JSON.stringify(report.summary || { unread_manual_fallback: report.unread_manual_fallback }));
+  savedInfo(
+    JSON.stringify(
+      report.summary || {
+        unread_manual_fallback: report.unread_manual_fallback,
+      },
+    ),
+  );
 } catch (error) {
   report.error = String(error);
   console.error(error);

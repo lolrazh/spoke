@@ -2397,5 +2397,1681 @@
       "source": "ae7a29d090ec3ef1cd7b3828fed646f396d8f42d"
     },
     "limits": "Owned Electron target only. A later repeat was stopped by the owned-focus guard and is excluded. Competitor latency was not benchmarked."
+  },
+  "delayed_clipboard_followup": {
+    "implementation_commit": "3a60ac9f",
+    "full_100_run_measured_with_working_tree_changes": true,
+    "full_100": {
+      "preparation_ms": 76.65529099999992,
+      "clipboard_formats_preserved": true,
+      "focus_guards": true,
+      "undo_ok": true,
+      "quality_errors": [],
+      "samples": [
+        {
+          "case": 0,
+          "main_ms": 4.96283399999993,
+          "ack_ms": 5.300000011920929,
+          "visible_ms": 48.700000047683716
+        },
+        {
+          "case": 1,
+          "main_ms": 2.405917000000045,
+          "ack_ms": 2.700000047683716,
+          "visible_ms": 8.400000035762787
+        },
+        {
+          "case": 2,
+          "main_ms": 3.421000000000049,
+          "ack_ms": 3.900000035762787,
+          "visible_ms": 9
+        },
+        {
+          "case": 3,
+          "main_ms": 2.891499999999951,
+          "ack_ms": 3.5,
+          "visible_ms": 11
+        },
+        {
+          "case": 4,
+          "main_ms": 7.6502919999998085,
+          "ack_ms": 8.399999976158142,
+          "visible_ms": 15.799999952316284
+        },
+        {
+          "case": 0,
+          "main_ms": 3.2507089999999152,
+          "ack_ms": 4,
+          "visible_ms": 11.200000047683716
+        },
+        {
+          "case": 1,
+          "main_ms": 2.7366250000000036,
+          "ack_ms": 3.400000035762787,
+          "visible_ms": 10.300000011920929
+        },
+        {
+          "case": 2,
+          "main_ms": 2.9487920000001395,
+          "ack_ms": 3.600000023841858,
+          "visible_ms": 10.100000023841858
+        },
+        {
+          "case": 3,
+          "main_ms": 3.0566660000001775,
+          "ack_ms": 3.799999952316284,
+          "visible_ms": 11.599999964237213
+        },
+        {
+          "case": 4,
+          "main_ms": 4.050999999999931,
+          "ack_ms": 4.800000011920929,
+          "visible_ms": 11.800000011920929
+        },
+        {
+          "case": 0,
+          "main_ms": 6.902583999999933,
+          "ack_ms": 12.300000011920929,
+          "visible_ms": 11.199999988079071
+        },
+        {
+          "case": 1,
+          "main_ms": 3.303791999999703,
+          "ack_ms": 3.899999976158142,
+          "visible_ms": 10.899999976158142
+        },
+        {
+          "case": 2,
+          "main_ms": 4.205582999999933,
+          "ack_ms": 4.900000035762787,
+          "visible_ms": 11.800000011920929
+        },
+        {
+          "case": 3,
+          "main_ms": 3.456709000000046,
+          "ack_ms": 4.199999988079071,
+          "visible_ms": 16.80000001192093
+        },
+        {
+          "case": 4,
+          "main_ms": 4.9470830000000205,
+          "ack_ms": 5.5,
+          "visible_ms": 12.300000011920929
+        },
+        {
+          "case": 0,
+          "main_ms": 3.1336660000001757,
+          "ack_ms": 3.899999976158142,
+          "visible_ms": 11
+        },
+        {
+          "case": 1,
+          "main_ms": 2.750333999999839,
+          "ack_ms": 3.399999976158142,
+          "visible_ms": 10.800000011920929
+        },
+        {
+          "case": 2,
+          "main_ms": 3.2531669999998485,
+          "ack_ms": 3.899999976158142,
+          "visible_ms": 11
+        },
+        {
+          "case": 3,
+          "main_ms": 3.2656669999996666,
+          "ack_ms": 4,
+          "visible_ms": 11.800000011920929
+        },
+        {
+          "case": 4,
+          "main_ms": 2.976083000000017,
+          "ack_ms": 3.599999964237213,
+          "visible_ms": 11.399999976158142
+        },
+        {
+          "case": 0,
+          "main_ms": 2.549583999999868,
+          "ack_ms": 3,
+          "visible_ms": 10.399999976158142
+        },
+        {
+          "case": 1,
+          "main_ms": 3.403374999999869,
+          "ack_ms": 4.100000023841858,
+          "visible_ms": 11.199999988079071
+        },
+        {
+          "case": 2,
+          "main_ms": 5.010790999999699,
+          "ack_ms": 5.699999988079071,
+          "visible_ms": 12.599999964237213
+        },
+        {
+          "case": 3,
+          "main_ms": 3.6659159999999247,
+          "ack_ms": 4.5,
+          "visible_ms": 12
+        },
+        {
+          "case": 4,
+          "main_ms": 4.543791999999939,
+          "ack_ms": 5.199999988079071,
+          "visible_ms": 12
+        },
+        {
+          "case": 0,
+          "main_ms": 2.477125000000342,
+          "ack_ms": 3,
+          "visible_ms": 9.899999976158142
+        },
+        {
+          "case": 1,
+          "main_ms": 3.675709000000097,
+          "ack_ms": 4.399999976158142,
+          "visible_ms": 12.699999988079071
+        },
+        {
+          "case": 2,
+          "main_ms": 3.3875830000006317,
+          "ack_ms": 4.100000023841858,
+          "visible_ms": 11.400000035762787
+        },
+        {
+          "case": 3,
+          "main_ms": 3.600209000000177,
+          "ack_ms": 4.300000011920929,
+          "visible_ms": 12.100000023841858
+        },
+        {
+          "case": 4,
+          "main_ms": 8.141083000000435,
+          "ack_ms": 8.699999988079071,
+          "visible_ms": 13.899999976158142
+        },
+        {
+          "case": 0,
+          "main_ms": 2.999499999999898,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 10.799999952316284
+        },
+        {
+          "case": 1,
+          "main_ms": 2.716957999999977,
+          "ack_ms": 3.400000035762787,
+          "visible_ms": 10.200000047683716
+        },
+        {
+          "case": 2,
+          "main_ms": 2.188791000000492,
+          "ack_ms": 2.699999988079071,
+          "visible_ms": 7.5
+        },
+        {
+          "case": 3,
+          "main_ms": 2.4123749999998836,
+          "ack_ms": 3.100000023841858,
+          "visible_ms": 9.600000023841858
+        },
+        {
+          "case": 4,
+          "main_ms": 2.7899999999999636,
+          "ack_ms": 3.5,
+          "visible_ms": 10
+        },
+        {
+          "case": 0,
+          "main_ms": 3.1035000000001673,
+          "ack_ms": 3.599999964237213,
+          "visible_ms": 10.799999952316284
+        },
+        {
+          "case": 1,
+          "main_ms": 3.173624999999447,
+          "ack_ms": 3.799999952316284,
+          "visible_ms": 11
+        },
+        {
+          "case": 2,
+          "main_ms": 2.653374999999869,
+          "ack_ms": 3.299999952316284,
+          "visible_ms": 10.5
+        },
+        {
+          "case": 3,
+          "main_ms": 2.9787089999999807,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 11.799999952316284
+        },
+        {
+          "case": 4,
+          "main_ms": 3.7474999999994907,
+          "ack_ms": 4.5,
+          "visible_ms": 11.599999964237213
+        },
+        {
+          "case": 0,
+          "main_ms": 4.709415999999692,
+          "ack_ms": 5.400000035762787,
+          "visible_ms": 12.400000035762787
+        },
+        {
+          "case": 1,
+          "main_ms": 2.63183300000037,
+          "ack_ms": 3.199999988079071,
+          "visible_ms": 10.800000011920929
+        },
+        {
+          "case": 2,
+          "main_ms": 3.0327079999997295,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 11.099999964237213
+        },
+        {
+          "case": 3,
+          "main_ms": 4.6437919999998485,
+          "ack_ms": 5.400000035762787,
+          "visible_ms": 11.800000011920929
+        },
+        {
+          "case": 4,
+          "main_ms": 3.9147079999993366,
+          "ack_ms": 4.599999964237213,
+          "visible_ms": 12.099999964237213
+        },
+        {
+          "case": 0,
+          "main_ms": 3.0612920000003214,
+          "ack_ms": 3.700000047683716,
+          "visible_ms": 10.800000011920929
+        },
+        {
+          "case": 1,
+          "main_ms": 3.6780840000001263,
+          "ack_ms": 4.400000035762787,
+          "visible_ms": 11.5
+        },
+        {
+          "case": 2,
+          "main_ms": 2.8164170000000013,
+          "ack_ms": 3.400000035762787,
+          "visible_ms": 11.800000011920929
+        },
+        {
+          "case": 3,
+          "main_ms": 3.130583000000115,
+          "ack_ms": 3.799999952316284,
+          "visible_ms": 11.299999952316284
+        },
+        {
+          "case": 4,
+          "main_ms": 3.4198749999995925,
+          "ack_ms": 4.100000023841858,
+          "visible_ms": 11.400000035762787
+        },
+        {
+          "case": 0,
+          "main_ms": 3.473374999999578,
+          "ack_ms": 4.199999988079071,
+          "visible_ms": 11.199999988079071
+        },
+        {
+          "case": 1,
+          "main_ms": 4.837207999999919,
+          "ack_ms": 5.399999976158142,
+          "visible_ms": 11.699999988079071
+        },
+        {
+          "case": 2,
+          "main_ms": 2.579333000000588,
+          "ack_ms": 3.199999988079071,
+          "visible_ms": 10.099999964237213
+        },
+        {
+          "case": 3,
+          "main_ms": 2.8498749999998836,
+          "ack_ms": 3.400000035762787,
+          "visible_ms": 10.800000011920929
+        },
+        {
+          "case": 4,
+          "main_ms": 3.3559159999995245,
+          "ack_ms": 4,
+          "visible_ms": 11.300000011920929
+        },
+        {
+          "case": 0,
+          "main_ms": 2.7506249999996726,
+          "ack_ms": 3.299999952316284,
+          "visible_ms": 10.599999964237213
+        },
+        {
+          "case": 1,
+          "main_ms": 2.7572500000005675,
+          "ack_ms": 3.300000011920929,
+          "visible_ms": 10
+        },
+        {
+          "case": 2,
+          "main_ms": 3.4717920000002778,
+          "ack_ms": 4.199999988079071,
+          "visible_ms": 11.899999976158142
+        },
+        {
+          "case": 3,
+          "main_ms": 3.1227499999995416,
+          "ack_ms": 3.800000011920929,
+          "visible_ms": 11.200000047683716
+        },
+        {
+          "case": 4,
+          "main_ms": 3.051542000000154,
+          "ack_ms": 3.600000023841858,
+          "visible_ms": 10.400000035762787
+        },
+        {
+          "case": 0,
+          "main_ms": 2.6922920000006343,
+          "ack_ms": 3.300000011920929,
+          "visible_ms": 8.900000035762787
+        },
+        {
+          "case": 1,
+          "main_ms": 2.4080000000003565,
+          "ack_ms": 2.899999976158142,
+          "visible_ms": 9.199999988079071
+        },
+        {
+          "case": 2,
+          "main_ms": 2.638708000000406,
+          "ack_ms": 3.199999988079071,
+          "visible_ms": 10.199999988079071
+        },
+        {
+          "case": 3,
+          "main_ms": 2.8470839999999953,
+          "ack_ms": 3.399999976158142,
+          "visible_ms": 11.699999988079071
+        },
+        {
+          "case": 4,
+          "main_ms": 2.8383750000011787,
+          "ack_ms": 3.5,
+          "visible_ms": 9
+        },
+        {
+          "case": 0,
+          "main_ms": 2.420124999998734,
+          "ack_ms": 3,
+          "visible_ms": 10.199999988079071
+        },
+        {
+          "case": 1,
+          "main_ms": 2.5866659999992407,
+          "ack_ms": 3.199999988079071,
+          "visible_ms": 12.300000011920929
+        },
+        {
+          "case": 2,
+          "main_ms": 3.2680829999990237,
+          "ack_ms": 4,
+          "visible_ms": 11.100000023841858
+        },
+        {
+          "case": 3,
+          "main_ms": 3.5763330000008864,
+          "ack_ms": 4.300000011920929,
+          "visible_ms": 11.699999988079071
+        },
+        {
+          "case": 4,
+          "main_ms": 2.615916999999172,
+          "ack_ms": 3.300000011920929,
+          "visible_ms": 9.699999988079071
+        },
+        {
+          "case": 0,
+          "main_ms": 2.9138330000005226,
+          "ack_ms": 3.600000023841858,
+          "visible_ms": 10.900000035762787
+        },
+        {
+          "case": 1,
+          "main_ms": 2.5847090000006574,
+          "ack_ms": 3.100000023841858,
+          "visible_ms": 10.699999988079071
+        },
+        {
+          "case": 2,
+          "main_ms": 2.986041000000114,
+          "ack_ms": 3.599999964237213,
+          "visible_ms": 10.399999976158142
+        },
+        {
+          "case": 3,
+          "main_ms": 2.9106250000004366,
+          "ack_ms": 3.5,
+          "visible_ms": 12.399999976158142
+        },
+        {
+          "case": 4,
+          "main_ms": 3.2704159999993863,
+          "ack_ms": 3.899999976158142,
+          "visible_ms": 9.299999952316284
+        },
+        {
+          "case": 0,
+          "main_ms": 2.8762919999990118,
+          "ack_ms": 3.5,
+          "visible_ms": 10.300000011920929
+        },
+        {
+          "case": 1,
+          "main_ms": 3.5215420000004087,
+          "ack_ms": 4.300000011920929,
+          "visible_ms": 11.5
+        },
+        {
+          "case": 2,
+          "main_ms": 5.175000000001091,
+          "ack_ms": 5.899999976158142,
+          "visible_ms": 12.899999976158142
+        },
+        {
+          "case": 3,
+          "main_ms": 3.0247920000001614,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 11.300000011920929
+        },
+        {
+          "case": 4,
+          "main_ms": 4.037167000000409,
+          "ack_ms": 4.700000047683716,
+          "visible_ms": 11.300000011920929
+        },
+        {
+          "case": 0,
+          "main_ms": 2.99016599999959,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 10.699999988079071
+        },
+        {
+          "case": 1,
+          "main_ms": 3.3819170000006125,
+          "ack_ms": 4.099999964237213,
+          "visible_ms": 11.599999964237213
+        },
+        {
+          "case": 2,
+          "main_ms": 2.530958000001192,
+          "ack_ms": 3.100000023841858,
+          "visible_ms": 9.400000035762787
+        },
+        {
+          "case": 3,
+          "main_ms": 3.107916999999361,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 10.900000035762787
+        },
+        {
+          "case": 4,
+          "main_ms": 3.0651249999991705,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 10.799999952316284
+        },
+        {
+          "case": 0,
+          "main_ms": 3.017083000000639,
+          "ack_ms": 3.699999988079071,
+          "visible_ms": 10.800000011920929
+        },
+        {
+          "case": 1,
+          "main_ms": 3.2834169999987353,
+          "ack_ms": 4,
+          "visible_ms": 11.100000023841858
+        },
+        {
+          "case": 2,
+          "main_ms": 4.261749999999665,
+          "ack_ms": 4.900000035762787,
+          "visible_ms": 12.200000047683716
+        },
+        {
+          "case": 3,
+          "main_ms": 4.603375000000597,
+          "ack_ms": 5.199999988079071,
+          "visible_ms": 11.5
+        },
+        {
+          "case": 4,
+          "main_ms": 3.9350830000003043,
+          "ack_ms": 4.5,
+          "visible_ms": 11.600000023841858
+        },
+        {
+          "case": 0,
+          "main_ms": 2.751125000000684,
+          "ack_ms": 3.299999952316284,
+          "visible_ms": 10.399999976158142
+        },
+        {
+          "case": 1,
+          "main_ms": 2.4353329999994457,
+          "ack_ms": 2.899999976158142,
+          "visible_ms": 10.099999964237213
+        },
+        {
+          "case": 2,
+          "main_ms": 2.9922499999993306,
+          "ack_ms": 3.599999964237213,
+          "visible_ms": 12.099999964237213
+        },
+        {
+          "case": 3,
+          "main_ms": 2.4514579999995476,
+          "ack_ms": 3,
+          "visible_ms": 10
+        },
+        {
+          "case": 4,
+          "main_ms": 3.302750000000742,
+          "ack_ms": 4,
+          "visible_ms": 11.5
+        },
+        {
+          "case": 0,
+          "main_ms": 2.33704200000102,
+          "ack_ms": 2.900000035762787,
+          "visible_ms": 9.699999988079071
+        },
+        {
+          "case": 1,
+          "main_ms": 2.2263330000005226,
+          "ack_ms": 2.600000023841858,
+          "visible_ms": 9.100000023841858
+        },
+        {
+          "case": 2,
+          "main_ms": 2.566832999998951,
+          "ack_ms": 3.100000023841858,
+          "visible_ms": 11.5
+        },
+        {
+          "case": 3,
+          "main_ms": 4.7690830000010465,
+          "ack_ms": 5.600000023841858,
+          "visible_ms": 12.800000011920929
+        },
+        {
+          "case": 4,
+          "main_ms": 2.415166999999201,
+          "ack_ms": 2.899999976158142,
+          "visible_ms": 9.800000011920929
+        }
+      ],
+      "summary": {
+        "main": {
+          "n": 100,
+          "median_ms": 3.0612920000003214,
+          "p95_ms": 4.96283399999993,
+          "max_ms": 8.141083000000435
+        },
+        "renderer_ack": {
+          "n": 100,
+          "median_ms": 3.699999988079071,
+          "p95_ms": 5.600000023841858,
+          "max_ms": 12.300000011920929
+        },
+        "text_receipt": {
+          "n": 100,
+          "median_ms": 11.100000023841858,
+          "p95_ms": 12.800000011920929,
+          "max_ms": 48.700000047683716
+        }
+      },
+      "stages": [
+        {
+          "context_ms": 1.233,
+          "clipboard_ms": 2.825,
+          "dispatch_ms": 0.234,
+          "handoff_ms": 3.565,
+          "total_ms": 4.814,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.49,
+          "clipboard_ms": 0.405,
+          "dispatch_ms": 0.24,
+          "handoff_ms": 0.895,
+          "total_ms": 2.393,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 2.2,
+          "clipboard_ms": 0.587,
+          "dispatch_ms": 0.31,
+          "handoff_ms": 1.19,
+          "total_ms": 3.399,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.246,
+          "clipboard_ms": 0.819,
+          "dispatch_ms": 0.366,
+          "handoff_ms": 1.601,
+          "total_ms": 2.864,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 3.169,
+          "clipboard_ms": 0.942,
+          "dispatch_ms": 2.71,
+          "handoff_ms": 4.421,
+          "total_ms": 7.611,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.445,
+          "clipboard_ms": 0.861,
+          "dispatch_ms": 0.437,
+          "handoff_ms": 1.749,
+          "total_ms": 3.211,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.205,
+          "clipboard_ms": 0.768,
+          "dispatch_ms": 0.366,
+          "handoff_ms": 1.492,
+          "total_ms": 2.714,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.165,
+          "clipboard_ms": 0.777,
+          "dispatch_ms": 0.538,
+          "handoff_ms": 1.741,
+          "total_ms": 2.924,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.504,
+          "clipboard_ms": 0.754,
+          "dispatch_ms": 0.358,
+          "handoff_ms": 1.473,
+          "total_ms": 3,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 2.313,
+          "clipboard_ms": 0.856,
+          "dispatch_ms": 0.397,
+          "handoff_ms": 1.674,
+          "total_ms": 4.005,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.277,
+          "clipboard_ms": 0.793,
+          "dispatch_ms": 0.381,
+          "handoff_ms": 5.575,
+          "total_ms": 6.869,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.83,
+          "clipboard_ms": 0.758,
+          "dispatch_ms": 0.376,
+          "handoff_ms": 1.438,
+          "total_ms": 3.274,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.612,
+          "clipboard_ms": 0.828,
+          "dispatch_ms": 1.348,
+          "handoff_ms": 2.555,
+          "total_ms": 4.172,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.663,
+          "clipboard_ms": 0.848,
+          "dispatch_ms": 0.391,
+          "handoff_ms": 1.754,
+          "total_ms": 3.423,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 3.309,
+          "clipboard_ms": 0.826,
+          "dispatch_ms": 0.416,
+          "handoff_ms": 1.608,
+          "total_ms": 4.922,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.534,
+          "clipboard_ms": 0.809,
+          "dispatch_ms": 0.385,
+          "handoff_ms": 1.561,
+          "total_ms": 3.101,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.146,
+          "clipboard_ms": 0.783,
+          "dispatch_ms": 0.413,
+          "handoff_ms": 1.57,
+          "total_ms": 2.721,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.669,
+          "clipboard_ms": 0.821,
+          "dispatch_ms": 0.397,
+          "handoff_ms": 1.549,
+          "total_ms": 3.223,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.295,
+          "clipboard_ms": 0.81,
+          "dispatch_ms": 0.425,
+          "handoff_ms": 1.934,
+          "total_ms": 3.234,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.411,
+          "clipboard_ms": 0.838,
+          "dispatch_ms": 0.388,
+          "handoff_ms": 1.534,
+          "total_ms": 2.949,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.09,
+          "clipboard_ms": 0.767,
+          "dispatch_ms": 0.345,
+          "handoff_ms": 1.426,
+          "total_ms": 2.52,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.558,
+          "clipboard_ms": 0.843,
+          "dispatch_ms": 0.431,
+          "handoff_ms": 1.81,
+          "total_ms": 3.374,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 3.529,
+          "clipboard_ms": 0.755,
+          "dispatch_ms": 0.343,
+          "handoff_ms": 1.415,
+          "total_ms": 4.949,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.49,
+          "clipboard_ms": 0.841,
+          "dispatch_ms": 0.916,
+          "handoff_ms": 2.132,
+          "total_ms": 3.627,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.347,
+          "clipboard_ms": 1.028,
+          "dispatch_ms": 1.843,
+          "handoff_ms": 3.171,
+          "total_ms": 4.524,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.04,
+          "clipboard_ms": 0.734,
+          "dispatch_ms": 0.381,
+          "handoff_ms": 1.411,
+          "total_ms": 2.456,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.73,
+          "clipboard_ms": 0.994,
+          "dispatch_ms": 0.457,
+          "handoff_ms": 1.914,
+          "total_ms": 3.651,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.605,
+          "clipboard_ms": 0.955,
+          "dispatch_ms": 0.438,
+          "handoff_ms": 1.751,
+          "total_ms": 3.362,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 2.044,
+          "clipboard_ms": 0.802,
+          "dispatch_ms": 0.363,
+          "handoff_ms": 1.525,
+          "total_ms": 3.575,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.323,
+          "clipboard_ms": 0.842,
+          "dispatch_ms": 5.659,
+          "handoff_ms": 6.794,
+          "total_ms": 8.12,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.263,
+          "clipboard_ms": 0.906,
+          "dispatch_ms": 0.433,
+          "handoff_ms": 1.709,
+          "total_ms": 2.978,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.243,
+          "clipboard_ms": 0.765,
+          "dispatch_ms": 0.387,
+          "handoff_ms": 1.448,
+          "total_ms": 2.695,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.927,
+          "clipboard_ms": 0.664,
+          "dispatch_ms": 0.324,
+          "handoff_ms": 1.245,
+          "total_ms": 2.175,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.955,
+          "clipboard_ms": 0.726,
+          "dispatch_ms": 0.37,
+          "handoff_ms": 1.434,
+          "total_ms": 2.394,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.384,
+          "clipboard_ms": 0.744,
+          "dispatch_ms": 0.365,
+          "handoff_ms": 1.378,
+          "total_ms": 2.766,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.52,
+          "clipboard_ms": 0.802,
+          "dispatch_ms": 0.373,
+          "handoff_ms": 1.554,
+          "total_ms": 3.08,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.619,
+          "clipboard_ms": 0.782,
+          "dispatch_ms": 0.399,
+          "handoff_ms": 1.525,
+          "total_ms": 3.15,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.153,
+          "clipboard_ms": 0.78,
+          "dispatch_ms": 0.391,
+          "handoff_ms": 1.473,
+          "total_ms": 2.631,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.312,
+          "clipboard_ms": 0.863,
+          "dispatch_ms": 0.411,
+          "handoff_ms": 1.635,
+          "total_ms": 2.953,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 2.054,
+          "clipboard_ms": 0.821,
+          "dispatch_ms": 0.455,
+          "handoff_ms": 1.664,
+          "total_ms": 3.724,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 3.213,
+          "clipboard_ms": 0.803,
+          "dispatch_ms": 0.362,
+          "handoff_ms": 1.467,
+          "total_ms": 4.686,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.19,
+          "clipboard_ms": 0.71,
+          "dispatch_ms": 0.376,
+          "handoff_ms": 1.415,
+          "total_ms": 2.609,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.296,
+          "clipboard_ms": 0.846,
+          "dispatch_ms": 0.475,
+          "handoff_ms": 1.707,
+          "total_ms": 3.009,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.614,
+          "clipboard_ms": 0.831,
+          "dispatch_ms": 0.974,
+          "handoff_ms": 2.996,
+          "total_ms": 4.616,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.929,
+          "clipboard_ms": 0.987,
+          "dispatch_ms": 0.442,
+          "handoff_ms": 1.957,
+          "total_ms": 3.89,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.484,
+          "clipboard_ms": 0.815,
+          "dispatch_ms": 0.38,
+          "handoff_ms": 1.548,
+          "total_ms": 3.036,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.729,
+          "clipboard_ms": 1.045,
+          "dispatch_ms": 0.545,
+          "handoff_ms": 1.919,
+          "total_ms": 3.654,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.277,
+          "clipboard_ms": 0.811,
+          "dispatch_ms": 0.392,
+          "handoff_ms": 1.508,
+          "total_ms": 2.79,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.54,
+          "clipboard_ms": 0.792,
+          "dispatch_ms": 0.397,
+          "handoff_ms": 1.561,
+          "total_ms": 3.106,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.843,
+          "clipboard_ms": 0.759,
+          "dispatch_ms": 0.391,
+          "handoff_ms": 1.546,
+          "total_ms": 3.394,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.469,
+          "clipboard_ms": 0.971,
+          "dispatch_ms": 0.612,
+          "handoff_ms": 1.975,
+          "total_ms": 3.45,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.727,
+          "clipboard_ms": 0.901,
+          "dispatch_ms": 0.409,
+          "handoff_ms": 3.068,
+          "total_ms": 4.801,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.162,
+          "clipboard_ms": 0.74,
+          "dispatch_ms": 0.361,
+          "handoff_ms": 1.39,
+          "total_ms": 2.557,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.22,
+          "clipboard_ms": 0.859,
+          "dispatch_ms": 0.375,
+          "handoff_ms": 1.6,
+          "total_ms": 2.825,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.815,
+          "clipboard_ms": 0.804,
+          "dispatch_ms": 0.396,
+          "handoff_ms": 1.513,
+          "total_ms": 3.333,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.079,
+          "clipboard_ms": 0.815,
+          "dispatch_ms": 0.392,
+          "handoff_ms": 1.644,
+          "total_ms": 2.729,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.172,
+          "clipboard_ms": 0.809,
+          "dispatch_ms": 0.393,
+          "handoff_ms": 1.561,
+          "total_ms": 2.738,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.603,
+          "clipboard_ms": 0.949,
+          "dispatch_ms": 0.448,
+          "handoff_ms": 1.838,
+          "total_ms": 3.446,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.546,
+          "clipboard_ms": 0.812,
+          "dispatch_ms": 0.377,
+          "handoff_ms": 1.547,
+          "total_ms": 3.097,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.483,
+          "clipboard_ms": 0.819,
+          "dispatch_ms": 0.409,
+          "handoff_ms": 1.541,
+          "total_ms": 3.029,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.162,
+          "clipboard_ms": 0.809,
+          "dispatch_ms": 0.419,
+          "handoff_ms": 1.505,
+          "total_ms": 2.671,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.013,
+          "clipboard_ms": 0.725,
+          "dispatch_ms": 0.351,
+          "handoff_ms": 1.371,
+          "total_ms": 2.388,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.133,
+          "clipboard_ms": 0.794,
+          "dispatch_ms": 0.394,
+          "handoff_ms": 1.479,
+          "total_ms": 2.617,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.199,
+          "clipboard_ms": 0.85,
+          "dispatch_ms": 0.397,
+          "handoff_ms": 1.619,
+          "total_ms": 2.823,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.298,
+          "clipboard_ms": 0.76,
+          "dispatch_ms": 0.357,
+          "handoff_ms": 1.515,
+          "total_ms": 2.818,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.962,
+          "clipboard_ms": 0.735,
+          "dispatch_ms": 0.349,
+          "handoff_ms": 1.434,
+          "total_ms": 2.401,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.1,
+          "clipboard_ms": 0.772,
+          "dispatch_ms": 0.392,
+          "handoff_ms": 1.458,
+          "total_ms": 2.563,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.569,
+          "clipboard_ms": 0.834,
+          "dispatch_ms": 0.432,
+          "handoff_ms": 1.619,
+          "total_ms": 3.243,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.662,
+          "clipboard_ms": 1.068,
+          "dispatch_ms": 0.41,
+          "handoff_ms": 1.881,
+          "total_ms": 3.55,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.191,
+          "clipboard_ms": 0.759,
+          "dispatch_ms": 0.355,
+          "handoff_ms": 1.399,
+          "total_ms": 2.594,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.415,
+          "clipboard_ms": 0.781,
+          "dispatch_ms": 0.36,
+          "handoff_ms": 1.473,
+          "total_ms": 2.892,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.194,
+          "clipboard_ms": 0.729,
+          "dispatch_ms": 0.375,
+          "handoff_ms": 1.364,
+          "total_ms": 2.564,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.473,
+          "clipboard_ms": 0.758,
+          "dispatch_ms": 0.39,
+          "handoff_ms": 1.486,
+          "total_ms": 2.963,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.29,
+          "clipboard_ms": 0.798,
+          "dispatch_ms": 0.368,
+          "handoff_ms": 1.593,
+          "total_ms": 2.889,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.996,
+          "clipboard_ms": 0.651,
+          "dispatch_ms": 0.389,
+          "handoff_ms": 1.251,
+          "total_ms": 3.251,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.444,
+          "clipboard_ms": 0.771,
+          "dispatch_ms": 0.362,
+          "handoff_ms": 1.404,
+          "total_ms": 2.853,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.576,
+          "clipboard_ms": 1.074,
+          "dispatch_ms": 0.475,
+          "handoff_ms": 1.912,
+          "total_ms": 3.494,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 3.679,
+          "clipboard_ms": 0.786,
+          "dispatch_ms": 0.361,
+          "handoff_ms": 1.465,
+          "total_ms": 5.149,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.447,
+          "clipboard_ms": 0.827,
+          "dispatch_ms": 0.364,
+          "handoff_ms": 1.549,
+          "total_ms": 3.001,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.287,
+          "clipboard_ms": 0.862,
+          "dispatch_ms": 1.553,
+          "handoff_ms": 2.723,
+          "total_ms": 4.015,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.485,
+          "clipboard_ms": 0.758,
+          "dispatch_ms": 0.411,
+          "handoff_ms": 1.476,
+          "total_ms": 2.966,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.582,
+          "clipboard_ms": 0.973,
+          "dispatch_ms": 0.422,
+          "handoff_ms": 1.768,
+          "total_ms": 3.356,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.037,
+          "clipboard_ms": 0.809,
+          "dispatch_ms": 0.359,
+          "handoff_ms": 1.459,
+          "total_ms": 2.502,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.427,
+          "clipboard_ms": 0.898,
+          "dispatch_ms": 0.384,
+          "handoff_ms": 1.648,
+          "total_ms": 3.083,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.356,
+          "clipboard_ms": 0.87,
+          "dispatch_ms": 0.414,
+          "handoff_ms": 1.681,
+          "total_ms": 3.043,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.479,
+          "clipboard_ms": 0.77,
+          "dispatch_ms": 0.371,
+          "handoff_ms": 1.505,
+          "total_ms": 2.99,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.596,
+          "clipboard_ms": 0.973,
+          "dispatch_ms": 0.383,
+          "handoff_ms": 1.656,
+          "total_ms": 3.257,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.148,
+          "clipboard_ms": 0.819,
+          "dispatch_ms": 1.907,
+          "handoff_ms": 3.086,
+          "total_ms": 4.239,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.493,
+          "clipboard_ms": 0.881,
+          "dispatch_ms": 0.966,
+          "handoff_ms": 3.078,
+          "total_ms": 4.576,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.847,
+          "clipboard_ms": 1.201,
+          "dispatch_ms": 0.49,
+          "handoff_ms": 2.053,
+          "total_ms": 3.906,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.195,
+          "clipboard_ms": 0.824,
+          "dispatch_ms": 0.398,
+          "handoff_ms": 1.527,
+          "total_ms": 2.726,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.056,
+          "clipboard_ms": 0.712,
+          "dispatch_ms": 0.355,
+          "handoff_ms": 1.352,
+          "total_ms": 2.413,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.521,
+          "clipboard_ms": 0.743,
+          "dispatch_ms": 0.427,
+          "handoff_ms": 1.442,
+          "total_ms": 2.969,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.02,
+          "clipboard_ms": 0.745,
+          "dispatch_ms": 0.358,
+          "handoff_ms": 1.404,
+          "total_ms": 2.43,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.757,
+          "clipboard_ms": 0.779,
+          "dispatch_ms": 0.382,
+          "handoff_ms": 1.512,
+          "total_ms": 3.275,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.989,
+          "clipboard_ms": 0.738,
+          "dispatch_ms": 0.329,
+          "handoff_ms": 1.32,
+          "total_ms": 2.315,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.933,
+          "clipboard_ms": 0.727,
+          "dispatch_ms": 0.358,
+          "handoff_ms": 1.276,
+          "total_ms": 2.212,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.004,
+          "clipboard_ms": 0.775,
+          "dispatch_ms": 0.4,
+          "handoff_ms": 1.537,
+          "total_ms": 2.547,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 3.302,
+          "clipboard_ms": 0.75,
+          "dispatch_ms": 0.37,
+          "handoff_ms": 1.434,
+          "total_ms": 4.741,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.084,
+          "clipboard_ms": 0.692,
+          "dispatch_ms": 0.311,
+          "handoff_ms": 1.306,
+          "total_ms": 2.395,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        }
+      ],
+      "runtime": {
+        "electron": "35.7.5",
+        "node": "22.16.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "source": "d61aee7b6809ea28c10aced076288b5a247647cd",
+      "timestamp": "2026-10-01T19:57:43.998Z"
+    },
+    "post_commit_receipts": {
+      "preparation_ms": 113.92516699999999,
+      "clipboard_formats_preserved": true,
+      "focus_guards": true,
+      "undo_ok": true,
+      "quality_errors": [],
+      "samples": [
+        {
+          "case": 0,
+          "main_ms": 4.620041000000015,
+          "ack_ms": 5,
+          "visible_ms": 45.19999998807907
+        },
+        {
+          "case": 1,
+          "main_ms": 2.381208999999899,
+          "ack_ms": 2.699999988079071,
+          "visible_ms": 10.199999988079071
+        },
+        {
+          "case": 2,
+          "main_ms": 1.9517500000001746,
+          "ack_ms": 2.300000011920929,
+          "visible_ms": 6.700000047683716
+        },
+        {
+          "case": 3,
+          "main_ms": 2.92775000000006,
+          "ack_ms": 3.5,
+          "visible_ms": 9.199999988079071
+        },
+        {
+          "case": 4,
+          "main_ms": 3.939875000000029,
+          "ack_ms": 4.400000035762787,
+          "visible_ms": 10.200000047683716
+        }
+      ],
+      "summary": {
+        "main": {
+          "n": 5,
+          "median_ms": 2.92775000000006,
+          "p95_ms": 4.620041000000015,
+          "max_ms": 4.620041000000015
+        },
+        "renderer_ack": {
+          "n": 5,
+          "median_ms": 3.5,
+          "p95_ms": 5,
+          "max_ms": 5
+        },
+        "text_receipt": {
+          "n": 5,
+          "median_ms": 10.199999988079071,
+          "p95_ms": 45.19999998807907,
+          "max_ms": 45.19999998807907
+        }
+      },
+      "stages": [
+        {
+          "context_ms": 1.187,
+          "clipboard_ms": 2.592,
+          "dispatch_ms": 0.221,
+          "handoff_ms": 3.282,
+          "total_ms": 4.486,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.485,
+          "clipboard_ms": 0.431,
+          "dispatch_ms": 0.197,
+          "handoff_ms": 0.877,
+          "total_ms": 2.369,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.856,
+          "clipboard_ms": 0.509,
+          "dispatch_ms": 0.288,
+          "handoff_ms": 1.069,
+          "total_ms": 1.936,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 1.265,
+          "clipboard_ms": 0.892,
+          "dispatch_ms": 0.324,
+          "handoff_ms": 1.621,
+          "total_ms": 2.897,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 2.13,
+          "clipboard_ms": 0.601,
+          "dispatch_ms": 0.834,
+          "handoff_ms": 1.777,
+          "total_ms": 3.917,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        }
+      ],
+      "clipboardReads": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "runtime": {
+        "electron": "35.7.5",
+        "node": "22.16.0",
+        "platform": "darwin",
+        "arch": "arm64"
+      },
+      "source": "4f687cf13f7f311387dfa2db527a75915f1ddf48",
+      "timestamp": "2026-10-01T20:00:50.955Z"
+    },
+    "unread_manual_fallback": {
+      "timestamp": "2026-10-01T19:58:56.733Z",
+      "runtime": "production main pipeline in Node host, separate Electron target; shared Node hrtime clock",
+      "samples": [],
+      "stages": [],
+      "forced_ax_app_failure": false,
+      "suppressed_key_post": true,
+      "preparationMs": 456.4649999999999,
+      "unread_manual_fallback": true,
+      "source": "d61aee7b6809ea28c10aced076288b5a247647cd"
+    },
+    "limits": "Clipboard read identifies consumption by a reader, not the reader PID or a verified target edit. The full 100 run exceeds the 5 ms renderer p95 target."
   }
 }

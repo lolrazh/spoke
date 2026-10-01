@@ -1032,3 +1032,46 @@ Both apps use the same broad clipboard/keyboard mechanism. The practical
 lessons are fallback behavior and separating dispatch from delivery. Binary
 inspection does not establish that either app completes every paste below
 5 ms. No competitor code or binary is included in this change.
+
+
+### Delayed clipboard delivery implementation — 2026-10-02
+
+Implemented the delayed clipboard provider pattern observed in the local Wispr
+Flow audit. The native helper registers an NSPasteboardItemDataProvider for
+plain text and serves the text when requested. The main run loop now stays
+active while a background stdin reader submits serial commands to the main
+queue. This also keeps workspace notifications current while input is idle.
+Temporary dictation carries a transient clipboard marker.
+
+Dispatch acknowledgement and clipboard-read observation are separate. Reads
+can arrive before or after acknowledgement; each is associated with its helper
+session and clipboard token. The observer settles after 2 seconds or helper
+exit. It never retries the paste. A read schedules clipboard restoration after
+500 ms, guarded by clipboard ownership and token. Without a read, the transcript
+remains available for manual paste and the latest insertion gets an unconfirmed
+paste notification. A closed window is not notified. On helper exit, unread
+promised text is materialized so manual paste survives process termination.
+
+macOS does not identify the requesting process in this callback. Clipboard
+consumption is a useful signal, but it does not prove target-field insertion or
+screen paint. The insertion response still reports verified=false.
+
+Validation:
+
+- 559 tests in 60 files pass; TypeScript passes. Changed production files lint
+  without warnings; the existing 18 repository warnings remain.
+- A real native probe suppresses key posting: no read is observed, the target
+  stays empty, and manual clipboard text survives helper exit.
+- Five post-commit Electron cases observe five clipboard reads. Exact text,
+  rich original clipboard restoration, newer-owner protection, undo and field
+  guards pass.
+- A full 100-case run has renderer request median 3.7 ms, p95 5.6 ms, max
+  12.3 ms; 13 requests exceed 5 ms. Main median/p95 are 3.06/4.96 ms. Actual
+  textarea input median/p95 are 11.1/12.8 ms, first/max 48.7 ms. Normal helper
+  preparation is 76.7 ms; forced missing-AX cold setup can be hundreds of ms.
+  Setup runs during recording. The new renderer p95 does not meet 5 ms.
+- Raw full-run samples and post-commit receipt evidence are saved in
+  scripts/fixtures/paste-benchmark-results.json with provenance limits.
+
+Real terminal/browser acceptance remains open. This improves delivery handling;
+it is not a claim of parity with either competitor's complete implementation.
