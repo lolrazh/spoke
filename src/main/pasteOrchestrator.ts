@@ -64,10 +64,12 @@ async function performInsertion(
       console.info("[Paste] Clipboard read", { observed: read });
       if (!read) {
         if (insertionId !== latestInsertion) return;
-        state.mainWindow?.webContents.send(
-          "notify",
-          "Paste not confirmed. Text remains on clipboard.",
-        );
+        const window = state.mainWindow;
+        if (window && !window.isDestroyed())
+          window.webContents.send(
+            "notify",
+            "Paste not confirmed. Text remains on clipboard.",
+          );
         return;
       }
       const timer = setTimeout(() => {
