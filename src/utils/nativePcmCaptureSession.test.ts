@@ -8,12 +8,13 @@ describe("NativePcmCaptureSession", () => {
     window.audioCapture = originalBridge;
   });
 
-  it("converts streamed little-endian bytes and waits for the stopped event", async () => {
+  it("keeps the final native flush frame before the stopped event", async () => {
     let onFrame = (_payload: Uint8Array): void => {};
     let onStopped: (() => void) | null = null;
     let onError: ((message: string) => void) | null = null;
     const start = vi.fn(async () => ({ ok: true }));
     const stop = vi.fn(async () => {
+      onFrame(new Uint8Array([0x2a, 0x00]));
       onStopped?.();
       return { ok: true };
     });
@@ -59,12 +60,12 @@ describe("NativePcmCaptureSession", () => {
 
     expect(start).toHaveBeenCalledOnce();
     expect(stop).toHaveBeenCalledOnce();
-    expect(received).toHaveLength(2);
+    expect(received).toHaveLength(3);
     expect(Array.from(received[0])).toEqual([0, 32767]);
     expect(Array.from(received[1])).toEqual([819, 819]);
-    expect(levels).toHaveLength(2);
+    expect(levels).toHaveLength(3);
     expect(levels[1]).toBeCloseTo((819 / 32768) * 4 * 3, 6);
-    expect(Array.from(captured.pcm16)).toEqual([0, 32767, 819, 819]);
+    expect(Array.from(captured.pcm16)).toEqual([0, 32767, 819, 819, 42]);
     expect(captured.sampleRateHz).toBe(16000);
     expect(onError).toBeNull();
   });

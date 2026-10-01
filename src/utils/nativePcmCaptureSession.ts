@@ -36,6 +36,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   private readonly removeStoppedListener: () => void;
   private readonly removeErrorListener: () => void;
   private stopped = false;
+  private acceptingFrames = true;
   private cancelled = false;
   private started = false;
   private stopResolver: (() => void) | null = null;
@@ -58,6 +59,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
       this.handleFrame(payload);
     });
     this.removeStoppedListener = bridge.onStopped(() => {
+      this.acceptingFrames = false;
       this.stopResolver?.();
       this.stopResolver = null;
       this.stopRejecter = null;
@@ -126,7 +128,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   }
 
   private handleFrame(payload: Uint8Array | ArrayBuffer): void {
-    if (this.stopped) return;
+    if (!this.acceptingFrames) return;
 
     const bytes = payload instanceof Uint8Array ? payload : new Uint8Array(payload);
     if (bytes.byteLength === 0 || bytes.byteLength % 2 !== 0) {
@@ -144,6 +146,7 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   }
 
   private removeListeners(): void {
+    this.acceptingFrames = false;
     this.removeFrameListener();
     this.removeStoppedListener();
     this.removeErrorListener();
