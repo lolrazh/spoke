@@ -82,10 +82,16 @@ export function preSpawnPasteHelper(): void {
       }
       const pending = current.pending;
       if (!pending) continue;
-      if (line === "paste-target-changed") {
+      if (line === "paste-target-changed" || line === "paste-error") {
         clearTimeout(pending.timer);
         current.pending = null;
-        pending.reject(new Error("Paste target changed before insertion."));
+        pending.reject(
+          new Error(
+            line === "paste-error"
+              ? "Native clipboard write failed."
+              : "Paste target changed before insertion.",
+          ),
+        );
       } else if (line === pending.end) {
         clearTimeout(pending.timer);
         current.pending = null;
@@ -174,11 +180,46 @@ export async function copyViaPasteDaemon(
     `copy:${Buffer.from(text, "utf8").toString("base64")}`,
     "copy-done",
   );
+  return clipboardRestorer(output, owner);
+}
+
+function clipboardRestorer(
+  output: string,
+  owner: Session | null,
+): () => Promise<void> {
   const match = output.match(/^clipboard-token:(\d+)$/mu);
   if (!match) throw new Error("Native clipboard write failed.");
   return async () => {
     if (owner && session === owner && !owner.closed && !owner.child.killed)
       await request(`restore:${match[1]}`, "restore-done");
+  };
+}
+
+/** Copy and dispatch share one native request; phase timings use one native clock. */
+export async function insertViaPasteDaemon(
+  text: string,
+  targetPid: number,
+): Promise<{
+  restoreClipboard: () => Promise<void>;
+  clipboardMs: number | null;
+  dispatchMs: number | null;
+}> {
+  if (!Number.isInteger(targetPid) || targetPid <= 0)
+    throw new Error("Paste target is unavailable.");
+  preSpawnPasteHelper();
+  const owner = session;
+  const output = await request(
+    `paste-text:${targetPid}:${Buffer.from(text, "utf8").toString("base64")}`,
+    "paste-done",
+  );
+  const phase = (name: string) => {
+    const value = output.match(new RegExp(`^${name}-ms:([0-9.]+)$`, "mu"));
+    return value && Number.isFinite(Number(value[1])) ? Number(value[1]) : null;
+  };
+  return {
+    restoreClipboard: clipboardRestorer(output, owner),
+    clipboardMs: phase("clipboard"),
+    dispatchMs: phase("dispatch"),
   };
 }
 

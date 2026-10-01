@@ -1,7 +1,7 @@
 /** Serialize context, clipboard, and paste so concurrent requests cannot mix text. */
 import { clipboard } from "electron";
 import { performance } from "node:perf_hooks";
-import { copyViaPasteDaemon, pasteViaDaemon } from "./pasteDaemon";
+import { insertViaPasteDaemon } from "./pasteDaemon";
 import { formatDictationForInsertion } from "./contextualDictationFormatter";
 import { inspectFocusedSelection } from "./selectionInspect";
 import { state } from "./windowState";
@@ -29,9 +29,11 @@ async function performInsertion(
     return { success: false, error: "Cannot insert empty text." };
   const started = performance.now();
   let contextDone: number | null = null,
-    clipboardDone: number | null = null,
+    handoffDone: number | null = null,
     dispatchDone: number | null = null;
   let method = "none";
+  let clipboardMs: number | null = null,
+    dispatchMs: number | null = null;
   let payload = text;
   try {
     const selection = await inspectFocusedSelection({
@@ -46,11 +48,13 @@ async function performInsertion(
     });
     contextDone = performance.now();
     if (!selection.targetPid) throw new Error("Paste target is unavailable.");
-    const restoreClipboard = await copyViaPasteDaemon(payload);
-    clipboardDone = performance.now();
-    method = selection.targetPid ? "targeted-cmd-v" : "global-cmd-v";
-    await pasteViaDaemon(selection.targetPid);
-    dispatchDone = performance.now();
+    method = "targeted-cmd-v";
+    const receipt = await insertViaPasteDaemon(payload, selection.targetPid);
+    handoffDone = performance.now();
+    clipboardMs = receipt.clipboardMs;
+    dispatchMs = receipt.dispatchMs;
+    dispatchDone = handoffDone;
+    const restoreClipboard = receipt.restoreClipboard;
     // Do not await restoration, and never overwrite a newer clipboard value.
     const timer = setTimeout(() => {
       void restoreClipboard().catch((error) =>
@@ -83,14 +87,13 @@ async function performInsertion(
         contextDone === null
           ? null
           : Math.round((contextDone - started) * 1000) / 1000,
-      clipboard_ms:
-        clipboardDone === null || contextDone === null
+      // Native phase times exclude the pipe handoff; handoff_ms includes it.
+      clipboard_ms: clipboardMs,
+      dispatch_ms: dispatchMs,
+      handoff_ms:
+        handoffDone === null || contextDone === null
           ? null
-          : Math.round((clipboardDone - contextDone) * 1000) / 1000,
-      dispatch_ms:
-        dispatchDone === null || clipboardDone === null
-          ? null
-          : Math.round((dispatchDone - clipboardDone) * 1000) / 1000,
+          : Math.round((handoffDone - contextDone) * 1000) / 1000,
       total_ms: Math.round((performance.now() - started) * 1000) / 1000,
       method,
       completion: dispatchDone === null ? "failed" : "events-posted",

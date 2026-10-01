@@ -13,6 +13,7 @@ vi.mock("./helperPaths", () => ({ getHelperPath: () => "/helper" }));
 import {
   copyViaPasteDaemon,
   inspectViaPasteDaemon,
+  insertViaPasteDaemon,
   killPasteDaemon,
   pasteViaDaemon,
   preSpawnPasteHelper,
@@ -32,6 +33,11 @@ class Helper extends EventEmitter {
           this.stdout.emit("data", "clipboard-token:1\ncopy-done\n");
         else if (command.startsWith("restore:"))
           this.stdout.emit("data", "restore-done\n");
+        else if (command.startsWith("paste-text:"))
+          this.stdout.emit(
+            "data",
+            "clipboard-token:1\nclipboard-ms:0.2\ndispatch-ms:0.3\npaste-done\n",
+          );
         else if (command.startsWith("paste"))
           this.stdout.emit("data", "paste-done\n");
       }
@@ -67,6 +73,28 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe("persistent paste helper", () => {
+  it("copies and posts paste in one request with separate native timings", async () => {
+    const child = ready();
+    const receipt = await insertViaPasteDaemon("λ\nMCP", 42);
+    expect(child.stdin.write.mock.calls.map((call) => call[0])).toEqual([
+      `paste-text:42:${Buffer.from("λ\nMCP").toString("base64")}\n`,
+    ]);
+    expect(receipt.clipboardMs).toBe(0.2);
+    expect(receipt.dispatchMs).toBe(0.3);
+    await receipt.restoreClipboard();
+    expect(child.stdin.write.mock.calls[1][0]).toBe("restore:1\n");
+  });
+  it("rejects a combined clipboard failure instead of assuming paste", async () => {
+    const child = ready();
+    child.stdin.write.mockImplementation((_command, callback) => {
+      callback?.();
+      child.stdout.emit("data", "paste-error\n");
+    });
+    await expect(insertViaPasteDaemon("Hello", 42)).rejects.toThrow(
+      "clipboard write failed",
+    );
+  });
+
   it("reuses a live helper across recording starts", async () => {
     ready();
     preSpawnPasteHelper();

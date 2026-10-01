@@ -2,6 +2,7 @@
 #include <IOKit/hid/IOHIDManager.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <stdio.h>
+#include <time.h>
 #include <string.h>
 #include <unistd.h> // For usleep
 #include <signal.h>
@@ -363,6 +364,20 @@ static bool paste_target_matches(pid_t pid) {
     if (focus) CFRelease(focus);
     CFRelease(app);
     return matches;
+}
+
+static bool copy_encoded_text(const char *encoded, NSArray *__strong *saved,
+                              NSInteger *ownedCount, unsigned long *token) {
+    NSData *data = [[NSData alloc] initWithBase64EncodedString:[NSString stringWithUTF8String:encoded] options:0];
+    NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    if (!text) return false;
+    NSPasteboard *pb = [NSPasteboard generalPasteboard];
+    if (!*saved || pb.changeCount != *ownedCount) *saved = clipboard_snapshot(pb);
+    [pb clearContents];
+    if (![pb setString:text forType:NSPasteboardTypeString]) return false;
+    *ownedCount = pb.changeCount;
+    (*token)++;
+    return true;
 }
 
 static int inspect_text_core(int context_chars, bool probe_clipboard) {
@@ -827,24 +842,30 @@ int main(int argc, char *argv[]) {
             // Trim newline
             command[strcspn(command, "\n")] = 0;
             @autoreleasepool {
-            if (strncmp(command, "copy:", 5) == 0) {
-                @autoreleasepool {
-                    NSData *data = [[NSData alloc] initWithBase64EncodedString:[NSString stringWithUTF8String:command + 5] options:0];
-                    NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
-                    if (text) {
-                        NSPasteboard *pb = [NSPasteboard generalPasteboard];
-                        // Repeated Spoke pastes retain the user's original data.
-                        // Any external clipboard change establishes a new original.
-                        if (!savedClipboard || pb.changeCount != ownedChangeCount) savedClipboard = clipboard_snapshot(pb);
-                        [pb clearContents];
-                        if ([pb setString:text forType:NSPasteboardTypeString]) {
-                            ownedChangeCount = pb.changeCount;
-                            clipboardToken++;
-                            printf("clipboard-token:%lu\n", clipboardToken);
-                        } else puts("copy-error");
-                    } else puts("copy-error");
-                    puts("copy-done"); fflush(stdout);
+            if (strncmp(command, "paste-text:", 11) == 0) {
+                char *separator = NULL;
+                pid_t expectedPid = (pid_t)strtol(command + 11, &separator, 10);
+                uint64_t started = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+                if (!separator || *separator != ':' || expectedPid <= 0 ||
+                    !copy_encoded_text(separator + 1, &savedClipboard, &ownedChangeCount, &clipboardToken)) {
+                    puts("paste-error");
+                } else {
+                    uint64_t copied = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+                    pid_t currentPid = ax_frontmost_pid();
+                    if (currentPid == expectedPid && paste_target_matches(currentPid)) {
+                        cmdVToPid(currentPid);
+                        uint64_t posted = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+                        printf("clipboard-token:%lu\nclipboard-ms:%.3f\ndispatch-ms:%.3f\n",
+                               clipboardToken, (copied - started) / 1e6, (posted - copied) / 1e6);
+                        puts("paste-done");
+                    } else puts("paste-target-changed");
                 }
+                fflush(stdout);
+            } else if (strncmp(command, "copy:", 5) == 0) {
+                if (copy_encoded_text(command + 5, &savedClipboard, &ownedChangeCount, &clipboardToken))
+                    printf("clipboard-token:%lu\n", clipboardToken);
+                else puts("copy-error");
+                puts("copy-done"); fflush(stdout);
             } else if (strncmp(command, "restore:", 8) == 0) {
                 unsigned long token = strtoul(command + 8, NULL, 10);
                 NSPasteboard *pb = [NSPasteboard generalPasteboard];
