@@ -2290,5 +2290,112 @@
       }
     },
     "source": "53a867eb35cbf1d4d6be01cdcfbf782e9c08c09f"
+  },
+  "compatibility_followup": {
+    "measured_with_working_tree_changes": true,
+    "implementation_commit": "1b415b1452f5a7c68513f9e3ab1caf75870c400b",
+    "forced_app_lookup_failure_completed_run": {
+      "n": 100,
+      "ack_median_ms": 3.076542,
+      "ack_p95_ms": 3.84075,
+      "ack_max_ms": 5.70525,
+      "receipt_median_ms": 10.037375,
+      "receipt_p95_ms": 14.091291,
+      "receipt_max_ms": 44.171958,
+      "raw_samples": "Not retained; summary from completed benchmark stdout."
+    },
+    "forced_app_and_field_lookup_failure": {
+      "timestamp": "2026-10-01T18:29:39.440Z",
+      "runtime": "production main pipeline in Node host, separate Electron target; shared Node hrtime clock",
+      "samples": [
+        {
+          "ack_ms": 1.9311250000000655,
+          "receipt_ms": 36.840667
+        },
+        {
+          "ack_ms": 0.8775000000000546,
+          "receipt_ms": 3.305834
+        },
+        {
+          "ack_ms": 0.8644170000002305,
+          "receipt_ms": 3.780541
+        },
+        {
+          "ack_ms": 0.8182080000001406,
+          "receipt_ms": 3.461208
+        },
+        {
+          "ack_ms": 0.9361249999997199,
+          "receipt_ms": 3.815041
+        }
+      ],
+      "stages": [
+        {
+          "context_ms": 0.891,
+          "clipboard_ms": 0.337,
+          "dispatch_ms": 0.126,
+          "handoff_ms": 0.811,
+          "total_ms": 1.722,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.393,
+          "clipboard_ms": 0.235,
+          "dispatch_ms": 0.097,
+          "handoff_ms": 0.467,
+          "total_ms": 0.87,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.327,
+          "clipboard_ms": 0.334,
+          "dispatch_ms": 0.111,
+          "handoff_ms": 0.522,
+          "total_ms": 0.857,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.326,
+          "clipboard_ms": 0.256,
+          "dispatch_ms": 0.116,
+          "handoff_ms": 0.475,
+          "total_ms": 0.81,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        },
+        {
+          "context_ms": 0.349,
+          "clipboard_ms": 0.292,
+          "dispatch_ms": 0.15,
+          "handoff_ms": 0.567,
+          "total_ms": 0.926,
+          "method": "targeted-cmd-v",
+          "completion": "events-posted"
+        }
+      ],
+      "forced_ax_field_failure": true,
+      "forced_ax_app_failure": true,
+      "preparationMs": 413.230959,
+      "app_focus_guard": true,
+      "summary": {
+        "ack": {
+          "n": 5,
+          "median_ms": 0.8775000000000546,
+          "p95_ms": 1.9311250000000655,
+          "max_ms": 1.9311250000000655
+        },
+        "receipt": {
+          "n": 5,
+          "median_ms": 3.780541,
+          "p95_ms": 36.840667,
+          "max_ms": 36.840667
+        }
+      },
+      "source": "ae7a29d090ec3ef1cd7b3828fed646f396d8f42d"
+    },
+    "limits": "Owned Electron target only. A later repeat was stopped by the owned-focus guard and is excluded. Competitor latency was not benchmarked."
   }
 }
