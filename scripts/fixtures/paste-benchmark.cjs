@@ -16,9 +16,11 @@ const api = require(process.env.SPOKE_PASTE_BUNDLE);
 app.setPath("userData", process.env.SPOKE_PASTE_PROFILE);
 app.setName("Spoke paste benchmark");
 const stages = [];
+const clipboardReads = [];
 const info = console.info;
 console.info = (...args) => {
   if (args[0] === "[Latency] Text insertion") stages.push(args[1]);
+  else if (args[0] === "[Paste] Clipboard read") clipboardReads.push(args[1].observed);
   else info(...args);
 };
 function setClipboard() {
@@ -47,7 +49,7 @@ ipcMain.handle("bench-prepare", async () => {
   return performance.now() - start;
 });
 ipcMain.handle("bench-clipboard-check", async () => {
-  await pause(350);
+  await pause(650);
   const preserved =
     clipboard.readText() === "SpokeBenchmark original" &&
     clipboard.readHTML().includes("<b>SpokeBenchmark original</b>");
@@ -102,6 +104,7 @@ ipcMain.on("bench-result", (_event, result) => {
       JSON.stringify({
         ...result,
         stages,
+        clipboardReads,
         runtime: {
           electron: process.versions.electron,
           node: process.versions.node,

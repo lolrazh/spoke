@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, clipboard } = require("electron");
 const readline = require("node:readline");
 app.setPath("userData", process.env.SPOKE_PASTE_BENCH_PROFILE);
 app.setName("Spoke paste benchmark");
@@ -47,6 +47,8 @@ app.whenReady().then(async () => {
         );
         out({ type: "undo", text: value, ns: Number(process.hrtime.bigint()) });
       }
+      if (command.action === "read-clipboard")
+        out({ type: "clipboard", text: clipboard.readText() });
       if (command.action === "read")
         out({
           type: "read",

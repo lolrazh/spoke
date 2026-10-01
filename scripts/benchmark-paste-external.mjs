@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 const dir = await mkdtemp(join(tmpdir(), "spoke-paste-production-"));
 if (process.platform !== "darwin")
   throw new Error("This benchmark requires macOS.");
+const suppressKeyPost = process.argv.includes("--no-key-post");
 const forceNoAxFocus = process.argv.includes("--no-ax-focus");
 const forceNoAxApp = process.argv.includes("--no-ax-app") || forceNoAxFocus;
 const count = Number(process.env.SPOKE_PASTE_SAMPLES || 5);
@@ -64,7 +65,7 @@ function client(p) {
 const root = process.cwd();
 let helperOverride = null;
 try {
-  if (forceNoAxApp) {
+  if (forceNoAxApp || suppressKeyPost) {
     const contents = join(dir, "Spoke Helper.app", "Contents");
     await mkdir(join(contents, "MacOS"), { recursive: true });
     await writeFile(
@@ -78,7 +79,14 @@ try {
       "AXUIElementCopyAttributeValue(sys, kAXFocusedApplicationAttribute, (CFTypeRef *)&appEl)";
     assert(source.includes(call), "Cannot install AX app failure fixture");
     const native = join(dir, "no-ax-app.c");
-    let fixtureSource = source.replace(call, "kAXErrorFailure");
+    let fixtureSource = forceNoAxApp
+      ? source.replace(call, "kAXErrorFailure")
+      : source;
+    if (suppressKeyPost)
+      fixtureSource = fixtureSource.replaceAll(
+        "cmdVToPid(currentPid);",
+        "(void)currentPid;",
+      );
     if (forceNoAxFocus) {
       fixtureSource = fixtureSource.replaceAll(
         "AXUIElementCopyAttributeValue(appEl, kAXFocusedUIElementAttribute, (CFTypeRef *)&el)",
@@ -106,7 +114,8 @@ try {
       "-o",
       helperOverride,
     ]);
-    report.forced_ax_app_failure = true;
+    report.forced_ax_app_failure = forceNoAxApp;
+    report.suppressed_key_post = suppressKeyPost;
   }
   const clipboardBinary = join(dir, "clipboard-guard");
   execFileSync("clang", [
@@ -127,7 +136,7 @@ try {
   await build({
     stdin: {
       contents:
-        "export {insertTextAtCursor} from './pasteOrchestrator';export {preSpawnPasteHelper,inspectViaPasteDaemon,pasteViaDaemon,killPasteDaemon} from './pasteDaemon';",
+        "export {insertTextAtCursor} from './pasteOrchestrator';export {preSpawnPasteHelper,inspectViaPasteDaemon,insertViaPasteDaemon,pasteViaDaemon,killPasteDaemon} from './pasteDaemon';",
       resolveDir: resolve("src/main"),
       loader: "ts",
     },
@@ -206,97 +215,123 @@ try {
   console.info = (...args) => {
     if (args[0] === "[Latency] Text insertion") report.stages.push(args[1]);
   };
-  for (let i = 0; i < count; i++) {
-    target.p.stdin.write('{"action":"reset","text":""}\n');
-    await target.next();
-    await new Promise((r) => setTimeout(r, 100));
-    const startNs = process.hrtime.bigint();
-    const start = performance.now();
-    const result = await api.insertTextAtCursor("SpokeBenchmark Marble — λ.");
-    const ms = performance.now() - start;
-    assert(result.success, JSON.stringify(result));
-    const receipt = await target.next();
-    assert.equal(receipt.text, "SpokeBenchmark Marble — λ.");
-    report.samples.push({
-      ack_ms: ms,
-      receipt_ms: (receipt.ns - Number(startNs)) / 1e6,
-    });
-  }
-  function stats(key) {
-    const v = report.samples.map((s) => s[key]).toSorted((a, b) => a - b);
-    return {
-      n: v.length,
-      median_ms: v[Math.ceil(v.length * 0.5) - 1],
-      p95_ms: v[Math.ceil(v.length * 0.95) - 1],
-      max_ms: v.at(-1),
-    };
-  }
-  if (!forceNoAxFocus) {
-    const largeText =
-      "SpokeBenchmark paragraph. ".repeat(3000) + "continue here ";
-    target.p.stdin.write(
-      JSON.stringify({ action: "reset", text: largeText }) + "\n",
-    );
-    await target.next();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const largeContext = await api.inspectViaPasteDaemon(96);
-    assert.equal(
-      Number(largeContext.match(/^targetPid:(\d+)$/m)?.[1]),
+  if (suppressKeyPost) {
+    const receipt = await api.insertViaPasteDaemon(
+      "SpokeBenchmark unread manual fallback.",
       ready.pid,
     );
-    assert(
-      largeContext.length < 2048,
-      "Large document inspection returned unbounded data.",
-    );
-    const context = Buffer.from(
-      largeContext.match(/^contextB64:(.*)$/m)?.[1] || "",
-      "base64",
-    ).toString("utf8");
     assert.equal(
-      context,
-      largeText.slice(-96),
-      "Large document lost caret context.",
+      await receipt.clipboardRead,
+      false,
+      "Unsent paste was incorrectly confirmed",
     );
-    report.bounded_large_context = true;
-    const selectedText = "It is a" + "x".repeat(50000) + ", indeed.";
-    target.p.stdin.write(
-      JSON.stringify({
-        action: "reset",
-        text: selectedText,
-        start: 7,
-        end: 50007,
-      }) + "\n",
+    target.p.stdin.write('{"action":"read"}\n');
+    assert.equal(
+      (await target.next()).text,
+      "",
+      "Suppressed keys changed the target",
     );
-    await target.next();
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    assert((await api.insertTextAtCursor("Wonderful")).success);
-    assert.equal((await target.next()).text, "It is a wonderful, indeed.");
-    report.large_selection_boundaries = true;
-  }
+    api.killPasteDaemon();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    target.p.stdin.write('{"action":"read-clipboard"}\n');
+    assert.equal(
+      (await target.next()).text,
+      "SpokeBenchmark unread manual fallback.",
+    );
+    report.unread_manual_fallback = true;
+  } else {
+    for (let i = 0; i < count; i++) {
+      target.p.stdin.write('{"action":"reset","text":""}\n');
+      await target.next();
+      await new Promise((r) => setTimeout(r, 100));
+      const startNs = process.hrtime.bigint();
+      const start = performance.now();
+      const result = await api.insertTextAtCursor("SpokeBenchmark Marble — λ.");
+      const ms = performance.now() - start;
+      assert(result.success, JSON.stringify(result));
+      const receipt = await target.next();
+      assert.equal(receipt.text, "SpokeBenchmark Marble — λ.");
+      report.samples.push({
+        ack_ms: ms,
+        receipt_ms: (receipt.ns - Number(startNs)) / 1e6,
+      });
+    }
+    function stats(key) {
+      const v = report.samples.map((s) => s[key]).toSorted((a, b) => a - b);
+      return {
+        n: v.length,
+        median_ms: v[Math.ceil(v.length * 0.5) - 1],
+        p95_ms: v[Math.ceil(v.length * 0.95) - 1],
+        max_ms: v.at(-1),
+      };
+    }
+    if (!forceNoAxFocus) {
+      const largeText =
+        "SpokeBenchmark paragraph. ".repeat(3000) + "continue here ";
+      target.p.stdin.write(
+        JSON.stringify({ action: "reset", text: largeText }) + "\n",
+      );
+      await target.next();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const largeContext = await api.inspectViaPasteDaemon(96);
+      assert.equal(
+        Number(largeContext.match(/^targetPid:(\d+)$/m)?.[1]),
+        ready.pid,
+      );
+      assert(
+        largeContext.length < 2048,
+        "Large document inspection returned unbounded data.",
+      );
+      const context = Buffer.from(
+        largeContext.match(/^contextB64:(.*)$/m)?.[1] || "",
+        "base64",
+      ).toString("utf8");
+      assert.equal(
+        context,
+        largeText.slice(-96),
+        "Large document lost caret context.",
+      );
+      report.bounded_large_context = true;
+      const selectedText = "It is a" + "x".repeat(50000) + ", indeed.";
+      target.p.stdin.write(
+        JSON.stringify({
+          action: "reset",
+          text: selectedText,
+          start: 7,
+          end: 50007,
+        }) + "\n",
+      );
+      await target.next();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert((await api.insertTextAtCursor("Wonderful")).success);
+      assert.equal((await target.next()).text, "It is a wonderful, indeed.");
+      report.large_selection_boundaries = true;
+    }
 
-  // Keep the same helper while a different owned app takes focus. Verify that
-  // Focus reads stay current even though the daemon blocks on stdin.
-  secondTarget = client(
-    spawn(electron, [resolve("scripts/fixtures/paste-target.cjs")], {
-      env: {
-        ...process.env,
-        SPOKE_PASTE_BENCH_PROFILE: join(dir, "profile-second"),
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    }),
-  );
-  const secondReady = await secondTarget.next();
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  const focus = await api.inspectViaPasteDaemon(96);
-  assert.equal(
-    Number(focus.match(/^targetPid:(\d+)$/m)?.[1]),
-    secondReady.pid,
-    "Persistent helper read stale app focus.",
-  );
-  await assert.rejects(api.pasteViaDaemon(ready.pid), /target changed/);
-  report.app_focus_guard = true;
-  report.summary = { ack: stats("ack_ms"), receipt: stats("receipt_ms") };
-  savedInfo(JSON.stringify(report.summary));
+    // Keep the same helper while a different owned app takes focus. Verify that
+    // Focus reads stay current even though the daemon blocks on stdin.
+    secondTarget = client(
+      spawn(electron, [resolve("scripts/fixtures/paste-target.cjs")], {
+        env: {
+          ...process.env,
+          SPOKE_PASTE_BENCH_PROFILE: join(dir, "profile-second"),
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      }),
+    );
+    const secondReady = await secondTarget.next();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const focus = await api.inspectViaPasteDaemon(96);
+    assert.equal(
+      Number(focus.match(/^targetPid:(\d+)$/m)?.[1]),
+      secondReady.pid,
+      "Persistent helper read stale app focus.",
+    );
+    await assert.rejects(api.pasteViaDaemon(ready.pid), /target changed/);
+    report.app_focus_guard = true;
+    report.summary = { ack: stats("ack_ms"), receipt: stats("receipt_ms") };
+  }
+  savedInfo(JSON.stringify(report.summary || { unread_manual_fallback: report.unread_manual_fallback }));
 } catch (error) {
   report.error = String(error);
   console.error(error);
@@ -304,7 +339,7 @@ try {
 } finally {
   console.info = savedInfo;
   if (api) {
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 650));
     api.killPasteDaemon();
   }
   if (secondTarget) {
@@ -328,11 +363,13 @@ try {
     encoding: "utf8",
   }).trim();
   await writeFile(
-    forceNoAxFocus
-      ? "research/paste-no-ax-focus-probe.json"
-      : forceNoAxApp
-        ? "research/paste-no-ax-app-probe.json"
-        : "research/paste-external-production-probe.json",
+    suppressKeyPost
+      ? "research/paste-unread-probe.json"
+      : forceNoAxFocus
+        ? "research/paste-no-ax-focus-probe.json"
+        : forceNoAxApp
+          ? "research/paste-no-ax-app-probe.json"
+          : "research/paste-external-production-probe.json",
     JSON.stringify(report, null, 2) + "\n",
   );
   await rm(dir, {
