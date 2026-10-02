@@ -29,6 +29,7 @@ vi.mock("./pasteDaemon", () => ({
     clipboardStore.text = payload;
     return {
       clipboardRead: Promise.resolve(true),
+      waitForClipboardRead: async () => true,
       clipboardMs: 0.1,
       dispatchMs: 0.1,
       restoreClipboard: async () => {
@@ -60,12 +61,12 @@ vi.mock("./windowState", () => ({
   },
 }));
 
-import { clipboard } from "electron";
-import { insertViaPasteDaemon } from "./pasteDaemon";
-import { insertTextAtCursor } from "./pasteOrchestrator";
+let clipboard: typeof import("electron")["clipboard"];
+let insertViaPasteDaemon: typeof import("./pasteDaemon")["insertViaPasteDaemon"];
+let insertTextAtCursor: typeof import("./pasteOrchestrator")["insertTextAtCursor"];
 import { applyAutoSpace } from "./contextualDictationFormatter";
-import { inspectFocusedSelection } from "./selectionInspect";
-import { state } from "./windowState";
+let inspectFocusedSelection: typeof import("./selectionInspect")["inspectFocusedSelection"];
+let state: typeof import("./windowState")["state"];
 
 describe("main/pasteOrchestrator applyAutoSpace", () => {
   it("appends a single trailing space when enabled", () => {
@@ -87,12 +88,19 @@ describe("main/pasteOrchestrator applyAutoSpace", () => {
 });
 
 describe("main/pasteOrchestrator insertTextAtCursor", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ clipboard } = await import("electron"));
+    ({ insertViaPasteDaemon } = await import("./pasteDaemon"));
+    ({ inspectFocusedSelection } = await import("./selectionInspect"));
+    ({ state } = await import("./windowState"));
+    ({ insertTextAtCursor } = await import("./pasteOrchestrator"));
     vi.useFakeTimers();
     clipboardStore.text = "";
     state.appPreferences = {};
     vi.mocked(clipboard.writeText).mockClear();
     vi.mocked(insertViaPasteDaemon).mockClear();
+    vi.mocked(inspectFocusedSelection).mockClear();
     vi.mocked(inspectFocusedSelection).mockResolvedValue({
       ok: false,
       status: "unsupported",
@@ -261,6 +269,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     const restore = vi.fn(async () => undefined);
     vi.mocked(insertViaPasteDaemon).mockResolvedValueOnce({
       clipboardRead,
+      waitForClipboardRead: async () => true,
       restoreClipboard: restore,
       clipboardMs: 0.1,
       dispatchMs: 0.1,
@@ -278,6 +287,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     const restore = vi.fn(async () => undefined);
     vi.mocked(insertViaPasteDaemon).mockResolvedValueOnce({
       clipboardRead: Promise.resolve(false),
+      waitForClipboardRead: async () => false,
       restoreClipboard: restore,
       clipboardMs: 0.1,
       dispatchMs: 0.1,
@@ -289,7 +299,56 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     expect(insertViaPasteDaemon).toHaveBeenCalledTimes(1);
   });
 
-  it("serializes the entire insertion transaction", async () => {
+  it("holds queued context and clipboard writes until the first paste is read", async () => {
+    let consume!: (read: boolean) => void;
+    const clipboardRead = new Promise<boolean>((resolve) => {
+      consume = resolve;
+    });
+    vi.mocked(insertViaPasteDaemon).mockImplementationOnce(async (payload) => {
+      clipboardStore.text = payload;
+      return {
+        clipboardRead,
+        waitForClipboardRead: async () => true,
+        restoreClipboard: async () => undefined,
+        clipboardMs: 0.1,
+        dispatchMs: 0.1,
+      };
+    });
+    const first = insertTextAtCursor("First"),
+      second = insertTextAtCursor("Second");
+    await expect(first).resolves.toEqual({ success: true, verified: false });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(insertViaPasteDaemon).toHaveBeenCalledTimes(1);
+    expect(inspectFocusedSelection).toHaveBeenCalledTimes(1);
+    expect(clipboardStore.text).toBe("First ");
+    consume(true);
+    await expect(second).resolves.toEqual({ success: true, verified: false });
+    expect(clipboardStore.text).toBe("Second ");
+  });
+
+  it("preserves an unread paste after timeout and recovers after a late read", async () => {
+    const waitForClipboardRead = vi.fn(async () => true);
+    vi.mocked(insertViaPasteDaemon).mockImplementationOnce(async (payload) => {
+      clipboardStore.text = payload;
+      return {
+        clipboardRead: Promise.resolve(false),
+        waitForClipboardRead,
+        restoreClipboard: async () => undefined,
+        clipboardMs: 0.1,
+        dispatchMs: 0.1,
+      };
+    });
+    await insertTextAtCursor("First");
+    expect((await insertTextAtCursor("Second")).success).toBe(false);
+    expect(clipboardStore.text).toBe("First ");
+    expect(clipboard.writeText).not.toHaveBeenCalled();
+    expect(inspectFocusedSelection).toHaveBeenCalledTimes(1);
+    expect((await insertTextAtCursor("Third")).success).toBe(true);
+    expect(waitForClipboardRead).toHaveBeenCalledOnce();
+    expect(clipboardStore.text).toBe("Third ");
+  });
+
+  it("serializes dispatch before checking clipboard consumption", async () => {
     let release!: () => void;
     vi.mocked(insertViaPasteDaemon).mockImplementationOnce((payload) => {
       clipboardStore.text = payload;
@@ -297,6 +356,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
         release = () =>
           resolve({
             clipboardRead: Promise.resolve(true),
+            waitForClipboardRead: async () => true,
             clipboardMs: 0.1,
             dispatchMs: 0.1,
             restoreClipboard: async () => undefined,

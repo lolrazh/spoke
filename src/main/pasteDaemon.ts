@@ -243,6 +243,7 @@ export async function insertViaPasteDaemon(
 ): Promise<{
   restoreClipboard: () => Promise<void>;
   clipboardRead: Promise<boolean>;
+  waitForClipboardRead: () => Promise<boolean>;
   clipboardMs: number | null;
   dispatchMs: number | null;
 }> {
@@ -258,9 +259,25 @@ export async function insertViaPasteDaemon(
     const value = output.match(new RegExp(`^${name}-ms:([0-9.]+)$`, "mu"));
     return value && Number.isFinite(Number(value[1])) ? Number(value[1]) : null;
   };
+  let observed: boolean | null = null;
+  const observe = () =>
+    observeClipboardRead(output, owner).then((read) => {
+      observed = read;
+      return read;
+    });
+  let readAttempt = observe();
   return {
     restoreClipboard: clipboardRestorer(output, owner),
-    clipboardRead: observeClipboardRead(output, owner),
+    clipboardRead: readAttempt,
+    waitForClipboardRead: () => {
+      // Share an in-flight read. Only rearm after an unconfirmed timeout;
+      // consuming the same token twice would discard a confirmed read.
+      if (observed === false) {
+        observed = null;
+        readAttempt = observe();
+      }
+      return readAttempt;
+    },
     clipboardMs: phase("clipboard"),
     dispatchMs: phase("dispatch"),
   };

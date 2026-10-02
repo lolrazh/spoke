@@ -12,6 +12,7 @@ const dir = await mkdtemp(join(tmpdir(), "spoke-paste-production-"));
 if (process.platform !== "darwin")
   throw new Error("This benchmark requires macOS.");
 const suppressKeyPost = process.argv.includes("--no-key-post");
+const queuedPaste = process.argv.includes("--queued-paste");
 const forceNoAxFocus = process.argv.includes("--no-ax-focus");
 const forceNoAxApp = process.argv.includes("--no-ax-app") || forceNoAxFocus;
 const count = Number(process.env.SPOKE_PASTE_SAMPLES || 5);
@@ -219,7 +220,35 @@ try {
   console.info = (...args) => {
     if (args[0] === "[Latency] Text insertion") report.stages.push(args[1]);
   };
-  if (suppressKeyPost) {
+  if (queuedPaste) {
+    target.p.stdin.write('{"action":"stall"}\n');
+    assert.equal((await target.next()).type, "stalling");
+    const results = await Promise.all([
+      api.insertTextAtCursor("First."),
+      api.insertTextAtCursor("Second."),
+    ]);
+    assert.equal(results[0].success, true);
+    assert.equal(results[1].success, !suppressKeyPost);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    target.p.stdin.write('{"action":"read"}\n');
+    let final;
+    do {
+      final = await target.next();
+    } while (final.type !== "read");
+    assert.equal(final.text, suppressKeyPost ? "" : "First.Second.");
+    if (suppressKeyPost) {
+      api.killPasteDaemon();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      target.p.stdin.write('{"action":"read-clipboard"}\n');
+      assert.equal((await target.next()).text, "First.");
+    }
+    report.summary = {
+      queued_paste: true,
+      suppressed_key_post: suppressKeyPost,
+      results,
+      text: final.text,
+    };
+  } else if (suppressKeyPost) {
     const receipt = await api.insertViaPasteDaemon(
       "SpokeBenchmark unread manual fallback.",
       ready.pid,
@@ -372,14 +401,23 @@ try {
   report.source = execFileSync("git", ["rev-parse", "HEAD"], {
     encoding: "utf8",
   }).trim();
+  report.source_working_tree = Boolean(
+    execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
+      encoding: "utf8",
+    }).trim(),
+  );
   await writeFile(
-    suppressKeyPost
-      ? "research/paste-unread-probe.json"
-      : forceNoAxFocus
-        ? "research/paste-no-ax-focus-probe.json"
-        : forceNoAxApp
-          ? "research/paste-no-ax-app-probe.json"
-          : "research/paste-external-production-probe.json",
+    queuedPaste
+      ? suppressKeyPost
+        ? "research/paste-queued-unread-probe.json"
+        : "research/paste-queued-busy-probe.json"
+      : suppressKeyPost
+        ? "research/paste-unread-probe.json"
+        : forceNoAxFocus
+          ? "research/paste-no-ax-focus-probe.json"
+          : forceNoAxApp
+            ? "research/paste-no-ax-app-probe.json"
+            : "research/paste-external-production-probe.json",
     JSON.stringify(report, null, 2) + "\n",
   );
   await rm(dir, {

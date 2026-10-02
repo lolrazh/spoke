@@ -14,6 +14,7 @@ export interface InsertTextAtCursorResult {
 const INSERTION_CONTEXT_CHARS = 96;
 let insertionTail: Promise<unknown> = Promise.resolve();
 let latestInsertion = 0;
+let pendingClipboard: { wait: () => Promise<boolean> } | null = null;
 
 export function insertTextAtCursor(
   text: string,
@@ -28,6 +29,18 @@ async function performInsertion(
 ): Promise<InsertTextAtCursorResult> {
   if (typeof text !== "string" || !text)
     return { success: false, error: "Cannot insert empty text." };
+  // Posting keys does not consume the clipboard. Keep the previous payload
+  // until a reader requests it, even when its dispatch already returned.
+  if (pendingClipboard) {
+    if (!(await pendingClipboard.wait())) {
+      return {
+        success: false,
+        verified: false,
+        error: "Previous paste is not confirmed. Text remains on clipboard.",
+      };
+    }
+    pendingClipboard = null;
+  }
   const insertionId = ++latestInsertion;
   const started = performance.now();
   let contextDone: number | null = null,
@@ -58,6 +71,29 @@ async function performInsertion(
     dispatchMs = receipt.dispatchMs;
     dispatchDone = handoffDone;
     const restoreClipboard = receipt.restoreClipboard;
+    let restorationScheduled = false;
+    const scheduleRestore = () => {
+      if (restorationScheduled) return;
+      restorationScheduled = true;
+      const timer = setTimeout(() => {
+        void restoreClipboard().catch((error) =>
+          console.warn("[Paste] Clipboard restore failed:", error),
+        );
+      }, 500);
+      timer.unref?.();
+    };
+    let readAttempt: Promise<boolean> | null = receipt.clipboardRead;
+    pendingClipboard = {
+      wait: async () => {
+        // A timeout is not consumption. A later attempt can observe a late
+        // read without replacing the outstanding clipboard payload.
+        readAttempt ??= receipt.waitForClipboardRead();
+        const read = await readAttempt;
+        if (read) scheduleRestore();
+        else readAttempt = null;
+        return read;
+      },
+    };
     // Dispatch stays fast. Observe clipboard consumption separately; leave
     // dictation available for manual paste if no reader requests it.
     void receipt.clipboardRead.then((read) => {
@@ -72,12 +108,7 @@ async function performInsertion(
           );
         return;
       }
-      const timer = setTimeout(() => {
-        void restoreClipboard().catch((error) =>
-          console.warn("[Paste] Clipboard restore failed:", error),
-        );
-      }, 500);
-      timer.unref?.();
+      scheduleRestore();
     });
     return { success: true, verified: false };
   } catch (error) {

@@ -1233,3 +1233,20 @@ The corpus is `scripts/postprocessing-corpus.json`. The checked-in summary is
 - Dictionary comparison: 61,998 outputs matched the original algorithm.
 - The streaming fixture now uses two 560 ms audio chunks. The prior fixture
   failed on the unchanged base commit; no streaming runtime behavior changed.
+
+
+## Paste review follow-up: protect queued unread text (2026-10-02)
+
+The exact PR review reproduced a clipboard race with a synthetic editor whose renderer was busy for 500 ms. Two queued insertions of `First.` and `Second.` both returned dispatch success, but the editor contained `Second.Second.`. The queue waited for key dispatch, not clipboard consumption.
+
+The next insertion now waits for the previous clipboard-read receipt before it inspects context or writes another payload. The first caller still receives the dispatch result immediately. If the read times out, the next insertion fails without replacing unread text. A later attempt can observe a late read through the same helper/token; confirmed reads and pending observers are shared. Clipboard restoration is scheduled once per insertion. A read remains evidence of consumption, not proof of a target edit.
+
+Validation with merged PR #30:
+
+- 651 tests pass in 64 files; TypeScript and lint pass (18 existing warnings).
+- Real native queued-paste probe with a 500 ms busy owned Electron target: `First.Second.`, both dispatch results successful.
+- Real suppressed-key queued probe: second insertion fails, target stays empty, first payload survives helper exit for manual paste.
+- Five normal native paste cases: dispatch ACK median 1.91 ms, max 3.51 ms; target input-event receipt median 8.21 ms, max 43.13 ms. These are a small smoke sample, not a strict latency guarantee or a screen-paint measurement.
+- Merge conflicts with PR #30 resolved by retaining both experiment logs and the immediate-stop transcription tests. The branch includes `origin/main` at `c58afc71`.
+
+Reproduce with `node scripts/benchmark-paste-external.mjs --queued-paste` and `node scripts/benchmark-paste-external.mjs --queued-paste --no-key-post`.

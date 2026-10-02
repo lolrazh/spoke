@@ -47,6 +47,13 @@ app.whenReady().then(async () => {
         );
         out({ type: "undo", text: value, ns: Number(process.hrtime.bigint()) });
       }
+      if (command.action === "stall") {
+        out({ type: "stalling" });
+        // Simulate a busy editor without touching another app or user text.
+        await win.webContents.executeJavaScript(
+          `(()=>{const until=performance.now()+500;while(performance.now()<until){}})()`,
+        );
+      }
       if (command.action === "read-clipboard")
         out({ type: "clipboard", text: clipboard.readText() });
       if (command.action === "read")

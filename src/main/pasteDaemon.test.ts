@@ -116,6 +116,27 @@ describe("persistent paste helper", () => {
     child.emit("exit", 1);
     await expect(receipt.clipboardRead).resolves.toBe(false);
   });
+  it("shares a pending read and observes late reads after a timeout", async () => {
+    const child = ready();
+    const receipt = await insertViaPasteDaemon("First", 42);
+    expect(receipt.waitForClipboardRead()).toBe(receipt.clipboardRead);
+    await vi.advanceTimersByTimeAsync(CLIPBOARD_READ_TIMEOUT_MS);
+    await expect(receipt.clipboardRead).resolves.toBe(false);
+    const nextRead = receipt.waitForClipboardRead();
+    expect(receipt.waitForClipboardRead()).toBe(nextRead);
+    child.stdout.emit("data", "clipboard-read:1\n");
+    await expect(nextRead).resolves.toBe(true);
+    await expect(receipt.waitForClipboardRead()).resolves.toBe(true);
+    expect(child.stdin.write).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains a late read that arrives between observer attempts", async () => {
+    const child = ready();
+    const receipt = await insertViaPasteDaemon("First", 42);
+    await vi.advanceTimersByTimeAsync(CLIPBOARD_READ_TIMEOUT_MS);
+    child.stdout.emit("data", "clipboard-read:1\n");
+    await expect(receipt.waitForClipboardRead()).resolves.toBe(true);
+  });
 
   it("rejects a combined clipboard failure instead of assuming paste", async () => {
     const child = ready();
