@@ -889,3 +889,133 @@ Remaining acceptance work:
   context.
 - Add explicit pronunciation aliases only after real transcripts identify the
   repeated acoustic forms. Keep aliases separate from broad fuzzy matching.
+
+
+## Experiment 18: final transcript cleanup below 5 ms
+
+Status: implemented; synthetic text checks complete; broader live speech review pending.
+
+### Cause and change
+
+The old Parakeet/Nemotron final path sent the whole transcript to the native
+NeMo grammar engine. That engine searched a weighted grammar graph, then
+rendered each classified token. The cost grew with transcript length and
+ambiguity. The helper stayed alive between calls; repeated process startup was
+not the warm-call cause.
+
+A probe inside the native helper measured 459–648 ms of compute for two long
+calls, with about 0.2–0.4 ms added by the pipe. Splitting the synthetic long
+sample into sentences reduced about 335–339 ms to 243–253 ms. Both results
+were far above the 5 ms target. Sentence splitting was not used.
+
+The final path now uses shared, direct English number rules. It joins spelled
+acronyms before numeric cleanup and uses the PR label to select an identifier:
+`L O D` -> `LOD`, `M C P` -> `MCP`, and `PR two thirty one` -> `PR #231`.
+An explicit AM/PM suffix still selects a clock time. Parakeet retains filler
+removal and sentence casing. Nemotron uses the same number rules. Whisper
+retains its existing numeric output. Partial hypotheses remain unchanged.
+
+Dictionary correction now uses length and one-edit indexes plus bounded
+caches for matches and misses. The similarity thresholds, ambiguity rules,
+and casing rules remain unchanged. Each cache holds at most 2,048 outcomes.
+The dictionary index is replaced when the dictionary array changes. A
+comparison with the original algorithm checked 61,998 outputs with no change.
+Per-correction console logging was removed from this path.
+
+Regex preparation and dictionary index setup run before ASR, at sidecar
+prewarm, batch transcription start, or streaming session start. Preparation
+uses one fixed short sentence, not the benchmark corpus. The native helper
+and its build resources remain available for comparison; final dictation no
+longer calls the helper.
+
+### Final measurements
+
+Run: `2026-09-30T18:41:58.633Z`. Host: Apple M4, macOS, Electron
+35.7.5, Node v22.16.0, Chromium 134.0.6998.205.
+Runtime source: `eda9afb1`, based on `a6aa94a6`.
+
+Each case used 50 warmup calls and 1,000 measured calls. Each complete output
+was checked against the committed expected text. A further 100 calls per
+case used a new dictionary array and checked the complete output again.
+The timer includes the production normalizer, dictionary correction, and
+cursor-aware insertion formatting. It excludes ASR, paste, IPC scheduling,
+console/file I/O, and competing UI work.
+
+| Case | Words | Median ms | p95 ms | Fresh dictionary p95 ms |
+| --- | ---: | ---: | ---: | ---: |
+| short-acronyms-and-PR | 15 | 0.009 | 0.015 | 0.150 |
+| paragraph-all-rules | 150 | 0.138 | 0.232 | 0.297 |
+| multiple-paragraphs | 297 | 0.274 | 0.389 | 0.579 |
+| long-dictation | 792 | 1.107 | 1.439 | 1.551 |
+| plain-prose | 153 | 0.157 | 0.224 | 0.226 |
+| protected-forms | 100 | 0.094 | 0.143 | 0.367 |
+
+The first final call after preparation took **1.990 ms**.
+The largest final call across all measured cases and stress runs took
+**3.680 ms**. All 6,901 measured final calls were below 5 ms.
+
+The stress run used 100 distinct 250-word inputs per dictionary size, with
+synthetic rare words to exercise uncached dictionary matching.
+
+| Dictionary entries | Final p95 ms | Index preparation ms |
+| ---: | ---: | ---: |
+| 6 | 0.665 | 0.041 |
+| 100 | 0.615 | 0.238 |
+| 1000 | 0.715 | 3.080 |
+
+Module import took 63.325 ms; one-time regex preparation
+with the six-entry dictionary took 6.746 ms. These costs
+occur before final cleanup. They are not included in the sub-5 ms result.
+
+The earlier native-path Node run measured p95 of 97.840 ms for 150 words and
+736.113 ms for 792 words. It ran at a different time and used Node 22.23.1;
+these results show the scale of the old delay, not a precise paired speedup.
+
+### Supported behavior and limits
+
+The direct rules cover English cardinals through billions, strict decimals,
+versions, explicit clock times, PR/code/number identifiers, simple month/day
+dates, percentages, currency, common storage/metric units, and half/quarter
+quantities. Tests cover invalid sequences, ordinary small-number phrases,
+newlines, quoted numbers, dotted versions, and explicit time context.
+
+This is a narrower rule set than NeMo. Spoken email addresses, general phone
+formatting, arbitrary date forms, and general fractions do not have full NeMo
+coverage. Unknown forms stay as spoken text. A labelled serial phone number
+can be joined, but no regional phone format is inferred. Double/curly quoted
+text and inline code bypass number/unit rewriting.
+
+These measurements establish the target for the tested texts and dictionary
+sizes. They do not guarantee a deadline for arbitrary transcript lengths,
+large dictionaries, or OS scheduling. No new audio corpus or packaged-app
+live speech review was performed for this change. Broader real dictation
+review is still required before release.
+
+### Reproduction and validation
+
+From the repository root, with dependencies installed:
+
+```sh
+npm run benchmark:postprocess
+node scripts/verify-dictionary-equivalence.mjs
+npm test
+npx tsc --noEmit
+npm run lint
+```
+
+The benchmark starts an isolated Electron process with a temporary profile.
+It writes raw timings to `research/fast-postprocessing-electron.json`. It
+fails if the first final call or any warm/fresh/stress p95 reaches 5 ms.
+`--legacy` also runs the native grammar path when its local build is present;
+that comparison uses the original lifecycle strategy with current shared
+cleanup modules. It is not a frozen replay of every original module.
+
+The corpus is `scripts/postprocessing-corpus.json`. The checked-in summary is
+`local-stt/postprocessing-benchmark-results.json`.
+
+- Full suite: 63 files, 611 tests passed.
+- Type checks passed.
+- Lint: no errors, 18 existing warnings.
+- Dictionary comparison: 61,998 outputs matched the original algorithm.
+- The streaming fixture now uses two 560 ms audio chunks. The prior fixture
+  failed on the unchanged base commit; no streaming runtime behavior changed.

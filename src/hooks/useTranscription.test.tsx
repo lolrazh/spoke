@@ -820,7 +820,7 @@ describe("useTranscription", () => {
     const { result } = renderHook(() => useTranscription());
     await act(async () => result.current.start());
     expect(mockCreateStreamingVadSession).not.toHaveBeenCalled();
-    await emitPcmFrame(new Array(10_240).fill(1));
+    await emitPcmFrame(new Array(17_920).fill(1));
     await waitFor(() =>
       expect(window.stt.pushLocalStream).toHaveBeenCalledTimes(2),
     );
@@ -830,7 +830,7 @@ describe("useTranscription", () => {
           window.stt.pushLocalStream as ReturnType<typeof vi.fn>
         ).mock.calls[0][1],
       ),
-    ).toHaveLength(5_120);
+    ).toHaveLength(8_960);
 
     await act(async () => {
       stream.emitPartial("hello");
