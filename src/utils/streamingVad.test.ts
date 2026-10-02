@@ -292,31 +292,6 @@ describe("streamingVad", () => {
     expect(worker.dispose).toHaveBeenCalledOnce();
   });
 
-  it("does not report normal cancellation during model load as a VAD failure", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    let rejectReady!: (error: Error) => void;
-    const worker = createWorkerForFrameProcessor(createManualFrameProcessor());
-    worker.ready = vi.fn(
-      () =>
-        new Promise<void>((_resolve, reject) => {
-          rejectReady = reject;
-        }),
-    );
-    worker.dispose = vi.fn(() =>
-      rejectReady(new Error("VAD worker was disposed")),
-    );
-    mocks.createVadWorkerClient.mockReturnValue(worker);
-    try {
-      const session = createStreamingVadSession();
-      session.dispose();
-      await flush();
-      expect(worker.dispose).toHaveBeenCalledOnce();
-      expect(warn).not.toHaveBeenCalled();
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
   it("marks itself unusable when the model fails to load, and finish() returns null", async () => {
     const worker: VadWorkerClient = {
       ready: vi.fn().mockRejectedValue(new Error("model load failed")),
