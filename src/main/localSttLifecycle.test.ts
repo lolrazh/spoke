@@ -94,9 +94,7 @@ describe("localSttLifecycle", () => {
 
     await expect(
       transcribeWithLocalSidecar("current-model", Buffer.from([])),
-    ).rejects.toThrow(
-      LOCAL_MODEL_NOT_INSTALLED_MESSAGE,
-    );
+    ).rejects.toThrow(LOCAL_MODEL_NOT_INSTALLED_MESSAGE);
 
     expect(mocks.spawnSidecar).not.toHaveBeenCalled();
     expect(mocks.transcribeLocal).not.toHaveBeenCalled();
@@ -181,42 +179,83 @@ describe("localSttLifecycle", () => {
     ).resolves.toEqual({ text: "GitHub", metrics: {} });
   });
 
-  it("runs NeMo ITN on Nemotron final text", async () => {
+  it("normalizes Nemotron final text without starting NeMo ITN", async () => {
     mocks.transcribeLocal.mockResolvedValue({
       text: "meet me at five thirty a m",
       metrics: {},
     });
-    mocks.normalizeWithItn.mockResolvedValue("Meet me at 05:30 a.m.");
     const { transcribeWithLocalSidecar } = await importLifecycle();
-
-    await expect(
-      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
-    ).resolves.toEqual({ text: "Meet me at 05:30 a.m.", metrics: {} });
-    expect(mocks.normalizeWithItn).toHaveBeenCalledWith(
-      "meet me at five thirty a m",
+    const result = await transcribeWithLocalSidecar(
+      "current-model",
+      Buffer.from([1]),
     );
+    expect(result.text).toBe("meet me at 5:30 AM");
+    expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
   });
 
-  it("keeps the raw transcript when NeMo ITN is unavailable", async () => {
+  it.each(["parakeet", "nemotron"])(
+    "repairs technical text through the %s finalization path",
+    async (family) => {
+      mocks.getModelFamily.mockReturnValue(family);
+      mocks.transcribeLocal.mockResolvedValue({
+        text: "review P R two thirty one with L O D and M C P",
+        metrics: {},
+      });
+      mocks.normalizeWithItn.mockResolvedValue(
+        "review PR 02:31 with LOD and MCP",
+      );
+      const { transcribeWithLocalSidecar } = await importLifecycle();
+      const result = await transcribeWithLocalSidecar(
+        "current-model",
+        Buffer.from([1]),
+      );
+      expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
+      expect(result.text).toBe(
+        `${family === "parakeet" ? "Review" : "review"} PR #231 with LOD and MCP`,
+      );
+    },
+  );
+
+  it("repairs technical text when ITN is unavailable", async () => {
     mocks.transcribeLocal.mockResolvedValue({
-      text: "meet me at five thirty a m",
+      text: "review P R 231 with L O D",
       metrics: {},
     });
     mocks.normalizeWithItn.mockRejectedValue(new Error("helper unavailable"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { transcribeWithLocalSidecar } = await importLifecycle();
+    const result = await transcribeWithLocalSidecar(
+      "current-model",
+      Buffer.from([1]),
+    );
+    expect(result.text).toBe("review PR #231 with LOD");
+    warn.mockRestore();
+  });
 
-    await expect(
-      transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3])),
-    ).resolves.toEqual({
-      text: "meet me at five thirty a m",
+  it("repairs the final streaming transcript", async () => {
+    mocks.streamingFinish.mockResolvedValue({
+      text: "review P R two thirty one with M C P",
       metrics: {},
     });
-    expect(warn).toHaveBeenCalledWith(
-      "[STT] NeMo ITN failed; keeping raw transcript:",
-      expect.any(Error),
+    mocks.normalizeWithItn.mockResolvedValue("review PR 02:31 with MCP");
+    const { beginLocalStreamingSession } = await importLifecycle();
+    const session = await beginLocalStreamingSession("current-model", vi.fn());
+    expect((await session.finish()).text).toBe("review PR #231 with MCP");
+  });
+
+  it("repairs written references and acronyms from Whisper", async () => {
+    mocks.getModelFamily.mockReturnValue("whisper");
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "review PR 231 with M C P",
+      metrics: {},
+    });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const result = await transcribeWithLocalSidecar(
+      "current-model",
+      Buffer.from([1]),
     );
-    warn.mockRestore();
+    expect(result.text).toBe("review PR #231 with MCP");
+    expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
   });
 
   it("normalizes Parakeet spoken text before returning it", async () => {
@@ -276,7 +315,10 @@ describe("localSttLifecycle", () => {
     const { beginLocalStreamingSession } = await importLifecycle();
     const onPartial = vi.fn();
 
-    const session = await beginLocalStreamingSession("current-model", onPartial);
+    const session = await beginLocalStreamingSession(
+      "current-model",
+      onPartial,
+    );
     await session.push(Buffer.from([1, 0]));
     await expect(session.finish()).resolves.toEqual({
       text: "GitHub",
@@ -293,9 +335,7 @@ describe("localSttLifecycle", () => {
 
     await expect(
       beginLocalStreamingSession("current-model", vi.fn()),
-    ).rejects.toThrow(
-      "does not support live streaming",
-    );
+    ).rejects.toThrow("does not support live streaming");
     expect(mocks.startLocalStream).not.toHaveBeenCalled();
   });
 
@@ -453,10 +493,9 @@ describe("localSttLifecycle", () => {
     selectActiveModel("model-b");
 
     expect(active).toBe("model-b");
-    expect(mocks.setActiveModelId.mock.calls.map(([modelId]) => modelId)).toEqual([
-      "model-a",
-      "model-b",
-    ]);
+    expect(
+      mocks.setActiveModelId.mock.calls.map(([modelId]) => modelId),
+    ).toEqual(["model-a", "model-b"]);
     await vi.waitFor(() => {
       expect(mocks.spawnSidecar).toHaveBeenCalledTimes(1);
     });
@@ -483,8 +522,7 @@ describe("localSttLifecycle", () => {
       rejectStartup?.(new Error("prewarm cancelled"));
       rejectStartup = null;
     });
-    const { prewarmLocalSidecar, selectActiveModel } =
-      await importLifecycle();
+    const { prewarmLocalSidecar, selectActiveModel } = await importLifecycle();
 
     prewarmLocalSidecar("ptt-down");
     await flushLifecycle();
@@ -511,8 +549,7 @@ describe("localSttLifecycle", () => {
     mocks.setActiveModelId.mockImplementation((modelId: string) => {
       active = modelId;
     });
-    const { prewarmLocalSidecar, selectActiveModel } =
-      await importLifecycle();
+    const { prewarmLocalSidecar, selectActiveModel } = await importLifecycle();
 
     prewarmLocalSidecar("ptt-down");
     selectActiveModel("model-b");

@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "setup:stt": "node scripts/ensure-local-stt-runtime.mjs",
+    "benchmark:postprocess": "node scripts/benchmark-postprocessing.mjs --electron --stress",
     "benchmark:stt": "local-stt/.venv/bin/python local-stt/benchmark.py",
     "benchmark:stt:suite": "local-stt/.venv/bin/python local-stt/benchmark_suite.py"
   },

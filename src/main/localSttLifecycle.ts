@@ -23,6 +23,10 @@ import { getVocabularyDictionary } from "./vocabularyService";
 import { state } from "./windowState";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { getModelFamily } from "./localModelContract";
+import {
+  normalizeTranscript,
+  prepareTranscriptPostprocessing,
+} from "./transcriptPostprocessing";
 
 export const LOCAL_MODEL_NOT_INSTALLED_MESSAGE =
   "Local model not installed. Open Settings to install it.";
@@ -49,37 +53,7 @@ async function normalizeTranscriptForModel(
   modelId: string,
   dictionary: readonly string[],
 ): Promise<string> {
-  let normalized = text;
-  const modelFamily = getModelFamily(modelId);
-
-  if (modelFamily === "parakeet" || modelFamily === "nemotron") {
-    try {
-      const { normalizeWithItn } = await import("./itnEngine");
-      normalized = await normalizeWithItn(normalized);
-    } catch (error) {
-      console.warn("[STT] NeMo ITN failed; keeping raw transcript:", error);
-    }
-  }
-
-  if (modelFamily === "parakeet") {
-    try {
-      const { normalizeParakeetTranscript } = await import(
-        "./parakeetTranscriptNormalizer"
-      );
-      normalized = normalizeParakeetTranscript(normalized);
-    } catch (error) {
-      console.warn("[STT] Parakeet transcript normalization failed:", error);
-    }
-  }
-
-  if (!Array.isArray(dictionary) || dictionary.length === 0) return normalized;
-  try {
-    const { correctTranscript } = await import("./dictionaryCorrection");
-    return correctTranscript(normalized, dictionary);
-  } catch (error) {
-    console.warn("[STT] Dictionary correction failed:", error);
-    return normalized;
-  }
+  return normalizeTranscript(text, getModelFamily(modelId), dictionary);
 }
 
 function logSidecarShutdownFailure(context: string, error: unknown): void {
@@ -279,6 +253,9 @@ function queueLocalSidecarPrewarm(
 }
 
 export function prewarmLocalSidecar(reason: string): void {
+  prepareTranscriptPostprocessing(
+    state.appPreferences.vocabularyDictionary ?? [],
+  );
   const modelId = getActiveModelId();
   if (
     isSidecarRunning() &&
@@ -367,11 +344,7 @@ export function selectActiveModel(modelId: string): void {
 
   clearIdleTimer();
   const stalePrewarmStop = cancelPendingPrewarm();
-  queueLocalSidecarPrewarm(
-    "model-switch",
-    prewarmGeneration,
-    stalePrewarmStop,
-  );
+  queueLocalSidecarPrewarm("model-switch", prewarmGeneration, stalePrewarmStop);
 }
 
 export async function transcribeWithLocalSidecar(
@@ -379,6 +352,9 @@ export async function transcribeWithLocalSidecar(
   pcmBuffer: Buffer,
   prompt?: string,
 ): Promise<LocalTranscribeResult> {
+  prepareTranscriptPostprocessing(
+    state.appPreferences.vocabularyDictionary ?? [],
+  );
   await enqueueLifecycle(async () => {
     await ensureLocalSidecarRunningOnce(modelId);
     transcriptionsInFlight++;
@@ -415,6 +391,9 @@ export async function beginLocalStreamingSession(
   onPartial: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<ManagedLocalStreamingSession> {
+  prepareTranscriptPostprocessing(
+    state.appPreferences.vocabularyDictionary ?? [],
+  );
   const throwIfAborted = () => {
     if (signal?.aborted) {
       throw new Error("Local streaming session was cancelled during startup.");
@@ -466,7 +445,11 @@ export async function beginLocalStreamingSession(
         const dictionary = state.appPreferences.vocabularyDictionary ?? [];
         return {
           ...result,
-          text: await normalizeTranscriptForModel(result.text, modelId, dictionary),
+          text: await normalizeTranscriptForModel(
+            result.text,
+            modelId,
+            dictionary,
+          ),
         };
       } finally {
         release();

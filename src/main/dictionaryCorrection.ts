@@ -1,9 +1,6 @@
 import { doubleMetaphone } from "double-metaphone";
 import { distance } from "fastest-levenshtein";
 import subtlexWords from "subtlex-word-frequencies";
-import { createLogger } from "../utils/logger";
-
-const log = createLogger("DictCorrect");
 
 const MIN_TOKEN_LENGTH = 4;
 const COMMON_WORD_LIMIT = 30000;
@@ -13,6 +10,7 @@ const PHRASE_FUZZY_THRESHOLD = 0.95;
 const TIE_MARGIN = 0.05;
 const MAX_PHRASE_TOKENS = 4;
 const EMPTY_KEYS: readonly string[] = [];
+const MAX_MATCH_CACHE = 2048;
 
 // subtlex is pre-sorted by descending spoken-English frequency, so the head of
 // the list is the highest-value skip-list of everyday words.
@@ -36,6 +34,12 @@ type Index = {
   phraseCanonical: Map<string, PhraseKey[]>;
   phrasePhonetic: Map<string, PhraseKey[]>;
   phraseKeys: PhraseKey[];
+  canonicalByLength: Map<number, string[]>;
+  oneEditKeys: Map<string, string[]>;
+  phrasesByLength: Map<number, PhraseKey[]>;
+  maxPhraseLength: number;
+  tokenMatches: Map<string, Match | null>;
+  phraseMatches: Map<string, PhraseMatch | null>;
 };
 
 function normalizePhrase(value: string): string {
@@ -84,6 +88,9 @@ function buildIndex(dictionary: readonly string[]): Index {
   const phraseCanonical = new Map<string, PhraseKey[]>();
   const phrasePhonetic = new Map<string, PhraseKey[]>();
   const indexedPhraseKeys: PhraseKey[] = [];
+  const canonicalByLength = new Map<number, string[]>();
+  const oneEditKeys = new Map<string, string[]>();
+  const phrasesByLength = new Map<number, PhraseKey[]>();
   // The dictionary comes from a JSON prefs file that is loaded without shape
   // validation, so junk here must degrade to "no correction", not break
   // transcription. Expand one raw entry at a time so index construction does
@@ -96,6 +103,22 @@ function buildIndex(dictionary: readonly string[]): Index {
         const lower = word.toLowerCase();
         if (canonical.has(lower)) continue;
         canonical.set(lower, word);
+        const sameLength = canonicalByLength.get(lower.length) ?? [];
+        sameLength.push(lower);
+        canonicalByLength.set(lower.length, sameLength);
+        // For short tokens the fuzzy threshold permits at most one edit.
+        // Exact/deletion keys retrieve that complete candidate set without
+        // scanning every same-length vocabulary word.
+        if (lower.length <= 12) {
+          const keys = new Set([lower]);
+          for (let i = 0; i < lower.length; i++)
+            keys.add(lower.slice(0, i) + lower.slice(i + 1));
+          for (const key of keys) {
+            const bucket = oneEditKeys.get(key) ?? [];
+            bucket.push(lower);
+            oneEditKeys.set(key, bucket);
+          }
+        }
         const [primary, secondary] = doubleMetaphone(word);
         if (primary) {
           const bucket = phonetic.get(primary);
@@ -123,6 +146,9 @@ function buildIndex(dictionary: readonly string[]): Index {
         seen.add(dedupeKey);
         const candidate = { entry, key };
         indexedPhraseKeys.push(candidate);
+        const sameLength = phrasesByLength.get(key.length) ?? [];
+        sameLength.push(candidate);
+        phrasesByLength.set(key.length, sameLength);
         addPhraseBucket(phraseCanonical, key, candidate);
         const [primary, secondary] = doubleMetaphone(key);
         for (const code of new Set([primary, secondary])) {
@@ -138,7 +164,26 @@ function buildIndex(dictionary: readonly string[]): Index {
     phraseCanonical,
     phrasePhonetic,
     phraseKeys: indexedPhraseKeys,
+    canonicalByLength,
+    oneEditKeys,
+    phrasesByLength,
+    maxPhraseLength: indexedPhraseKeys.reduce(
+      (max, candidate) => Math.max(max, candidate.key.length),
+      0,
+    ),
+    tokenMatches: new Map(),
+    phraseMatches: new Map(),
   };
+}
+
+function* possibleLengths<T>(
+  buckets: Map<number, T[]>,
+  length: number,
+  threshold: number,
+): Iterable<T> {
+  const min = Math.ceil(length * threshold);
+  const max = Math.floor(length / threshold);
+  for (let size = min; size <= max; size++) yield* buckets.get(size) ?? [];
 }
 
 // The vocabulary service replaces the dictionary array on every mutation and
@@ -154,6 +199,13 @@ function getIndex(dictionary: readonly string[]): Index {
     cachedDictionary = dictionary;
   }
   return cachedIndex;
+}
+
+/** Build the vocabulary index while capture/ASR runs, before final text arrives. */
+export function prepareDictionaryCorrection(
+  dictionary: readonly string[],
+): void {
+  if (Array.isArray(dictionary) && dictionary.length > 0) getIndex(dictionary);
 }
 
 function similarity(a: string, b: string): number {
@@ -218,7 +270,7 @@ type PhraseMatch = {
 type ScoredPhrase = { candidate: PhraseKey; sim: number };
 
 function scorePhraseCandidates(
-  candidates: PhraseKey[],
+  candidates: Iterable<PhraseKey>,
   key: string,
   threshold: number,
 ): ScoredPhrase[] {
@@ -261,6 +313,21 @@ function unambiguousPhrase(
 }
 
 function findPhraseMatch(key: string, index: Index): PhraseMatch | null {
+  // Every match path checks character similarity. An overlong phrase cannot
+  // meet even the least restrictive threshold; skip phonetic work entirely.
+  if (key.length > index.maxPhraseLength / PHONETIC_THRESHOLD) return null;
+  const cached = index.phraseMatches.get(key);
+  if (cached !== undefined) return cached;
+  const result = findPhraseMatchUncached(key, index);
+  if (index.phraseMatches.size >= MAX_MATCH_CACHE) index.phraseMatches.clear();
+  index.phraseMatches.set(key, result);
+  return result;
+}
+
+function findPhraseMatchUncached(
+  key: string,
+  index: Index,
+): PhraseMatch | null {
   const exact = index.phraseCanonical.get(key) ?? [];
   const exactMatch = unambiguousPhrase(
     scorePhraseCandidates(exact, key, 1),
@@ -289,16 +356,35 @@ function findPhraseMatch(key: string, index: Index): PhraseMatch | null {
   }
 
   return unambiguousPhrase(
-    scorePhraseCandidates(index.phraseKeys, key, PHRASE_FUZZY_THRESHOLD),
+    scorePhraseCandidates(
+      possibleLengths(
+        index.phrasesByLength,
+        key.length,
+        PHRASE_FUZZY_THRESHOLD,
+      ),
+      key,
+      PHRASE_FUZZY_THRESHOLD,
+    ),
     "fuzzy-phrase",
   );
 }
 
 function findMatch(stem: string, lower: string, index: Index): Match | null {
+  const cached = index.tokenMatches.get(lower);
+  if (cached !== undefined) return cached;
+  const result = findMatchUncached(stem, lower, index);
+  if (index.tokenMatches.size >= MAX_MATCH_CACHE) index.tokenMatches.clear();
+  index.tokenMatches.set(lower, result);
+  return result;
+}
+
+function findMatchUncached(
+  stem: string,
+  lower: string,
+  index: Index,
+): Match | null {
   const [primary, secondary] = doubleMetaphone(stem);
-  const primaryCandidates = primary
-    ? index.phonetic.get(primary)
-    : undefined;
+  const primaryCandidates = primary ? index.phonetic.get(primary) : undefined;
   const secondaryCandidates =
     secondary && secondary !== primary
       ? index.phonetic.get(secondary)
@@ -314,7 +400,24 @@ function findMatch(stem: string, lower: string, index: Index): Match | null {
   if (scored.length === 0) {
     // Canonical keys are unique and already lowercase, so the fuzzy fallback
     // can iterate them directly without another array or de-duplication Set.
-    scored = bestFrom(index.canonical.keys(), lower, FUZZY_THRESHOLD);
+    const maxLength = Math.floor(lower.length / FUZZY_THRESHOLD);
+    const radius = Math.floor(maxLength * (1 - FUZZY_THRESHOLD));
+    let candidates: Iterable<string>;
+    if (radius <= 1 && maxLength <= 12) {
+      const found = new Set(index.oneEditKeys.get(lower) ?? EMPTY_KEYS);
+      for (let i = 0; i < lower.length; i++) {
+        const key = lower.slice(0, i) + lower.slice(i + 1);
+        for (const candidate of index.oneEditKeys.get(key) ?? EMPTY_KEYS)
+          found.add(candidate);
+      }
+      candidates = found;
+    } else
+      candidates = possibleLengths(
+        index.canonicalByLength,
+        lower.length,
+        FUZZY_THRESHOLD,
+      );
+    scored = bestFrom(candidates, lower, FUZZY_THRESHOLD);
     path = "fuzzy";
   }
   if (scored.length === 0) return null;
@@ -357,18 +460,12 @@ export function correctTranscript(
     const exact = index.canonical.get(lower);
     if (exact !== undefined) {
       const cased = matchCasing(exact, stem);
-      if (cased !== stem) {
-        log.info(`"${stem}" -> "${cased}" (exact)`);
-      }
       return `${cased}${possessive}`;
     }
 
     const match = findMatch(stem, lower, index);
     if (!match) return token;
     const cased = matchCasing(match.word, stem);
-    log.info(
-      `"${stem}" -> "${cased}" (${match.path}, similarity=${match.sim.toFixed(2)})`,
-    );
     return `${cased}${possessive}`;
   };
 
@@ -419,9 +516,6 @@ export function correctTranscript(
     output += text.slice(cursor, firstStart);
     if (phrase) {
       const replacement = matchCasing(phrase.match.entry, first[0]);
-      log.info(
-        `"${phrase.source}" -> "${replacement}" (${phrase.match.path}, similarity=${phrase.match.sim.toFixed(2)})`,
-      );
       output += replacement;
       cursor = phrase.end;
       tokenIndex += phrase.count;
