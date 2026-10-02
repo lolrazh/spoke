@@ -18,7 +18,6 @@ const mocks = vi.hoisted(() => ({
   streamingFinish: vi.fn(),
   streamingCancel: vi.fn(),
   getModelFamily: vi.fn(),
-  normalizeWithItn: vi.fn(),
   state: { appPreferences: {} as { vocabularyDictionary?: string[] } },
 }));
 
@@ -43,10 +42,6 @@ vi.mock("./sidecarEngine", () => ({
 
 vi.mock("./localModelContract", () => ({
   getModelFamily: mocks.getModelFamily,
-}));
-
-vi.mock("./itnEngine", () => ({
-  normalizeWithItn: mocks.normalizeWithItn,
 }));
 
 vi.mock("./windowState", () => ({ state: mocks.state }));
@@ -83,7 +78,6 @@ describe("localSttLifecycle", () => {
       cancel: mocks.streamingCancel,
     });
     mocks.getModelFamily.mockReturnValue("nemotron");
-    mocks.normalizeWithItn.mockImplementation(async (text: string) => text);
     mocks.state.appPreferences = {};
   });
 
@@ -179,7 +173,7 @@ describe("localSttLifecycle", () => {
     ).resolves.toEqual({ text: "GitHub", metrics: {} });
   });
 
-  it("normalizes Nemotron final text without starting NeMo ITN", async () => {
+  it("normalizes Nemotron final text", async () => {
     mocks.transcribeLocal.mockResolvedValue({
       text: "meet me at five thirty a m",
       metrics: {},
@@ -190,38 +184,13 @@ describe("localSttLifecycle", () => {
       Buffer.from([1]),
     );
     expect(result.text).toBe("meet me at 5:30 AM");
-    expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
   });
 
-  it.each(["parakeet", "nemotron"])(
-    "repairs technical text through the %s finalization path",
-    async (family) => {
-      mocks.getModelFamily.mockReturnValue(family);
-      mocks.transcribeLocal.mockResolvedValue({
-        text: "review P R two thirty one with L O D and M C P",
-        metrics: {},
-      });
-      mocks.normalizeWithItn.mockResolvedValue(
-        "review PR 02:31 with LOD and MCP",
-      );
-      const { transcribeWithLocalSidecar } = await importLifecycle();
-      const result = await transcribeWithLocalSidecar(
-        "current-model",
-        Buffer.from([1]),
-      );
-      expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
-      expect(result.text).toBe(
-        `${family === "parakeet" ? "Review" : "review"} PR #231 with LOD and MCP`,
-      );
-    },
-  );
-
-  it("repairs technical text when ITN is unavailable", async () => {
+  it("repairs technical text", async () => {
     mocks.transcribeLocal.mockResolvedValue({
       text: "review P R 231 with L O D",
       metrics: {},
     });
-    mocks.normalizeWithItn.mockRejectedValue(new Error("helper unavailable"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { transcribeWithLocalSidecar } = await importLifecycle();
     const result = await transcribeWithLocalSidecar(
@@ -230,32 +199,6 @@ describe("localSttLifecycle", () => {
     );
     expect(result.text).toBe("review PR #231 with LOD");
     warn.mockRestore();
-  });
-
-  it("repairs the final streaming transcript", async () => {
-    mocks.streamingFinish.mockResolvedValue({
-      text: "review P R two thirty one with M C P",
-      metrics: {},
-    });
-    mocks.normalizeWithItn.mockResolvedValue("review PR 02:31 with MCP");
-    const { beginLocalStreamingSession } = await importLifecycle();
-    const session = await beginLocalStreamingSession("current-model", vi.fn());
-    expect((await session.finish()).text).toBe("review PR #231 with MCP");
-  });
-
-  it("repairs written references and acronyms from Whisper", async () => {
-    mocks.getModelFamily.mockReturnValue("whisper");
-    mocks.transcribeLocal.mockResolvedValue({
-      text: "review PR 231 with M C P",
-      metrics: {},
-    });
-    const { transcribeWithLocalSidecar } = await importLifecycle();
-    const result = await transcribeWithLocalSidecar(
-      "current-model",
-      Buffer.from([1]),
-    );
-    expect(result.text).toBe("review PR #231 with MCP");
-    expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
   });
 
   it("normalizes Parakeet spoken text before returning it", async () => {
@@ -281,7 +224,6 @@ describe("localSttLifecycle", () => {
 
     await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2, 3]));
 
-    expect(mocks.normalizeWithItn).not.toHaveBeenCalled();
   });
 
   it("does not apply Parakeet normalization to Whisper", async () => {

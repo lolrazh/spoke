@@ -24,7 +24,19 @@ vi.mock("./helperProcess", () => ({
 }));
 
 vi.mock("./pasteDaemon", () => ({
-  pasteViaDaemon: vi.fn(async () => true),
+  insertViaPasteDaemon: vi.fn(async (payload: string) => {
+    const original = clipboardStore.text;
+    clipboardStore.text = payload;
+    return {
+      clipboardRead: Promise.resolve(true),
+      waitForClipboardRead: async () => true,
+      clipboardMs: 0.1,
+      dispatchMs: 0.1,
+      restoreClipboard: async () => {
+        if (clipboardStore.text === payload) clipboardStore.text = original;
+      },
+    };
+  }),
 }));
 
 vi.mock("./selectionInspect", () => ({
@@ -49,11 +61,12 @@ vi.mock("./windowState", () => ({
   },
 }));
 
-import { clipboard } from "electron";
-import { insertTextAtCursor } from "./pasteOrchestrator";
+let clipboard: typeof import("electron")["clipboard"];
+let insertViaPasteDaemon: typeof import("./pasteDaemon")["insertViaPasteDaemon"];
+let insertTextAtCursor: typeof import("./pasteOrchestrator")["insertTextAtCursor"];
 import { applyAutoSpace } from "./contextualDictationFormatter";
-import { inspectFocusedSelection } from "./selectionInspect";
-import { state } from "./windowState";
+let inspectFocusedSelection: typeof import("./selectionInspect")["inspectFocusedSelection"];
+let state: typeof import("./windowState")["state"];
 
 describe("main/pasteOrchestrator applyAutoSpace", () => {
   it("appends a single trailing space when enabled", () => {
@@ -75,14 +88,23 @@ describe("main/pasteOrchestrator applyAutoSpace", () => {
 });
 
 describe("main/pasteOrchestrator insertTextAtCursor", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ clipboard } = await import("electron"));
+    ({ insertViaPasteDaemon } = await import("./pasteDaemon"));
+    ({ inspectFocusedSelection } = await import("./selectionInspect"));
+    ({ state } = await import("./windowState"));
+    ({ insertTextAtCursor } = await import("./pasteOrchestrator"));
     vi.useFakeTimers();
     clipboardStore.text = "";
     state.appPreferences = {};
     vi.mocked(clipboard.writeText).mockClear();
+    vi.mocked(insertViaPasteDaemon).mockClear();
+    vi.mocked(inspectFocusedSelection).mockClear();
     vi.mocked(inspectFocusedSelection).mockResolvedValue({
       ok: false,
       status: "unsupported",
+      targetPid: 42,
       range: null,
       selectedText: null,
       context: null,
@@ -101,7 +123,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
   it("pastes with a trailing space by default", async () => {
     const result = await insertTextAtCursor("Hello world.");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
+    expect(vi.mocked(insertViaPasteDaemon).mock.calls[0][0]).toBe(
       "Hello world. ",
     );
   });
@@ -110,7 +132,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     state.appPreferences.autoSpace = false;
     const result = await insertTextAtCursor("Hello world.");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
+    expect(vi.mocked(insertViaPasteDaemon).mock.calls[0][0]).toBe(
       "Hello world.",
     );
   });
@@ -118,7 +140,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
   it("does not add a space after a trailing newline", async () => {
     const result = await insertTextAtCursor("Hello world.\n");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
+    expect(vi.mocked(insertViaPasteDaemon).mock.calls[0][0]).toBe(
       "Hello world.\n",
     );
   });
@@ -135,6 +157,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     vi.mocked(inspectFocusedSelection).mockResolvedValue({
       ok: true,
       status: "read:ok",
+      targetPid: 42,
       range: { location: "It was".length, length: 0 },
       selectedText: null,
       context: "It was",
@@ -146,7 +169,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
 
     const result = await insertTextAtCursor("Wonderful");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe(
+    expect(vi.mocked(insertViaPasteDaemon).mock.calls[0][0]).toBe(
       " wonderful ",
     );
   });
@@ -155,6 +178,7 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
     vi.mocked(inspectFocusedSelection).mockResolvedValue({
       ok: true,
       status: "read:ok",
+      targetPid: 42,
       range: { location: "It was ".length, length: 0 },
       selectedText: null,
       context: "It was , truly",
@@ -166,6 +190,6 @@ describe("main/pasteOrchestrator insertTextAtCursor", () => {
 
     const result = await insertTextAtCursor("Wonderful");
     expect(result.success).toBe(true);
-    expect(vi.mocked(clipboard.writeText).mock.calls[0][0]).toBe("wonderful");
+    expect(vi.mocked(insertViaPasteDaemon).mock.calls[0][0]).toBe("wonderful");
   });
 });

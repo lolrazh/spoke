@@ -27,7 +27,6 @@ import { invokedBloodyMary } from "../utils/easterEggs";
 import { setAudioLevel } from "../state/audioLevel";
 import { setLiveTranscript } from "../state/liveTranscript";
 import {
-  POST_ROLL_MS,
   LOCAL_DICTATION_MAX_DURATION_MS,
   LOCAL_STT_CHUNK_MIN_MS,
   LOCAL_STT_CHUNK_MAX_MS,
@@ -269,6 +268,11 @@ export function useTranscription(
       const prepareResult = await localStt.prepare();
       if (!isCurrentStart()) return;
       prepareResultRef.current = prepareResult;
+      // Button starts also prepare paste while the user records. Hotkey starts
+      // already do this in fnListener; a live helper is reused.
+      void window.clipboard
+        ?.prewarm?.()
+        .catch((error) => log.warn("Paste helper preparation failed:", error));
 
       if (prepareResult.localModel?.streaming) {
         localStreamingDictation = await createLocalStreamingDictation({
@@ -448,11 +452,6 @@ export function useTranscription(
         window.notifications?.send?.("Boo");
       }
 
-      // Add to history (fire-and-forget)
-      addTranscriptionToHistory(finalText, DICTATION_MODE).catch((err) =>
-        log.warn("Failed to record transcription history:", err),
-      );
-
       const insertText = window.clipboard?.insertText;
       timing.pasteStartedAt = performance.now();
       try {
@@ -467,6 +466,12 @@ export function useTranscription(
       } finally {
         timing.pasteDoneAt = performance.now();
       }
+      // History storage uses synchronous disk writes in the main process.
+      // Queue it after paste settles so it cannot delay native IPC replies.
+      // Save the transcript even when paste fails or times out.
+      addTranscriptionToHistory(finalText, DICTATION_MODE).catch((err) =>
+        log.warn("Failed to record transcription history:", err),
+      );
       logTranscriptionLatency({
         status: "done",
         timing,
@@ -526,29 +531,10 @@ export function useTranscription(
 
       const prepareResult = prepareResultRef.current;
 
-      // Batch paths need a short tail for VAD trimming. Live Nemotron adds
-      // its own bounded final silence inside the sidecar, so do not start a
-      // duplicate VAD worker or add another post-roll delay.
+      // Key release is the capture cutoff. Flush audio already captured,
+      // rather than deliberately recording another 240 ms of future audio.
+      // VAD still trims the completed buffer below.
       timing.postRollStartedAt = performance.now();
-      if (!localStreamingDictation) {
-        if (streamingVadSession && streamingVadSession.isUsable()) {
-          try {
-            await streamingVadSession.waitForQuiet(POST_ROLL_MS);
-          } catch (vadError) {
-            // VAD is an optional latency optimization. Preserve the full tail
-            // and continue if its worker fails while the key-up settles.
-            vadLog.warn(
-              "Streaming VAD post-roll failed; using fixed post-roll:",
-              vadError,
-            );
-            const elapsedMs = performance.now() - timing.postRollStartedAt;
-            const remainingMs = Math.max(0, POST_ROLL_MS - elapsedMs);
-            await new Promise((resolve) => setTimeout(resolve, remainingMs));
-          }
-        } else {
-          await new Promise((resolve) => setTimeout(resolve, POST_ROLL_MS));
-        }
-      }
       timing.postRollDoneAt = performance.now();
       if (isCancelled()) return;
 

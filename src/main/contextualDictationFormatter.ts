@@ -14,7 +14,7 @@ type InsertionContext = {
 };
 
 const DEFAULT_CONTEXT_CHARS = 96;
-const OPENING_BOUNDARY_CHARS = new Set(["(", "[", "{", "\"", "'", "“", "‘"]);
+const OPENING_BOUNDARY_CHARS = new Set(["(", "[", "{", '"', "'", "“", "‘"]);
 const PROTECTED_TERMINAL_ABBREVIATIONS = new Set([
   "dr",
   "e.g",
@@ -92,7 +92,11 @@ function extractInsertionContext(
 
   const contextStart = Math.max(0, selection.range.location - contextChars);
   const beforeLength = selection.range.location - contextStart;
-  const afterStart = beforeLength + Math.max(0, selection.range.length);
+  const afterStart =
+    beforeLength +
+    (selection.contextExcludesSelection
+      ? 0
+      : Math.max(0, selection.range.length));
 
   if (
     beforeLength < 0 ||
@@ -145,7 +149,10 @@ function normalizeContinuationEnding(
 
   const trimmedPayload = payload.trimEnd();
   if (!/[.!?]$/.test(trimmedPayload)) return payload;
-  if (/\.$/.test(trimmedPayload) && hasProtectedTerminalAbbreviation(trimmedPayload)) {
+  if (
+    /\.$/.test(trimmedPayload) &&
+    hasProtectedTerminalAbbreviation(trimmedPayload)
+  ) {
     return payload;
   }
 

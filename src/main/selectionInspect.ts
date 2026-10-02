@@ -1,20 +1,22 @@
 /**
  * Selection Inspection
  *
- * Spawns the native helper binary to inspect the currently focused text field
- * and extract selection range, selected text, and surrounding context via
- * macOS Accessibility APIs. Output is parsed from the helper's stdout.
+ * Reads passive insertion context through the persistent helper. Explicit
+ * edit-selection reads use a one-shot helper with the clipboard fallback.
+ * Both paths parse the same macOS Accessibility output.
  */
 
 import * as fs from "fs";
 import { spawn } from "child_process";
 import type { SelectionInspectSnapshot } from "../types/shared";
 import { getHelperPath } from "./helperPaths";
+import { inspectViaPasteDaemon } from "./pasteDaemon";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
 export type SelectionInspectOptions = {
   contextChars?: number;
+  passive?: boolean;
 };
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -123,6 +125,10 @@ export function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
     source,
     rawOutput: normalized,
   };
+  if (/^contextExcludesSelection:1$/mu.test(normalized))
+    result.contextExcludesSelection = true;
+  const pid = normalized.match(/^targetPid:(\d+)$/mu);
+  if (pid && Number(pid[1]) > 0) result.targetPid = Number(pid[1]);
 
   if (!ok) {
     result.error = status;
@@ -136,6 +142,12 @@ export function parseInspectOutput(stdout: string): SelectionInspectSnapshot {
 export async function inspectFocusedSelection(
   options?: SelectionInspectOptions,
 ): Promise<SelectionInspectSnapshot> {
+  if (options?.passive) {
+    const output = await inspectViaPasteDaemon(
+      clampInspectContextChars(options.contextChars),
+    );
+    return parseInspectOutput(output);
+  }
   const helperPath = getHelperPath();
   if (!fs.existsSync(helperPath)) {
     return {

@@ -18,8 +18,6 @@
     "stage:package": "VITE_SF_DEVTOOLS=1 node --env-file=.env scripts/run-command.mjs electron-forge package --arch=arm64",
     "stage:make": "VITE_SF_DEVTOOLS=1 node --env-file=.env scripts/run-command.mjs electron-forge make --arch=arm64",
     "release:preflight": "node --env-file=.env scripts/run-command.mjs bash scripts/release-preflight.sh",
-    "build:itn:grammar": "bash native/build-itn-grammar.sh",
-    "build:itn": "npm run build:itn:grammar && bash native/build-itn.sh",
     "publish": "electron-forge publish",
     "publish:env": "node --env-file=.env scripts/run-command.mjs electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
@@ -27,10 +25,7 @@
     "postinstall": "bash native/build-helper.sh",
     "test": "vitest run",
     "test:watch": "vitest",
-    "setup:stt": "node scripts/ensure-local-stt-runtime.mjs",
-    "benchmark:postprocess": "node scripts/benchmark-postprocessing.mjs --electron --stress",
-    "benchmark:stt": "local-stt/.venv/bin/python local-stt/benchmark.py",
-    "benchmark:stt:suite": "local-stt/.venv/bin/python local-stt/benchmark_suite.py"
+    "setup:stt": "node scripts/ensure-local-stt-runtime.mjs"
   },
   "keywords": [],
   "author": {

@@ -1,19 +1,7 @@
-/**
- * Paste Orchestrator
- *
- * Shared logic for injecting transcribed text at the OS cursor: puts the
- * text on the clipboard, triggers the native paste helper (preferring the
- * pre-spawned daemon, falling back to a direct spawn), and restores the
- * user's original clipboard contents shortly after — but only if nothing
- * else has since overwritten the clipboard.
- */
-
+/** Serialize context, clipboard, and paste so concurrent requests cannot mix text. */
 import { clipboard } from "electron";
-import fs from "node:fs";
-
-import { getHelperPath } from "./helperPaths";
-import { spawnHelper } from "./helperProcess";
-import { pasteViaDaemon } from "./pasteDaemon";
+import { performance } from "node:perf_hooks";
+import { insertViaPasteDaemon } from "./pasteDaemon";
 import { formatDictationForInsertion } from "./contextualDictationFormatter";
 import { inspectFocusedSelection } from "./selectionInspect";
 import { state } from "./windowState";
@@ -23,170 +11,145 @@ export interface InsertTextAtCursorResult {
   error?: string;
   verified?: boolean;
 }
-
 const INSERTION_CONTEXT_CHARS = 96;
+let insertionTail: Promise<unknown> = Promise.resolve();
+let latestInsertion = 0;
+let pendingClipboard: { wait: () => Promise<boolean> } | null = null;
 
-async function buildInsertionPayload(text: string): Promise<string> {
-  const autoSpace = state.appPreferences.autoSpace ?? true;
-  const dictionary = state.appPreferences.vocabularyDictionary ?? [];
+export function insertTextAtCursor(
+  text: string,
+): Promise<InsertTextAtCursorResult> {
+  const insertion = insertionTail.then(() => performInsertion(text));
+  insertionTail = insertion.catch(() => undefined);
+  return insertion;
+}
 
+async function performInsertion(
+  text: string,
+): Promise<InsertTextAtCursorResult> {
+  if (typeof text !== "string" || !text)
+    return { success: false, error: "Cannot insert empty text." };
+  // Posting keys does not consume the clipboard. Keep the previous payload
+  // until a reader requests it, even when its dispatch already returned.
+  if (pendingClipboard) {
+    if (!(await pendingClipboard.wait())) {
+      return {
+        success: false,
+        verified: false,
+        error: "Previous paste is not confirmed. Text remains on clipboard.",
+      };
+    }
+    pendingClipboard = null;
+  }
+  const insertionId = ++latestInsertion;
+  const started = performance.now();
+  let contextDone: number | null = null,
+    handoffDone: number | null = null,
+    dispatchDone: number | null = null;
+  let method = "none";
+  let clipboardMs: number | null = null,
+    dispatchMs: number | null = null;
+  let payload = text;
   try {
     const selection = await inspectFocusedSelection({
       contextChars: INSERTION_CONTEXT_CHARS,
+      passive: true,
     });
-    return formatDictationForInsertion(text, {
-      autoSpace,
-      dictionary,
+    payload = formatDictationForInsertion(text, {
+      autoSpace: state.appPreferences.autoSpace ?? true,
+      dictionary: state.appPreferences.vocabularyDictionary ?? [],
       selection,
       contextChars: INSERTION_CONTEXT_CHARS,
     });
-  } catch (error) {
-    console.warn("[PasteHelper] Context inspection failed:", error);
-    return formatDictationForInsertion(text, { autoSpace, dictionary });
-  }
-}
-
-// Add a handler for insert-text-at-cursor
-export async function insertTextAtCursor(
-  text: string,
-): Promise<InsertTextAtCursorResult> {
-  if (!text) {
-    console.warn("[PasteHelper] Received empty text. Aborting insertion.");
-    return { success: false, error: "Cannot insert empty text." };
-  }
-
-  try {
-    console.log("=== TEXT INSERTION PROCESS START ===");
-    console.log(`Received text (${text.length} chars)`);
-
-    const originalClipboardText = clipboard.readText();
-    console.log("Original clipboard text stored.");
-
-    const payloadText = await buildInsertionPayload(text);
-    clipboard.writeText(payloadText);
-    console.log("Transcription text copied to clipboard for pasting.");
-
-    const helperPath = getHelperPath();
-    if (!fs.existsSync(helperPath)) {
-      console.error(
-        `[PasteHelper] Spoke Helper binary not found at path: ${helperPath}`,
-      );
-      state.mainWindow?.webContents.send(
-        "notify",
-        "Paste unavailable: binary missing. Copied to clipboard.",
-      );
-      return { success: false, error: "Paste helper binary not found." };
-    }
-
-    // Use pre-spawned daemon if available, otherwise fallback to direct spawn
-    const pastedViaDaemon = await pasteViaDaemon();
-    if (!pastedViaDaemon) {
-      console.log(
-        `[PasteHelper] Pre-spawn not available, using direct spawn from: ${helperPath}`,
-      );
-      const proc = spawnHelper(helperPath, ["--mode=paste"], false);
-
-      await new Promise<void>((resolve) => {
-        let stderrBuffer = "";
-        proc.stderr?.on("data", (data) => {
-          stderrBuffer += data.toString();
-        });
-        proc.on("close", (code) => {
-          if (stderrBuffer)
-            console.error(`[PasteHelper stderr]: ${stderrBuffer.trim()}`);
-          console.log(
-            `[PasteHelper] fallback paste helper exited with code ${code}`,
+    contextDone = performance.now();
+    if (!selection.targetPid)
+      throw new Error(`Paste target is unavailable (${selection.status}).`);
+    method = "targeted-cmd-v";
+    const receipt = await insertViaPasteDaemon(payload, selection.targetPid);
+    handoffDone = performance.now();
+    clipboardMs = receipt.clipboardMs;
+    dispatchMs = receipt.dispatchMs;
+    dispatchDone = handoffDone;
+    const restoreClipboard = receipt.restoreClipboard;
+    let restorationScheduled = false;
+    const scheduleRestore = () => {
+      if (restorationScheduled) return;
+      restorationScheduled = true;
+      const timer = setTimeout(() => {
+        void restoreClipboard().catch((error) =>
+          console.warn("[Paste] Clipboard restore failed:", error),
+        );
+      }, 500);
+      timer.unref?.();
+    };
+    let readAttempt: Promise<boolean> | null = receipt.clipboardRead;
+    pendingClipboard = {
+      wait: async () => {
+        // A timeout is not consumption. A later attempt can observe a late
+        // read without replacing the outstanding clipboard payload.
+        readAttempt ??= receipt.waitForClipboardRead();
+        const read = await readAttempt;
+        if (read) scheduleRestore();
+        else readAttempt = null;
+        return read;
+      },
+    };
+    // Dispatch stays fast. Observe clipboard consumption separately; leave
+    // dictation available for manual paste if no reader requests it.
+    void receipt.clipboardRead.then((read) => {
+      console.info("[Paste] Clipboard read", { observed: read });
+      if (!read) {
+        if (insertionId !== latestInsertion) return;
+        const window = state.mainWindow;
+        if (window && !window.isDestroyed())
+          window.webContents.send(
+            "notify",
+            "Paste not confirmed. Text remains on clipboard.",
           );
-          resolve();
-        });
-        proc.on("error", (error) => {
-          console.error(
-            "[PasteHelper] Error executing fallback paste-helper:",
-            error,
-          );
-          resolve();
-        });
-      });
-    }
-
-    // Restore original clipboard regardless of outcome, but only if the
-    // clipboard still holds the text we injected — if the user or another
-    // app changed it in the meantime, don't clobber their new contents.
-    setTimeout(() => {
-      try {
-        if (clipboard.readText() === payloadText) {
-          clipboard.writeText(originalClipboardText);
-        }
-      } catch {}
-    }, 300);
-
-    console.log("=== TEXT INSERTION PROCESS COMPLETE ===");
+        return;
+      }
+      scheduleRestore();
+    });
     return { success: true, verified: false };
   } catch (error) {
-    console.error("=== TEXT INSERTION PROCESS FAILED (Exception) ===");
-    console.error("Error during text insertion:", error);
-    // In case of any other error, leave the transcribed text in the clipboard.
+    // Never retry a dispatched paste: the target may have received it even
+    // when the helper did not ACK. Keep a manual paste available instead.
+    console.warn("[Paste] Insertion failed:", error);
     try {
-      const trimmed = typeof text === "string" ? text.trimStart() : text;
-      clipboard.writeText(trimmed as string);
+      clipboard.writeText(payload);
     } catch {
-      clipboard.writeText(text);
+      /* original clipboard retained */
     }
     state.mainWindow?.webContents.send(
       "notify",
-      "Error. Text copied to clipboard.",
+      "Paste failed. Text copied to clipboard.",
     );
     return {
       success: false,
-      error:
-        "An error occurred during text insertion. Text copied to clipboard.",
+      verified: false,
+      error: error instanceof Error ? error.message : "Text insertion failed.",
     };
+  } finally {
+    console.info("[Latency] Text insertion", {
+      context_ms:
+        contextDone === null
+          ? null
+          : Math.round((contextDone - started) * 1000) / 1000,
+      // Native phase times exclude the pipe handoff; handoff_ms includes it.
+      clipboard_ms: clipboardMs,
+      dispatch_ms: dispatchMs,
+      handoff_ms:
+        handoffDone === null || contextDone === null
+          ? null
+          : Math.round((handoffDone - contextDone) * 1000) / 1000,
+      total_ms: Math.round((performance.now() - started) * 1000) / 1000,
+      method,
+      completion: dispatchDone === null ? "failed" : "events-posted",
+    });
   }
 }
 
-// Paste the last transcript (used by the global shortcut and tray/context menu items)
-export async function pasteLastTranscript() {
-  if (!state.lastTranscript || state.lastTranscript.trim().length === 0) {
-    console.log("[PasteShortcut] No transcript available to paste");
-    return;
-  }
-
-  try {
-    console.log(
-      "[PasteShortcut] Pasting last transcript via Command+Control+V",
-    );
-
-    const originalClipboardText = clipboard.readText();
-    const payloadText = await buildInsertionPayload(state.lastTranscript);
-    clipboard.writeText(payloadText);
-
-    const helperPath = getHelperPath();
-    if (!fs.existsSync(helperPath)) {
-      console.error("[PasteShortcut] Helper binary not found");
-      return;
-    }
-
-    // Use pre-spawned daemon or fallback to direct spawn
-    const pastedViaDaemon = await pasteViaDaemon();
-    if (!pastedViaDaemon) {
-      console.log("[PasteShortcut] Using direct spawn");
-      const proc = spawnHelper(helperPath, ["--mode=paste"], false);
-      await new Promise<void>((resolve) => {
-        proc.on("close", () => resolve());
-        proc.on("error", () => resolve());
-      });
-    }
-
-    // Restore original clipboard, but only if it still holds the text we
-    // injected — skip if the user or another app changed it meanwhile.
-    setTimeout(() => {
-      try {
-        if (clipboard.readText() === payloadText) {
-          clipboard.writeText(originalClipboardText);
-        }
-      } catch {}
-    }, 300);
-  } catch (error) {
-    console.error("[PasteShortcut] Error pasting transcript:", error);
-  }
+export async function pasteLastTranscript(): Promise<void> {
+  if (state.lastTranscript?.trim())
+    await insertTextAtCursor(state.lastTranscript);
 }
