@@ -42,5 +42,228 @@
         "description": "Spoke waits for the receiving app to read your transcript before restoring the previous clipboard. If paste cannot be confirmed, the transcript stays available for manual paste."
       }
     ]
+  },
+  {
+    "version": "0.1.31",
+    "headline": "Keep It Local",
+    "summary": "Spoke removes the remaining cloud transcription paths and opens its panel with less waiting. Longer dictations now split at pauses, with fixes for recording in the installed app.",
+    "items": [
+      {
+        "type": "improved",
+        "title": "Pause-Aware Long Dictation",
+        "description": "Long recordings split near natural pauses instead of overlapping sections. This reduces repeated words where sections join."
+      },
+      {
+        "type": "improved",
+        "title": "A Simpler Local App",
+        "description": "Obsolete cloud transcription, account-related setup, and screen-recording permission paths have been removed. Dictation stays on your Mac."
+      },
+      {
+        "type": "improved",
+        "title": "A Clearer Microphone Menu",
+        "description": "Choose a microphone from a compact menu that fits the rest of Spoke’s settings."
+      },
+      {
+        "type": "performance",
+        "title": "A Faster Panel",
+        "description": "Spoke prepares the panel while the interface is idle, so settings and history can open without waiting for the pill animation to finish."
+      },
+      {
+        "type": "fixed",
+        "title": "Speech Detection in the Installed App",
+        "description": "Fixed a problem that blocked speech detection in packaged builds, along with an audio-buffer error that could interrupt recording."
+      }
+    ]
+  },
+  {
+    "version": "0.1.30",
+    "headline": "Numbers, Assemble",
+    "summary": "Both Parakeet and Nemotron now turn more spoken numbers and units into written forms. Parakeet becomes the recommended model, with cleaner punctuation after hesitation words are removed.",
+    "items": [
+      {
+        "type": "improved",
+        "title": "Written Numbers Across NVIDIA Models",
+        "description": "Final transcripts from Parakeet and Nemotron format spoken numbers and units before paste. Nemotron’s live preview can still show the spoken form until dictation finishes."
+      },
+      {
+        "type": "improved",
+        "title": "Parakeet Is Recommended",
+        "description": "Spoke now recommends Parakeet for new model choices. Existing Nemotron selections are preserved."
+      },
+      {
+        "type": "improved",
+        "title": "Steadier Nemotron Live Updates",
+        "description": "Nemotron processes speech in longer intervals while keeping the live transcript available."
+      },
+      {
+        "type": "fixed",
+        "title": "Cleaner Punctuation Around Fillers",
+        "description": "Removing hesitation words no longer leaves stray punctuation in Parakeet transcripts."
+      }
+    ]
+  },
+  {
+    "version": "0.1.29",
+    "headline": "By the Numbers",
+    "summary": "Parakeet transcripts now clean up common hesitation words and write clearer numbers, times, and units. Sentence starts and standalone “I” are also corrected before paste.",
+    "items": [
+      {
+        "type": "improved",
+        "title": "Cleaner Parakeet Transcripts",
+        "description": "Common hesitation words such as “um” and “uh” are removed when they are used as fillers. Deliberately quoted or named words are kept."
+      },
+      {
+        "type": "improved",
+        "title": "Times, Percentages, and Units",
+        "description": "Spoken times, storage sizes, percentages, and version numbers are converted to their written forms when the meaning is clear."
+      },
+      {
+        "type": "improved",
+        "title": "Sentence Capitalization",
+        "description": "Parakeet output gets capitalized sentence starts and a capital “I” without rewriting the rest of your transcript."
+      }
+    ]
+  },
+  {
+    "version": "0.1.28",
+    "headline": "Less Is More",
+    "summary": "Spoke does less background work while recording, displaying live text, and opening settings. History loads in smaller pages, and failed recording stops are cleaned up more reliably.",
+    "items": [
+      {
+        "type": "performance",
+        "title": "Lighter Recording and Live Text",
+        "description": "Audio and live transcript updates reuse more of their working memory and avoid repeated interface work during dictation."
+      },
+      {
+        "type": "performance",
+        "title": "History That Loads in Smaller Pages",
+        "description": "History loads entries as you need them instead of loading the full list at once. Off-screen rows also do less layout and animation work."
+      },
+      {
+        "type": "performance",
+        "title": "Less Startup Work",
+        "description": "Settings tabs, model lists, and transcription features load when needed. Model progress updates no longer rely on repeated polling."
+      },
+      {
+        "type": "fixed",
+        "title": "Cleaner Recording Shutdown",
+        "description": "Failed stops release recording resources, and unfinished audio sections are discarded instead of being left pending."
+      }
+    ]
+  },
+  {
+    "version": "0.1.27",
+    "headline": "The Show Must Go On",
+    "summary": "Dictation can continue if speech detection fails. Spoke keeps the recorded audio instead of losing the session.",
+    "items": [
+      {
+        "type": "fixed",
+        "title": "Keep Dictation When Speech Detection Fails",
+        "description": "If speech detection stops working during a recording, Spoke keeps recording and transcribes the captured audio when you finish."
+      }
+    ]
+  },
+  {
+    "version": "0.1.26",
+    "headline": "Live and Let Type",
+    "summary": "Nemotron can now show your transcript while you speak. This update also improves model switching, live text layout, and recovery from cancelled or interrupted recordings.",
+    "items": [
+      {
+        "type": "new",
+        "title": "Live Nemotron Transcripts",
+        "description": "See words appear in the pill while dictating with Nemotron. Models that transcribe after recording still use the normal listening view."
+      },
+      {
+        "type": "improved",
+        "title": "More Stable Live Text",
+        "description": "The live transcript grows line by line, with clearer spacing and a caret that follows the text without constantly shifting the whole view."
+      },
+      {
+        "type": "improved",
+        "title": "Clearer Model Switching",
+        "description": "Model selection shows whether the chosen model is ready. Each dictation keeps the model it started with, even if you change the selection."
+      },
+      {
+        "type": "improved",
+        "title": "Saved Vocabulary for Whisper",
+        "description": "Whisper receives your saved vocabulary as context, helping it recognize the names and terms you use."
+      },
+      {
+        "type": "fixed",
+        "title": "Recover from Interrupted Starts",
+        "description": "Cancelled model starts and interrupted streaming recordings release their resources so another dictation can begin."
+      }
+    ]
+  },
+  {
+    "version": "0.1.25",
+    "headline": "Loud and Clear",
+    "summary": "Spoke now records through a native macOS audio helper. Microphone selection and speech-level feedback are more reliable, with improved handling of short dictations.",
+    "items": [
+      {
+        "type": "new",
+        "title": "Native macOS Recording",
+        "description": "Audio is captured through macOS and passed directly to local transcription. This also prepares recordings for live transcription."
+      },
+      {
+        "type": "improved",
+        "title": "Clearer Speech-Level Feedback",
+        "description": "The listening bars are calibrated for the native microphone levels so spoken input is easier to see."
+      },
+      {
+        "type": "improved",
+        "title": "Natural Pauses in Short Dictation",
+        "description": "Short recordings stay together, and longer recordings allow a longer natural pause before splitting."
+      },
+      {
+        "type": "fixed",
+        "title": "Stable Microphone Selection",
+        "description": "Saved microphone choices use stable device identifiers, so Spoke can find the intended microphone again."
+      }
+    ]
+  },
+  {
+    "version": "0.1.24",
+    "headline": "Pause for Thought",
+    "summary": "Long dictations are processed in smaller sections to keep local transcription within safe limits. Notifications wait until dictation finishes instead of interrupting the pill.",
+    "items": [
+      {
+        "type": "improved",
+        "title": "Safer Long Dictation",
+        "description": "Spoke splits long recordings into bounded sections, preferably near a pause, instead of sending one large recording to the local model. Recordings have a five-minute limit."
+      },
+      {
+        "type": "improved",
+        "title": "Notifications Can Wait",
+        "description": "Notifications queue while you dictate, then appear after recording and processing finish."
+      },
+      {
+        "type": "fixed",
+        "title": "Notification Dismissal Timing",
+        "description": "The pill now follows the notification dismissal timing more consistently."
+      }
+    ]
+  },
+  {
+    "version": "0.1.23",
+    "headline": "Say My Name",
+    "summary": "Saved vocabulary now recognizes multi-word phrases as well as single words. Vocabulary changes are also saved more reliably, with clearer handling when a save fails.",
+    "items": [
+      {
+        "type": "improved",
+        "title": "Multi-Word Vocabulary",
+        "description": "Spoke can match and correct saved phrases, helping names and specialized terms retain their intended spelling."
+      },
+      {
+        "type": "fixed",
+        "title": "Avoid Ambiguous Phrase Corrections",
+        "description": "When more than one saved phrase is a close match, Spoke avoids guessing and leaves the original words in place."
+      },
+      {
+        "type": "fixed",
+        "title": "Reliable Vocabulary Saves",
+        "description": "Vocabulary edits use one shared save path. Failed saves are reported instead of silently showing an edit that was not stored."
+      }
+    ]
   }
 ]
