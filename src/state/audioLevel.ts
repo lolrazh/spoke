@@ -1,8 +1,8 @@
 /**
  * Live audio level store.
  *
- * During recording the PCM capture emits an audio level once per capture
- * frame. Holding that in React state re-renders every component that
+ * Capture publishes raw RMS separately from transcription PCM frames.
+ * Holding that in React state re-renders every component that
  * consumes it. This tiny external store keeps the value outside React. The
  * visualizer subscribes imperatively and updates its existing DOM nodes, so
  * audio frames do not schedule React renders.
@@ -22,12 +22,11 @@ function emit() {
 }
 
 /**
- * Update the live audio level (0-1 range). No-ops when the value is unchanged
- * so identical frames don't wake subscribers.
+ * Publish raw RMS (0-1 range). Repeated readings keep the meter's timestamp
+ * current, including sustained speech and silence.
  */
 export function setAudioLevel(next: number): void {
-  if (next === level) return;
-  level = next;
+  level = Number.isFinite(next) ? Math.max(0, Math.min(1, next)) : 0;
   emit();
 }
 
