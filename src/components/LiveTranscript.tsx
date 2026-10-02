@@ -7,10 +7,7 @@ import {
 } from "react";
 import { m } from "framer-motion";
 
-import {
-  ListeningFrequencyBars,
-  ProcessingFrequencyBars,
-} from "./FrequencyBars";
+import { FrequencyBars } from "./FrequencyBars";
 import {
   getLiveTranscript,
   subscribeLiveTranscript,
@@ -236,11 +233,7 @@ function LiveTranscriptMarkup({
       }}
     >
       <div className="live-transcript-activity">
-        {isProcessing ? (
-          <ProcessingFrequencyBars />
-        ) : (
-          <ListeningFrequencyBars />
-        )}
+        <FrequencyBars mode={isProcessing ? "processing" : "listening"} />
       </div>
 
       <div

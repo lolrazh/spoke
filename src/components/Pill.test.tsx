@@ -63,6 +63,20 @@ describe("Pill live transcript", () => {
     ).toHaveLength(18);
   });
 
+  it.each(["", "Final words"])("keeps the same bars when speech becomes processing: %s", text => {
+    act(() => setLiveTranscript(text));
+    const { container, rerender, unmount } = render(
+      <Pill {...commonProps} pillState="LISTENING" />,
+    );
+    const bars = Array.from(container.querySelectorAll<HTMLElement>(".frequency-element.as-bar"));
+    const transforms = bars.map(bar => bar.style.transform);
+    expect(bars).toHaveLength(18);
+    rerender(<Pill {...commonProps} pillState="PROCESSING" />);
+    expect(Array.from(container.querySelectorAll(".frequency-element.as-bar"))).toEqual(bars);
+    expect(bars.map(bar => bar.style.transform)).toEqual(transforms);
+    unmount();
+  });
+
   it("shows partial text only while dictation is active", () => {
     act(() => setLiveTranscript("Hello from Nemotron"));
     const { container, getByRole, rerender } = render(

@@ -1,17 +1,13 @@
-import React, { useEffect, useRef } from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { getAudioLevel, subscribeAudioLevel } from "../state/audioLevel";
+import { ListeningMeter } from "./listeningMeter";
+import { processingBounceFrame } from "./processingBounce";
 
 const FREQUENCY_BAR_COUNT = 18;
+const METER_SAMPLE_COUNT = 8;
 const MAX_FREQUENCY_HEIGHT = 12;
 
-const BASE_FREQUENCY_HEIGHTS = Array.from(
-  { length: FREQUENCY_BAR_COUNT },
-  (_, index) => {
-    const mid = Math.floor(FREQUENCY_BAR_COUNT / 2);
-    const normalizedDist = Math.abs(index - mid) / mid;
-    return 2 + (5.4 - 2) * (1 - Math.pow(normalizedDist, 1.5));
-  },
-);
+const MODE_MORPH_MS = 120;
 
 /** Fixed hover-preview dots. Recording and processing use imperative leaves. */
 export const HoverFrequencyBars: React.FC = React.memo(() => (
@@ -31,109 +27,100 @@ export const HoverFrequencyBars: React.FC = React.memo(() => (
   </div>
 ));
 
-/**
- * Recording visualizer. Audio frames update existing bar styles and schedule
- * at most one paint, so they do not re-render the pill or the app tree.
- */
-export const ListeningFrequencyBars: React.FC = React.memo(() => {
+/** Keep the same leaves and morph from their displayed values on a mode change. */
+export const FrequencyBars: React.FC<{ mode: "listening" | "processing" }> = React.memo(({ mode }) => {
   const barsRef = useRef<HTMLDivElement | null>(null);
-  const frameRef = useRef<number | null>(null);
+  const presented = useRef({
+    heights: new Float32Array(FREQUENCY_BAR_COUNT).fill(2),
+    opacities: new Float32Array(FREQUENCY_BAR_COUNT).fill(1),
+  });
+  const previousMode = useRef<typeof mode | null>(null);
 
-  useEffect(() => {
-    const scheduleUpdate = () => {
-      if (frameRef.current !== null) return;
-      frameRef.current = requestAnimationFrame(() => {
-        frameRef.current = null;
-        updateListeningBars(barsRef.current);
-      });
+  useLayoutEffect(() => {
+    const started = performance.now();
+    const morph = previousMode.current !== null && previousMode.current !== mode;
+    previousMode.current = mode;
+    const origins = {
+      heights: presented.current.heights.slice(),
+      opacities: presented.current.opacities.slice(),
     };
-
-    const unsubscribe = subscribeAudioLevel(scheduleUpdate);
-    updateListeningBars(barsRef.current);
-
+    const meter = mode === "listening" ? new ListeningMeter(METER_SAMPLE_COUNT, started) : null;
+    const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let frame: number | null = null;
+    const observe = () => meter?.observe(getAudioLevel(), performance.now());
+    const draw = (now: number) => {
+      const bars = barsRef.current?.children;
+      if (!bars) return;
+      const source = meter?.advance(now, preference.matches);
+      const progress = !morph || preference.matches ? 1 :
+        Math.min(1, Math.max(0, (now - started) / MODE_MORPH_MS));
+      const blend = progress * progress * (3 - 2 * progress);
+      for (let index = 0; index < bars.length; index++) {
+        let height: number;
+        let opacity: number;
+        if (source) {
+          // Only interpolate in space; the eight samples already have easing.
+          const position = index / (FREQUENCY_BAR_COUNT - 1) * (METER_SAMPLE_COUNT - 1);
+          const lower = Math.floor(position);
+          const upper = Math.min(METER_SAMPLE_COUNT - 1, lower + 1);
+          const fraction = position - lower;
+          height = Math.min(MAX_FREQUENCY_HEIGHT,
+            source[lower] * (1 - fraction) + source[upper] * fraction);
+          opacity = 1;
+        } else {
+          ({ height, opacity } = processingBounceFrame(
+            (now - started) / 1000, index, FREQUENCY_BAR_COUNT, preference.matches,
+          ));
+        }
+        // This blend runs only during a mode handoff, never on ongoing speech.
+        height = origins.heights[index] + (height - origins.heights[index]) * blend;
+        opacity = origins.opacities[index] + (opacity - origins.opacities[index]) * blend;
+        const bar = bars[index] as HTMLElement;
+        if (Math.abs(height - presented.current.heights[index]) >= 0.006) {
+          bar.style.transform = `scaleY(${height / MAX_FREQUENCY_HEIGHT})`;
+          presented.current.heights[index] = height;
+        }
+        if (Math.abs(opacity - presented.current.opacities[index]) >= 0.0005) {
+          bar.style.opacity = String(opacity);
+          presented.current.opacities[index] = opacity;
+        }
+      }
+    };
+    const tick = (now: number) => {
+      frame = null;
+      draw(now);
+      if (meter || !preference.matches) frame = requestAnimationFrame(tick);
+    };
+    const refreshPreference = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      tick(performance.now());
+    };
+    const unsubscribe = meter ? subscribeAudioLevel(observe) : undefined;
+    observe();
+    tick(started);
+    preference.addEventListener("change", refreshPreference);
     return () => {
-      unsubscribe();
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
+      unsubscribe?.();
+      preference.removeEventListener("change", refreshPreference);
+      if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [mode]);
 
-  return <StaticFrequencyBars barsRef={barsRef} />;
-});
-
-/** Processing visualizer. CSS owns the animation; no renderer timer is needed. */
-export const ProcessingFrequencyBars: React.FC = React.memo(() => (
-  <StaticFrequencyBars barClassName="processing-frequency-element" />
-));
-
-function StaticFrequencyBars({
-  barsRef,
-  barClassName = "",
-}: {
-  barsRef?: React.MutableRefObject<HTMLDivElement | null>;
-  barClassName?: string;
-}) {
   return (
-    <div
-      ref={
-        barsRef
-          ? (node) => {
-              barsRef.current = node;
-            }
-          : undefined
-      }
-      className="frequency-bars-container"
-    >
+    <div ref={barsRef} className="frequency-bars-container" aria-hidden="true">
       {Array.from({ length: FREQUENCY_BAR_COUNT }, (_, index) => (
         <div
           key={`freq-${index}`}
-          className={`frequency-element as-bar ${barClassName}`}
+          className="frequency-element as-bar"
           style={{
             height: `${MAX_FREQUENCY_HEIGHT}px`,
             width: "2px",
             borderRadius: "1px",
-            transform: "scaleY(0.1666666667)",
+            transform: `scaleY(${2 / MAX_FREQUENCY_HEIGHT})`,
             transformOrigin: "center",
-            ...(barClassName
-              ? ({
-                  animationDelay: `${-index * 0.06}s`,
-                  "--processing-min-scale": String(
-                    Math.max(2, BASE_FREQUENCY_HEIGHTS[index] * 0.35) /
-                      MAX_FREQUENCY_HEIGHT,
-                  ),
-                  "--processing-max-scale": String(
-                    Math.min(9, BASE_FREQUENCY_HEIGHTS[index] * 2.15) /
-                      MAX_FREQUENCY_HEIGHT,
-                  ),
-                } as React.CSSProperties)
-              : {}),
           }}
         />
       ))}
     </div>
   );
-}
-
-function updateListeningBars(container: HTMLDivElement | null): void {
-  if (!container) return;
-
-  const audioLevel = getAudioLevel();
-  const now = Date.now();
-  const elements = container.children;
-
-  for (let index = 0; index < elements.length; index += 1) {
-    const variation = Math.sin(now / 100 + index) * 0.15 + 1;
-    const height = Math.max(
-      2,
-      Math.min(
-        12,
-        BASE_FREQUENCY_HEIGHTS[index] *
-          (0.35 + audioLevel * 2.6) *
-          variation,
-      ),
-    );
-    (elements[index] as HTMLElement).style.transform = `scaleY(${height / MAX_FREQUENCY_HEIGHT})`;
-  }
-}
+});

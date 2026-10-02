@@ -10,8 +10,7 @@ import { m, AnimatePresence, useReducedMotion } from "framer-motion";
 import { MOTION } from "../config/motionTokens";
 import {
   HoverFrequencyBars,
-  ListeningFrequencyBars,
-  ProcessingFrequencyBars,
+  FrequencyBars,
 } from "./FrequencyBars";
 import {
   LiveTranscriptFromStore,
@@ -439,10 +438,8 @@ const Pill: React.FC<PillProps> = ({
                     reducedMotion={reduceMotion}
                     onTextMetricsChange={handleLiveTextMetricsChange}
                   />
-                ) : pillState === "LISTENING" ? (
-                  <ListeningFrequencyBars />
-                ) : pillState === "PROCESSING" ? (
-                  <ProcessingFrequencyBars />
+                ) : pillState === "LISTENING" || pillState === "PROCESSING" ? (
+                  <FrequencyBars mode={pillState === "LISTENING" ? "listening" : "processing"} />
                 ) : pillState === "HOVER_PREVIEW" ? (
                   <HoverFrequencyBars />
                 ) : pillState === "IDLE" ? (

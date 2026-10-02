@@ -14,8 +14,7 @@ import { MAX_LIVE_TRANSCRIPT_DOM_CHARS } from "./liveTranscriptText";
 
 vi.mock("./FrequencyBars", () => ({
   default: () => <div />,
-  ListeningFrequencyBars: () => <div />,
-  ProcessingFrequencyBars: () => <div />,
+  FrequencyBars: () => <div />,
 }));
 
 const commonProps = {
