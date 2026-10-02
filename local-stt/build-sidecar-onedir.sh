@@ -2,8 +2,7 @@
 # Build the MLX Whisper sidecar as a macOS arm64 PyInstaller onedir bundle.
 # Output: local-stt/dist-ondir/spoke-stt/spoke-stt
 #
-# This is an experiment target. Production currently uses build-sidecar.sh,
-# which emits a single-file binary at local-stt/dist/spoke-stt.
+# Forge packages this directory as the production STT sidecar.
 
 set -euo pipefail
 
