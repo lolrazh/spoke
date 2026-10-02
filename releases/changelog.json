@@ -1,0 +1,46 @@
+[
+  {
+    "version": "0.1.33",
+    "headline": "There Can Be Only One",
+    "summary": "Spoke Helper now stays in the background when you dictate, so your first recording no longer adds a second app to the Dock.",
+    "items": [
+      {
+        "type": "fixed",
+        "title": "One Spoke in Your Dock",
+        "description": "Fixed the extra Spoke Helper icon that appeared after the first dictation. The helper still handles paste and keyboard shortcuts, but stays out of the Dock."
+      }
+    ]
+  },
+  {
+    "version": "0.1.32",
+    "headline": "Smooth Operator",
+    "summary": "Speech bars respond more clearly to your voice, with smoother transitions into processing. This update also reduces the wait after dictation and improves recording and paste reliability.",
+    "items": [
+      {
+        "type": "improved",
+        "title": "More Responsive Speech Bars",
+        "description": "The original Spoke bars react more clearly to your speech. Speaking flows into a faster Bounce processing animation without an abrupt visual switch."
+      },
+      {
+        "type": "improved",
+        "title": "Cleaner Technical Dictation",
+        "description": "Dictated acronyms, pull request references, and mixed spoken and written numbers are formatted more consistently."
+      },
+      {
+        "type": "performance",
+        "title": "Less Waiting After You Speak",
+        "description": "Spoke finishes recording as soon as you release the shortcut. Text cleanup and paste preparation do less repeated work before your transcript is inserted."
+      },
+      {
+        "type": "fixed",
+        "title": "Recording Can Start Again",
+        "description": "Cancelled or failed recording starts no longer leave audio capture stuck in the background. Reloading the interface also releases the correct recording session."
+      },
+      {
+        "type": "fixed",
+        "title": "Keep Text Available When Paste Is Delayed",
+        "description": "Spoke waits for the receiving app to read your transcript before restoring the previous clipboard. If paste cannot be confirmed, the transcript stays available for manual paste."
+      }
+    ]
+  }
+]

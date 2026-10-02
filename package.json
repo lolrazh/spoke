@@ -25,7 +25,9 @@
     "postinstall": "bash native/build-helper.sh",
     "test": "vitest run",
     "test:watch": "vitest",
-    "setup:stt": "node scripts/ensure-local-stt-runtime.mjs"
+    "setup:stt": "node scripts/ensure-local-stt-runtime.mjs",
+    "release:notes": "node scripts/release-notes.mjs",
+    "test:release-notes": "node --test scripts/release-notes.test.mjs"
   },
   "keywords": [],
   "author": {

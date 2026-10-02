@@ -11,6 +11,7 @@ fi
 
 APP_PATH="out/Spoke-darwin-arm64/Spoke.app"
 
+node scripts/release-notes.mjs --check
 npx vitest run src/main/updateController.test.ts
 npx tsc --noEmit
 electron-forge package --arch=arm64
