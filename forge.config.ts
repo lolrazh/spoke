@@ -120,6 +120,8 @@ const config: ForgeConfig = {
     osxSign: {
       identity: signIdentity,
       preAutoEntitlements: false,
+      // Python source is sealed as an app resource; sign native code below.
+      ignore: (filePath: string) => filePath.endsWith(".py"),
       // Ensure the nested helper app and its binary are signed with the same identity
       binaries: [
         "Contents/Resources/Spoke Helper.app",
