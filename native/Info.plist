@@ -17,5 +17,7 @@
     <string>????</string>
     <key>CFBundleExecutable</key>
     <string>Spoke Helper</string>
+    <key>LSBackgroundOnly</key>
+    <true/>
 </dict>
 </plist>

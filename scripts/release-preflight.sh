@@ -33,6 +33,15 @@ if [[ ! -f "$APP_PATH/Contents/Resources/app-update.yml" ]]; then
   exit 1
 fi
 
+# The persistent paste helper connects to AppKit. It must remain faceless
+# in the shipped bundle, or the first dictation adds another Dock app.
+HELPER_PLIST="$APP_PATH/Contents/Resources/Spoke Helper.app/Contents/Info.plist"
+HELPER_BACKGROUND_ONLY="$(/usr/libexec/PlistBuddy -c 'Print :LSBackgroundOnly' "$HELPER_PLIST" 2>/dev/null || true)"
+if [[ "$HELPER_BACKGROUND_ONLY" != "true" ]]; then
+  echo "Packaged Spoke Helper must have LSBackgroundOnly=true" >&2
+  exit 1
+fi
+
 VERSION="$(node -p "require('./package.json').version")"
 PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Contents/Info.plist")"
 if [[ "$PLIST_VERSION" != "$VERSION" ]]; then
