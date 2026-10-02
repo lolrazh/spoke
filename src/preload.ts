@@ -125,26 +125,37 @@ contextBridge.exposeInMainWorld("audioCapture", {
     ipcRenderer.invoke("audio-capture:is-available"),
   listDevices: (): Promise<MicDevice[]> =>
     ipcRenderer.invoke("audio-capture:list-devices"),
-  start: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("audio-capture:start"),
-  stop: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("audio-capture:stop"),
-  cancel: (): Promise<{ ok: boolean }> =>
-    ipcRenderer.invoke("audio-capture:cancel"),
-  onFrame: (cb: (payload: Uint8Array) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, payload: Uint8Array) =>
-      cb(payload);
+  start: (sessionId: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("audio-capture:start", sessionId),
+  stop: (sessionId: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("audio-capture:stop", sessionId),
+  cancel: (sessionId: string): Promise<{ ok: boolean }> =>
+    ipcRenderer.invoke("audio-capture:cancel", sessionId),
+  onFrame: (cb: (payload: Uint8Array) => void, sessionId?: string) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: Uint8Array, owner: string) => {
+      if (sessionId === undefined || owner === sessionId) cb(payload);
+    };
     ipcRenderer.on("audio-capture:frame", listener);
     return () => ipcRenderer.removeListener("audio-capture:frame", listener);
   },
-  onStopped: (cb: () => void) => {
-    const listener = () => cb();
+  onLevel: (cb: (rms: number) => void, sessionId?: string) => {
+    const listener = (_event: Electron.IpcRendererEvent, rms: number, owner: string) => {
+      if (sessionId === undefined || owner === sessionId) cb(rms);
+    };
+    ipcRenderer.on("audio-capture:level", listener);
+    return () => ipcRenderer.removeListener("audio-capture:level", listener);
+  },
+  onStopped: (cb: () => void, sessionId?: string) => {
+    const listener = (_event: Electron.IpcRendererEvent, owner: string) => {
+      if (sessionId === undefined || owner === sessionId) cb();
+    };
     ipcRenderer.on("audio-capture:stopped", listener);
     return () => ipcRenderer.removeListener("audio-capture:stopped", listener);
   },
-  onError: (cb: (message: string) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, message: string) =>
-      cb(message);
+  onError: (cb: (message: string) => void, sessionId?: string) => {
+    const listener = (_event: Electron.IpcRendererEvent, message: string, owner: string) => {
+      if (sessionId === undefined || owner === sessionId) cb(message);
+    };
     ipcRenderer.on("audio-capture:error", listener);
     return () => ipcRenderer.removeListener("audio-capture:error", listener);
   },

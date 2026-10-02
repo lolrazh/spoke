@@ -14,6 +14,7 @@ const AUDIO_CAPTURE_EXECUTABLE_NAME = "Spoke Audio Capture";
 const HEADER_BYTES = 4;
 const EMPTY_STDOUT_BUFFER = Buffer.alloc(0);
 export const NATIVE_AUDIO_STOP_TIMEOUT_MS = 2_000;
+export const NATIVE_AUDIO_START_TIMEOUT_MS = 10_000;
 
 enum AudioEventType {
   ready = 1,
@@ -21,6 +22,7 @@ enum AudioEventType {
   frame = 3,
   stopped = 4,
   error = 5,
+  level = 6,
 }
 
 type PendingResult<T> = {
@@ -71,8 +73,7 @@ export async function listNativeAudioDevices(): Promise<MicDevice[]> {
 
   if (exitCode !== 0) {
     throw new Error(
-      stderr.trim() ||
-        `Native microphone listing exited with code ${exitCode}.`,
+      stderr.trim() || `Native microphone listing exited with code ${exitCode}.`,
     );
   }
 
@@ -84,101 +85,79 @@ export async function listNativeAudioDevices(): Promise<MicDevice[]> {
   return devices.filter(isMicDevice);
 }
 
-class NativeAudioCaptureManager {
+export class NativeAudioCaptureManager {
   private process: ChildProcessWithoutNullStreams | null = null;
   private ready: Promise<void> | null = null;
   private active = false;
-  private ownerToken: object | null = null;
-  private removeOwnerListeners: (() => void) | null = null;
   private target: WebContents | null = null;
   private pendingStart: PendingResult<void> | null = null;
   private pendingStop: PendingResult<void> | null = null;
   private stopPromise: Promise<void> | null = null;
   private stdoutBuffer: Buffer<ArrayBufferLike> = EMPTY_STDOUT_BUFFER;
+  private generation = 0;
+  private sessionId: string | undefined;
+  private removeOwnerListeners: (() => void) | null = null;
 
-  async start(target: WebContents, deviceId: string): Promise<void> {
+  async start(target: WebContents, deviceId: string, sessionId: string): Promise<void> {
     if (!isNativeAudioCaptureAvailable()) {
       throw new Error("Native macOS audio capture is unavailable.");
     }
     if (this.active || this.pendingStart) {
       throw new Error("A native audio capture is already running.");
     }
+    if (target.isDestroyed()) throw new Error("The audio capture owner is closed.");
 
-    // Reserve ownership before process startup can yield. A document reload
-    // can otherwise lose the renderer session while main keeps the mic open.
-    const token = {};
-    this.ownerToken = token;
+    // Reserve ownership before the first await. Cancellation must also work
+    // while the helper is booting, before it has acknowledged start.
+    const generation = ++this.generation;
     this.target = target;
+    this.sessionId = sessionId;
     this.active = true;
-    this.watchOwner(target, token);
+    this.bindOwner(target);
+    let timeoutId: NodeJS.Timeout | undefined;
 
     try {
-      await this.ensureProcess();
-      if (this.ownerToken !== token) {
-        throw new Error("Native audio capture was cancelled during startup.");
-      }
-      const started = new Promise<void>((resolve, reject) => {
-        this.pendingStart = { resolve, reject };
+      const starting = (async () => {
+        await this.ensureProcess();
+        if (this.generation !== generation) {
+          throw new Error("Native audio capture was cancelled.");
+        }
+        const started = new Promise<void>((resolve, reject) => {
+          this.pendingStart = { resolve, reject };
+          this.sendCommand({ action: "start", deviceId });
+        });
+        await started;
+        if (this.generation !== generation) {
+          throw new Error("Native audio capture was cancelled.");
+        }
+      })();
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("Native audio capture did not acknowledge start."));
+        }, NATIVE_AUDIO_START_TIMEOUT_MS);
+        timeoutId.unref?.();
       });
-      this.sendCommand({ action: "start", deviceId });
-      await started;
+      await Promise.race([starting, timeout]);
     } catch (error) {
-      if (this.ownerToken === token) {
-        this.active = false;
-        this.releaseOwner();
-        this.pendingStart = null;
+      if (this.generation === generation) {
+        this.terminateProcess(error instanceof Error ? error : new Error(String(error)));
       }
       throw error;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 
-  private watchOwner(owner: WebContents, token: object): void {
-    const onGone = () => {
-      if (this.ownerToken !== token) return;
-      this.terminateProcess(
-        new Error("Native audio capture owner document was closed."),
-      );
-      this.active = false;
-      this.releaseOwner();
-    };
-    const onNavigation = (
-      event: ElectronEvent<WebContentsDidStartNavigationEventParams>,
-    ) => {
-      if (event.isMainFrame && !event.isSameDocument) onGone();
-    };
-    owner.once("destroyed", onGone);
-    owner.once("render-process-gone", onGone);
-    owner.on("did-start-navigation", onNavigation);
-    this.removeOwnerListeners = () => {
-      owner.removeListener("destroyed", onGone);
-      owner.removeListener("render-process-gone", onGone);
-      owner.removeListener("did-start-navigation", onNavigation);
-    };
-    if (owner.isDestroyed()) onGone();
-  }
-
-  private releaseOwner(): void {
-    this.removeOwnerListeners?.();
-    this.removeOwnerListeners = null;
-    this.ownerToken = null;
-    this.target = null;
-  }
-
-  async stop(): Promise<void> {
-    if (!this.active) return;
+  async stop(target?: WebContents, sessionId?: string): Promise<void> {
+    if (!this.active || !this.ownsCapture(target, sessionId)) return;
     if (this.stopPromise) return this.stopPromise;
+    const generation = this.generation;
 
     const stopped = new Promise<void>((resolve, reject) => {
       this.pendingStop = { resolve, reject };
+      this.sendCommand({ action: "stop" });
     });
     this.stopPromise = stopped;
-    try {
-      this.sendCommand({ action: "stop" });
-    } catch (error) {
-      this.pendingStop = null;
-      this.stopPromise = null;
-      throw error;
-    }
     let timeoutId: NodeJS.Timeout | null = null;
     try {
       const timeout = new Promise<never>((_, reject) => {
@@ -196,9 +175,11 @@ class NativeAudioCaptureManager {
       // A helper that is stuck draining native audio cannot process a later
       // cancel command. Force-terminate it so the next recording cannot
       // inherit a wedged process or an unresolved stop waiter.
-      this.terminateProcess(
-        error instanceof Error ? error : new Error(String(error)),
-      );
+      if (this.generation === generation) {
+        this.terminateProcess(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
       throw error;
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
@@ -206,45 +187,23 @@ class NativeAudioCaptureManager {
     }
   }
 
-  cancel(): void {
-    if (!this.process || !this.active) return;
-
-    const cancellationError = new Error("Native audio capture was cancelled.");
-    const pendingStart = this.pendingStart;
-    const pendingStop = this.pendingStop;
-
-    this.active = false;
-    this.releaseOwner();
-    this.pendingStart = null;
+  cancel(target?: WebContents, sessionId?: string): void {
+    if (!this.active || !this.ownsCapture(target, sessionId)) return;
+    // Cancel has no native acknowledgement. Retiring this process prevents
+    // late packets or a stuck native start from entering the next recording.
+    this.pendingStop?.resolve();
     this.pendingStop = null;
-    pendingStart?.reject(cancellationError);
-    // A stop interrupted by cancellation still has to settle so the renderer
-    // can finish its cleanup pipeline. Leave stopPromise for stop()'s finally
-    // block to clear after its waiter observes this resolution.
-    pendingStop?.resolve();
-    try {
-      this.sendCommand({ action: "cancel" });
-    } catch {
-      // The process may already be closing during cancellation.
-    }
+    this.terminateProcess(new Error("Native audio capture was cancelled."));
   }
 
   shutdown(): void {
     const child = this.process;
     if (!child) return;
 
+    this.rejectPending(new Error("Native audio capture is shutting down."));
     this.process = null;
     this.ready = null;
-    this.active = false;
     this.releaseOwner();
-    this.pendingStart?.reject(
-      new Error("Native audio capture is shutting down."),
-    );
-    this.pendingStop?.reject(
-      new Error("Native audio capture is shutting down."),
-    );
-    this.pendingStart = null;
-    this.pendingStop = null;
 
     try {
       child.stdin.write(`${JSON.stringify({ action: "shutdown" })}\n`);
@@ -279,25 +238,19 @@ class NativeAudioCaptureManager {
         if (message) console.warn(`[NativeAudio] ${message}`);
       });
       child.once("error", (error) => {
-        if (this.process === child) this.terminateProcess(error);
+        if (this.process === child) this.failCapture(error);
         reject(error);
       });
       child.once("close", (code, signal) => {
         const error = new Error(
           `Native audio helper exited${
-            code === null
-              ? ` with signal ${signal ?? "unknown"}`
-              : ` with code ${code}`
+            code === null ? ` with signal ${signal ?? "unknown"}` : ` with code ${code}`
           }.`,
         );
         if (this.process === child) {
-          this.rejectPending(error);
-          this.process = null;
-          this.ready = null;
-          this.active = false;
-          this.releaseOwner();
+          this.failCapture(error);
         }
-        if (code !== 0) reject(error);
+        reject(error);
       });
 
       this.readyResolve = resolve;
@@ -348,28 +301,30 @@ class NativeAudioCaptureManager {
         if (this.target && !this.target.isDestroyed()) {
           // Electron serializes the payload for renderer IPC. Avoid making a
           // second PCM copy in the main process before that serialization.
-          this.target.send("audio-capture:frame", payload);
+          this.target.send("audio-capture:frame", payload, this.sessionId);
         }
         return;
+      case AudioEventType.level: {
+        if (payload.byteLength !== 4) return;
+        const level = payload.readFloatLE(0);
+        if (!Number.isFinite(level) || level < 0) return;
+        if (this.target && !this.target.isDestroyed()) {
+          this.target.send("audio-capture:level", Math.min(1, level), this.sessionId);
+        }
+        return;
+      }
       case AudioEventType.stopped:
         if (this.target && !this.target.isDestroyed()) {
-          this.target.send("audio-capture:stopped");
+          this.target.send("audio-capture:stopped", this.sessionId);
         }
-        this.active = false;
-        this.releaseOwner();
         this.pendingStop?.resolve();
         this.pendingStop = null;
+        this.releaseOwner();
         return;
       case AudioEventType.error: {
         const message = payload.toString() || "Native audio capture failed.";
         const error = new Error(message);
-        this.pendingStart?.reject(error);
-        this.pendingStart = null;
-        this.pendingStop?.reject(error);
-        this.pendingStop = null;
-        if (this.target && !this.target.isDestroyed()) {
-          this.target.send("audio-capture:error", message);
-        }
+        this.failCapture(error);
         return;
       }
       default:
@@ -399,22 +354,55 @@ class NativeAudioCaptureManager {
 
   private terminateProcess(error: Error): void {
     const child = this.process;
-    if (!child) return;
-
     this.rejectPending(error);
-    if (this.process === child) {
-      this.process = null;
-      this.ready = null;
-      this.active = false;
-      this.releaseOwner();
-      this.stdoutBuffer = EMPTY_STDOUT_BUFFER;
-    }
+    this.process = null;
+    this.ready = null;
+    this.stdoutBuffer = EMPTY_STDOUT_BUFFER;
+    this.releaseOwner();
 
     try {
-      if (!child.killed) child.kill("SIGKILL");
+      if (child && !child.killed) child.kill("SIGKILL");
     } catch {
       // The helper may have exited between the timeout and forced kill.
     }
+  }
+
+  private ownsCapture(target?: WebContents, sessionId?: string): boolean {
+    return (!target || target === this.target) &&
+      (sessionId === undefined || sessionId === this.sessionId);
+  }
+
+  private bindOwner(target: WebContents): void {
+    const sessionId = this.sessionId;
+    const cancel = () => this.cancel(target, sessionId);
+    const onNavigation = (event: ElectronEvent<WebContentsDidStartNavigationEventParams>) => {
+      if (event.isMainFrame && !event.isSameDocument) cancel();
+    };
+    target.on("did-start-navigation", onNavigation);
+    target.on("render-process-gone", cancel);
+    target.on("destroyed", cancel);
+    this.removeOwnerListeners = () => {
+      target.removeListener("did-start-navigation", onNavigation);
+      target.removeListener("render-process-gone", cancel);
+      target.removeListener("destroyed", cancel);
+    };
+  }
+
+  private releaseOwner(): void {
+    ++this.generation;
+    this.removeOwnerListeners?.();
+    this.removeOwnerListeners = null;
+    this.active = false;
+    this.target = null;
+    this.sessionId = undefined;
+    this.stopPromise = null;
+  }
+
+  private failCapture(error: Error): void {
+    if (this.target && !this.target.isDestroyed()) {
+      this.target.send("audio-capture:error", error.message, this.sessionId);
+    }
+    this.terminateProcess(error);
   }
 }
 
@@ -427,7 +415,5 @@ export function shutdownNativeAudioCapture(): void {
 function isMicDevice(value: unknown): value is MicDevice {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.id === "string" && typeof candidate.label === "string"
-  );
+  return typeof candidate.id === "string" && typeof candidate.label === "string";
 }

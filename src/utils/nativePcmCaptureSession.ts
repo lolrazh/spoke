@@ -8,11 +8,6 @@ import {
 import type { AudioCaptureSession } from "./audioCaptureSession";
 import { Pcm16Accumulator } from "./pcm16Accumulator";
 
-// Native AVAudioEngine capture bypasses the browser's WebRTC auto-gain control.
-// Keep the PCM sent to STT untouched, but calibrate the pill-only meter so a
-// normal unprocessed speaking level has comparable visual intensity.
-const NATIVE_VISUAL_LEVEL_GAIN = 3;
-const PCM16_LEVEL_GAIN = 4 / 32768;
 const HOST_IS_LITTLE_ENDIAN = new Uint8Array(
   new Uint16Array([1]).buffer,
 )[0] === 1;
@@ -26,6 +21,8 @@ export interface NativePcmCaptureSessionOptions {
 }
 
 export class NativePcmCaptureSession implements AudioCaptureSession {
+  private readonly sessionId = crypto.randomUUID();
+  private readonly bridge: NonNullable<Window["audioCapture"]>;
   private readonly targetSampleRateHz: number;
   private readonly onAudioLevel?: (level: number) => void;
   private readonly onError?: (error: Error) => void;
@@ -33,14 +30,16 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   private readonly retainPcm: boolean;
   private readonly retainedPcm = new Pcm16Accumulator();
   private readonly removeFrameListener: () => void;
+  private readonly removeLevelListener: (() => void) | undefined;
+  private hasLiveLevels = false;
   private readonly removeStoppedListener: () => void;
   private readonly removeErrorListener: () => void;
   private stopped = false;
   private acceptingFrames = true;
   private cancelled = false;
   private started = false;
-  private stopResolver: (() => void) | null = null;
-  private stopRejecter: ((error: Error) => void) | null = null;
+  private startRequested = false;
+  private listenersRemoved = false;
 
   constructor(options: NativePcmCaptureSessionOptions = {}) {
     this.targetSampleRateHz =
@@ -54,56 +53,61 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
     if (!bridge) {
       throw new Error("Native macOS audio capture is unavailable.");
     }
+    this.bridge = bridge;
 
     this.removeFrameListener = bridge.onFrame((payload) => {
       this.handleFrame(payload);
-    });
+    }, this.sessionId);
+    this.removeLevelListener = bridge.onLevel?.((rms) => {
+      if (this.stopped) return;
+      this.hasLiveLevels = true;
+      this.onAudioLevel?.(rms);
+    }, this.sessionId);
     this.removeStoppedListener = bridge.onStopped(() => {
       this.acceptingFrames = false;
-      this.stopResolver?.();
-      this.stopResolver = null;
-      this.stopRejecter = null;
-    });
+      this.started = false;
+    }, this.sessionId);
     this.removeErrorListener = bridge.onError((message) => {
       const error = new Error(message);
-      this.stopRejecter?.(error);
-      this.stopResolver = null;
-      this.stopRejecter = null;
       this.onError?.(error);
-    });
+    }, this.sessionId);
   }
 
   async start(): Promise<void> {
-    if (this.started) {
+    if (this.startRequested) {
       throw new Error("Native PCM capture session is already started.");
     }
     if (this.stopped) {
       throw new Error("Native PCM capture session has already stopped.");
     }
-    if (!window.audioCapture) {
-      throw new Error("Native macOS audio capture is unavailable.");
-    }
-
-    await window.audioCapture.start();
-    this.started = true;
-    if (this.cancelled) {
-      this.started = false;
-      void window.audioCapture.cancel();
-      throw new Error("Native PCM capture session was cancelled.");
+    this.startRequested = true;
+    try {
+      await this.bridge.start(this.sessionId);
+      if (this.cancelled) {
+        throw new Error("Native PCM capture session was cancelled.");
+      }
+      this.started = true;
+    } catch (error) {
+      this.cancel();
+      throw error;
     }
   }
 
   async stop(): Promise<CapturedAudio> {
+    if (this.startRequested && !this.started && !this.cancelled) {
+      this.cancel();
+    }
     this.stopped = true;
-    if (this.started && window.audioCapture && !this.cancelled) {
-      const stopped = new Promise<void>((resolve, reject) => {
-        this.stopResolver = resolve;
-        this.stopRejecter = reject;
-      });
+    if (this.started && !this.cancelled) {
       try {
-        await window.audioCapture.stop();
-        await stopped;
+        // Main resolves this only after native stop or cancellation. Waiting
+        // for a second renderer event can hang if ownership was already lost.
+        await this.bridge.stop(this.sessionId);
+      } catch (error) {
+        this.cancel();
+        throw error;
       } finally {
+        this.started = false;
         this.removeListeners();
       }
     } else {
@@ -117,14 +121,15 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
   }
 
   cancel(): void {
+    if (this.cancelled) return;
     this.stopped = true;
     this.cancelled = true;
-    this.stopResolver?.();
-    this.stopResolver = null;
-    this.stopRejecter = null;
     this.removeListeners();
     this.retainedPcm.clear();
-    void window.audioCapture?.cancel();
+    if (this.startRequested) {
+      void this.bridge.cancel(this.sessionId).catch(() => undefined);
+    }
+    this.started = false;
   }
 
   private handleFrame(payload: Uint8Array | ArrayBuffer): void {
@@ -139,15 +144,17 @@ export class NativePcmCaptureSession implements AudioCaptureSession {
     const pcm16 = decodePcm16(bytes);
 
     if (this.retainPcm) this.retainedPcm.append(pcm16);
-    this.onAudioLevel?.(
-      Math.min(1, calculatePcm16Level(pcm16) * NATIVE_VISUAL_LEVEL_GAIN),
-    );
+    // Older native helpers still work until the next helper rebuild.
+    if (!this.hasLiveLevels) this.onAudioLevel?.(calculatePcm16Level(pcm16));
     this.onPcmFrame?.(pcm16);
   }
 
   private removeListeners(): void {
     this.acceptingFrames = false;
+    if (this.listenersRemoved) return;
+    this.listenersRemoved = true;
     this.removeFrameListener();
+    this.removeLevelListener?.();
     this.removeStoppedListener();
     this.removeErrorListener();
   }
@@ -181,5 +188,5 @@ function calculatePcm16Level(frame: Int16Array): number {
     const sample = frame[index];
     sumSquares += sample * sample;
   }
-  return Math.min(1, Math.sqrt(sumSquares / frame.length) * PCM16_LEVEL_GAIN);
+  return Math.min(1, Math.sqrt(sumSquares / frame.length) / 32768);
 }
