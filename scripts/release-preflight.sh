@@ -11,6 +11,7 @@ fi
 
 APP_PATH="out/Spoke-darwin-arm64/Spoke.app"
 
+node scripts/release-notes.mjs --check
 npx vitest run src/main/updateController.test.ts
 npx tsc --noEmit
 electron-forge package --arch=arm64
@@ -30,6 +31,15 @@ fi
 # an updater that can check but never download.
 if [[ ! -f "$APP_PATH/Contents/Resources/app-update.yml" ]]; then
   echo "Missing app-update.yml in packaged Resources; auto-update downloads would fail" >&2
+  exit 1
+fi
+
+# The persistent paste helper connects to AppKit. It must remain faceless
+# in the shipped bundle, or the first dictation adds another Dock app.
+HELPER_PLIST="$APP_PATH/Contents/Resources/Spoke Helper.app/Contents/Info.plist"
+HELPER_BACKGROUND_ONLY="$(/usr/libexec/PlistBuddy -c 'Print :LSBackgroundOnly' "$HELPER_PLIST" 2>/dev/null || true)"
+if [[ "$HELPER_BACKGROUND_ONLY" != "true" ]]; then
+  echo "Packaged Spoke Helper must have LSBackgroundOnly=true" >&2
   exit 1
 fi
 

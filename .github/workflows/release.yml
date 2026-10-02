@@ -30,6 +30,13 @@ jobs:
           node-version: "22"
           cache: npm
 
+      - name: Validate release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          node --test scripts/release-notes.test.mjs
+          node scripts/release-notes.mjs --check
+          test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -118,3 +125,13 @@ jobs:
 
           gh release upload "$GITHUB_REF_NAME" latest-mac.yml --clobber
           echo "Uploaded latest-mac.yml to release $GITHUB_REF_NAME"
+
+      # Publish the reviewed entry only after the updater assets are complete.
+      # The website reads this versioned Markdown from the public release feed.
+      - name: Publish release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/release-notes.mjs --output release-notes.md
+          gh release edit "$GITHUB_REF_NAME" --notes-file release-notes.md

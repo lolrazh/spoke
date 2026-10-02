@@ -117,3 +117,6 @@ worker/.wrangler/
 
 # Local research notes (not for the repo)
 research/
+
+# Generated GitHub release notes
+/release-notes.md
