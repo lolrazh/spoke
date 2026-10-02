@@ -938,6 +938,40 @@ describe("useTranscription", () => {
     }
   });
 
+  it.each(["cancel", "unmount"])("releases native capture immediately during pending start on %s", async (action) => {
+    configureStreamingModel("unused");
+    const originalAudioCapture = window.audioCapture;
+    let resolveStart!: (value: { ok: boolean }) => void;
+    const start = vi.fn((_sessionId: string) => new Promise<{ ok: boolean }>((resolve) => { resolveStart = resolve; }));
+    const cancel = vi.fn(async () => ({ ok: true }));
+    window.audioCapture = {
+      isAvailable: async () => true,
+      listDevices: async () => [],
+      start,
+      stop: async () => ({ ok: true }),
+      cancel,
+      onFrame: () => () => {},
+      onStopped: () => () => {},
+      onError: () => () => {},
+    };
+    try {
+      const { result, unmount } = renderHook(() => useTranscription());
+      let starting!: Promise<void>;
+      await act(async () => { starting = result.current.start(); });
+      await waitFor(() => expect(start).toHaveBeenCalledOnce());
+      act(() => {
+        if (action === "unmount") unmount();
+        else result.current.cancel();
+      });
+      expect(cancel).toHaveBeenCalledWith(start.mock.calls[0][0]);
+      await act(async () => { resolveStart({ ok: true }); await starting; });
+      expect(cancel).toHaveBeenCalledOnce();
+      if (action === "cancel") expect(result.current.recording).toBe(false);
+    } finally {
+      window.audioCapture = originalAudioCapture;
+    }
+  });
+
   it("clears a live hypothesis on cancel and ignores stale partials", async () => {
     const stream = configureStreamingModel("should not publish");
     const { result } = renderHook(() => useTranscription());

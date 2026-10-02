@@ -214,12 +214,13 @@ declare global {
     audioCapture?: {
       isAvailable: () => Promise<boolean>;
       listDevices: () => Promise<Array<{ id: string; label: string }>>;
-      start: () => Promise<{ ok: boolean }>;
-      stop: () => Promise<{ ok: boolean }>;
-      cancel: () => Promise<{ ok: boolean }>;
-      onFrame: (cb: (payload: Uint8Array) => void) => () => void;
-      onStopped: (cb: () => void) => () => void;
-      onError: (cb: (message: string) => void) => () => void;
+      start: (sessionId: string) => Promise<{ ok: boolean }>;
+      stop: (sessionId: string) => Promise<{ ok: boolean }>;
+      cancel: (sessionId: string) => Promise<{ ok: boolean }>;
+      onFrame: (cb: (payload: Uint8Array) => void, sessionId?: string) => () => void;
+      onLevel?: (cb: (rms: number) => void, sessionId?: string) => () => void;
+      onStopped: (cb: () => void, sessionId?: string) => () => void;
+      onError: (cb: (message: string) => void, sessionId?: string) => () => void;
     };
     transcriptions: {
       getPage: (

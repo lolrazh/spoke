@@ -7,6 +7,18 @@ type TestSession = {
 };
 
 describe("PcmCaptureSession", () => {
+  it("publishes separate meter readings and drops queued readings after cancel", () => {
+    const onAudioLevel = vi.fn();
+    const onPcmFrame = vi.fn();
+    const session = new PcmCaptureSession({ onAudioLevel, onPcmFrame });
+    const testSession = session as unknown as TestSession;
+    testSession.handleWorkletMessage({ type: "level", rms: 0.01 });
+    expect(onAudioLevel).toHaveBeenCalledWith(0.01);
+    expect(onPcmFrame).not.toHaveBeenCalled();
+    session.cancel();
+    testSession.handleWorkletMessage({ type: "level", rms: 0.1 });
+    expect(onAudioLevel).toHaveBeenCalledOnce();
+  });
   it("returns an unretained full worklet frame for reuse", () => {
     const onPcmFrame = vi.fn();
     const postMessage = vi.fn();

@@ -4,6 +4,7 @@ import Foundation
 
 private let targetSampleRate = 16_000.0
 private let outputFrameSamples = 1_536
+private let meterWindowSamples = 320 // 20 ms, independent of transcription frames.
 private let tapBufferSize: AVAudioFrameCount = 1_024
 private let ringBufferSeconds = 2.0
 
@@ -13,6 +14,7 @@ private enum AudioEventType: UInt8 {
     case frame = 3
     case stopped = 4
     case error = 5
+    case level = 6
 }
 
 private final class EventEmitter {
@@ -199,6 +201,8 @@ private final class AudioCaptureController {
     // while the converter produces samples.
     private var pendingPcm16 = [Int16](repeating: 0, count: outputFrameSamples)
     private var pendingPcm16Count = 0
+    private var meterSumSquares = Double.zero
+    private var meterSampleCount = 0
     private var isCapturing = false
     private var inputOverflowReported = false
     private var conversionScheduled = false
@@ -256,6 +260,8 @@ private final class AudioCaptureController {
             self.targetFormat = targetFormat
             self.ringBuffer = ringBuffer
             self.pendingPcm16Count = 0
+            self.meterSumSquares = 0
+            self.meterSampleCount = 0
             self.inputOverflowReported = false
             self.isCapturing = true
 
@@ -495,7 +501,18 @@ private final class AudioCaptureController {
         guard buffer.frameLength > 0, let samples = buffer.floatChannelData?[0] else { return }
 
         for index in 0..<Int(buffer.frameLength) {
-            pendingPcm16[pendingPcm16Count] = floatToPcm16(samples[index])
+            let sample = samples[index]
+            // This runs on the converter queue, never on the audio tap thread.
+            meterSumSquares += Double(sample) * Double(sample)
+            meterSampleCount += 1
+            if meterSampleCount == meterWindowSamples {
+                let rms = Float(min(1, sqrt(meterSumSquares / Double(meterSampleCount))))
+                var bits = rms.bitPattern.littleEndian
+                withUnsafeBytes(of: &bits) { emitter.emitRaw(.level, payload: $0) }
+                meterSumSquares = 0
+                meterSampleCount = 0
+            }
+            pendingPcm16[pendingPcm16Count] = floatToPcm16(sample)
             pendingPcm16Count += 1
             if pendingPcm16Count == outputFrameSamples {
                 emitFrame(count: outputFrameSamples)

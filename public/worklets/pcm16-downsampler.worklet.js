@@ -66,6 +66,9 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
     this._frame = new Int16Array(this.frameSamples);
     this._recycledFrame = null;
     this._frameIndex = 0;
+    this._meterSamples = Math.max(1, Math.round(this.targetRate * 0.02));
+    this._meterCount = 0;
+    this._meterSumSquares = 0;
 
     // Track pause state
     this._paused = false;
@@ -100,6 +103,16 @@ class Pcm16DownsamplerProcessor extends AudioWorkletProcessor {
   }
 
   _pushSample(sample) {
+    this._meterSumSquares += sample * sample;
+    this._meterCount++;
+    if (this._meterCount === this._meterSamples) {
+      this.port.postMessage({
+        type: "level",
+        rms: Math.min(1, Math.sqrt(this._meterSumSquares / this._meterCount)),
+      });
+      this._meterSumSquares = 0;
+      this._meterCount = 0;
+    }
     this._frame[this._frameIndex++] = this._floatToInt16(sample);
     if (this._frameIndex === this.frameSamples) {
       this._emitFullFrame();

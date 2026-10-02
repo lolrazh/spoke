@@ -37,10 +37,12 @@ type WorkletFlushedMessage = {
   type: "flushed";
 };
 
-type WorkletMessage = WorkletAudioMessage | WorkletFlushedMessage;
+type WorkletMessage = WorkletAudioMessage | WorkletFlushedMessage | {
+  type: "level";
+  rms: number;
+};
 
 const FLUSH_TIMEOUT_MS = 500;
-const PCM16_LEVEL_GAIN = 4 / 32768;
 
 export class PcmCaptureSession implements AudioCaptureSession {
   private readonly targetSampleRateHz: number;
@@ -128,6 +130,10 @@ export class PcmCaptureSession implements AudioCaptureSession {
   }
 
   private handleWorkletMessage(message: WorkletMessage): void {
+    if (message.type === "level") {
+      if (!this.ignoreWorkletAudio) this.onAudioLevel?.(message.rms);
+      return;
+    }
     if (message.type === "audio") {
       const frame = message.samples;
       if (this.ignoreWorkletAudio) {
@@ -136,7 +142,6 @@ export class PcmCaptureSession implements AudioCaptureSession {
       }
       if (this.retainPcm) this.retainedPcm.append(frame);
       try {
-        this.onAudioLevel?.(calculatePcm16Level(frame));
         this.onPcmFrame?.(frame);
       } finally {
         this.recycleWorkletFrame(frame);
@@ -248,20 +253,6 @@ export class PcmCaptureSession implements AudioCaptureSession {
       throw new Error(`Audio track is not live (state: ${track.readyState}).`);
     }
   }
-}
-
-function calculatePcm16Level(frame: Int16Array): number {
-  if (frame.length === 0) {
-    return 0;
-  }
-
-  let sumSquares = 0;
-  for (let i = 0; i < frame.length; i++) {
-    const sample = frame[i];
-    sumSquares += sample * sample;
-  }
-
-  return Math.min(1, Math.sqrt(sumSquares / frame.length) * PCM16_LEVEL_GAIN);
 }
 
 function resolvePcmWorkletUrl(): string {

@@ -113,8 +113,8 @@ export interface UseTranscriptionReturn {
   text: string;
   error: string | null;
   errorId: number;
-  start: () => void;
-  stop: () => void;
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
   cancel: () => void;
 }
 
@@ -132,6 +132,7 @@ export function useTranscription(
   const [errorId, setErrorId] = useState(0);
 
   const recorderRef = useRef<AudioCaptureSession | null>(null);
+  const startingRecorderRef = useRef<AudioCaptureSession | null>(null);
   const recorderStartPromiseRef = useRef<Promise<AudioCaptureSession> | null>(
     null,
   );
@@ -213,6 +214,8 @@ export function useTranscription(
       void pendingRecorder
         ?.then((pending) => pending.cancel())
         .catch(() => undefined);
+      startingRecorderRef.current?.cancel();
+      startingRecorderRef.current = null;
       recorderRef.current?.cancel();
       recorderRef.current = null;
 
@@ -318,6 +321,10 @@ export function useTranscription(
             requestStopRef.current();
           },
         });
+        if (!isCurrentStart()) {
+          localChunkedDictation.discardPendingAudio();
+          return;
+        }
         localChunkedDictationRef.current = localChunkedDictation;
       }
 
@@ -331,6 +338,10 @@ export function useTranscription(
             onSpeechStart: () => localChunkedDictation?.noteSpeechStart(),
             onSpeechEnd: (endMs) => localChunkedDictation?.noteSpeechEnd(endMs),
           });
+      if (!isCurrentStart()) {
+        streamingVadSession?.dispose();
+        return;
+      }
       streamingVadRef.current = streamingVadSession;
 
       const recorderPromise = (async () => {
@@ -338,6 +349,7 @@ export function useTranscription(
         if (!nativeCaptureAvailableRef.current && !stream) {
           stream = await initStream();
         }
+        if (!isCurrentStart()) throw new Error("Audio capture was cancelled.");
 
         const recorder = await createCaptureSession(
           nativeCaptureAvailableRef.current,
@@ -345,6 +357,7 @@ export function useTranscription(
             targetSampleRateHz: TARGET_SAMPLE_RATE_HZ,
             onAudioLevel: setAudioLevel,
             onError: (err) => {
+              if (!isCurrentStart()) return;
               log.error(
                 nativeCaptureAvailableRef.current
                   ? "Native PCM capture error:"
@@ -355,6 +368,7 @@ export function useTranscription(
               requestCancelRef.current();
             },
             onPcmFrame: (frame) => {
+              if (!isCurrentStart()) return;
               streamingVadSession?.pushFrame(frame);
               localChunkedDictation?.pushFrame(frame);
               localStreamingDictation?.pushFrame(frame);
@@ -365,7 +379,21 @@ export function useTranscription(
             recyclePcmFrames: !nativeCaptureAvailableRef.current,
           },
         );
-        await recorder.start(stream ?? undefined);
+        if (!isCurrentStart()) {
+          recorder.cancel();
+          throw new Error("Audio capture was cancelled.");
+        }
+        startingRecorderRef.current = recorder;
+        try {
+          await recorder.start(stream ?? undefined);
+        } catch (error) {
+          recorder.cancel();
+          throw error;
+        } finally {
+          if (startingRecorderRef.current === recorder) {
+            startingRecorderRef.current = null;
+          }
+        }
         return recorder;
       })();
       recorderStartPromiseRef.current = recorderPromise;
@@ -878,6 +906,8 @@ export function useTranscription(
         .then((recorder) => recorder.cancel())
         .catch((): undefined => undefined);
     }
+    startingRecorderRef.current?.cancel();
+    startingRecorderRef.current = null;
     if (recorderRef.current) {
       recorderRef.current.cancel();
       recorderRef.current = null;
