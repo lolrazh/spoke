@@ -57,11 +57,15 @@ async function loadController(
   const rebuildTrayMenu = vi.fn();
   const onStateChange = vi.fn();
   const onTrayStateChange = vi.fn();
+  const onIndicatorStateChange = vi.fn();
+  const onInstallHandoffChange = vi.fn();
   controller.initUpdateController({
     sendNotify,
     rebuildTrayMenu,
     onStateChange,
     onTrayStateChange,
+    onIndicatorStateChange,
+    onInstallHandoffChange,
   });
 
   return {
@@ -71,6 +75,8 @@ async function loadController(
     rebuildTrayMenu,
     onStateChange,
     onTrayStateChange,
+    onIndicatorStateChange,
+    onInstallHandoffChange,
   };
 }
 
@@ -529,6 +535,40 @@ describe("updateController", () => {
 
     controller.quitAndInstallUpdate();
     expect(electron.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(2);
+  });
+
+  it("feeds the menu-bar icon every whole-percent step without menu rebuilds", async () => {
+    const { controller, electron, rebuildTrayMenu, onIndicatorStateChange } =
+      await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    rebuildTrayMenu.mockClear();
+    onIndicatorStateChange.mockClear();
+
+    for (const percent of [1, 2, 3, 4]) {
+      electron.autoUpdater.emit("download-progress", { percent });
+      await vi.advanceTimersByTimeAsync(50);
+    }
+
+    expect(
+      onIndicatorStateChange.mock.calls.map((c) => c[0].downloadPercent),
+    ).toEqual([1, 2, 3, 4]);
+    expect(rebuildTrayMenu).not.toHaveBeenCalled();
+  });
+
+  it("reports the install handoff starting and being abandoned", async () => {
+    const { controller, onInstallHandoffChange } = await loadController();
+
+    controller.quitAndInstallUpdate();
+    await vi.advanceTimersByTimeAsync(0); // the updater loads lazily
+    expect(onInstallHandoffChange).toHaveBeenLastCalledWith(true);
+    expect(controller.isInstallHandoffInProgress()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(onInstallHandoffChange).toHaveBeenLastCalledWith(false);
+    expect(onInstallHandoffChange).toHaveBeenCalledTimes(2);
+    expect(controller.isInstallHandoffInProgress()).toBe(false);
   });
 
   it("resets the quitAndInstall latch if the updater reports an install error", async () => {
