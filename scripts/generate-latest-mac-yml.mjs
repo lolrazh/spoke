@@ -106,10 +106,11 @@ const yml = [
   `path: ${quoteScalar(zipName)}`,
   `sha512: ${sha512}`,
   `releaseDate: '${releaseDate}'`,
-  // Electron 44 needs macOS 13+. electron-updater compares this against
-  // os.release(), which is the Darwin version: macOS 13 is Darwin 22. Older
-  // Macs skip the update instead of installing a build that cannot launch.
-  `minimumSystemVersion: '22.0.0'`,
+  // Spoke needs macOS 26.2 (LSMinimumSystemVersion in forge.config.ts).
+  // electron-updater compares this against os.release(), which is the Darwin
+  // version: macOS 26.2 is Darwin 25.2. Older Macs skip the update instead of
+  // installing a build that cannot launch.
+  `minimumSystemVersion: '25.2.0'`,
   ``,
 ].join("\n");
 

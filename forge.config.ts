@@ -114,6 +114,11 @@ const config: ForgeConfig = {
     ],
     extendInfo: {
       CFBundleIconName: "Spoke",
+      // Real minimum: the MLX sidecar built on the macos-26 release runner
+      // needs macOS 26.2. Keep in sync with minimumSystemVersion in
+      // scripts/generate-latest-mac-yml.mjs; CI enforces this via
+      // scripts/check-min-macos.mjs.
+      LSMinimumSystemVersion: "26.2",
       ...(appleTeamId ? { ElectronTeamID: appleTeamId } : {}),
     },
     // Code signing: requires APPLE_IDENTITY (Developer ID Application)
