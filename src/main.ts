@@ -3,7 +3,6 @@ import {
   BrowserWindow,
   session,
   globalShortcut,
-  Notification,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import path from "node:path";
@@ -145,17 +144,9 @@ app.whenReady().then(async () => {
           if (state.onboardingWindow && !state.onboardingWindow.isDestroyed())
             state.onboardingWindow.webContents.send("notify", message);
         } catch {}
-        try {
-          if (Notification.isSupported()) {
-            new Notification({
-              title: "Spoke",
-              body: message,
-              silent: false,
-            }).show();
-          }
-        } catch (err) {
-          console.warn("[auto-update] native notification failed:", err);
-        }
+        // macOS notifications are on hold: on Electron 42+ the first one
+        // triggers a system permission prompt, which needs an onboarding step
+        // we have not designed yet. Update state is surfaced in the tray.
       },
       rebuildTrayMenu: () => rebuildTrayMenu(),
       onStateChange: (snapshot) => {
