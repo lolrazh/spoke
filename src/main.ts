@@ -50,7 +50,7 @@ import {
   emitActiveDisplayInfo,
   detectAndStoreNotchWidth,
 } from "./main/windows";
-import { rebuildTrayMenu } from "./main/tray";
+import { applyUpdateIndicator, rebuildTrayMenu } from "./main/tray";
 import { pasteLastTranscript } from "./main/pasteOrchestrator";
 import {
   registerInsertTextAtCursorIpc,
@@ -149,6 +149,7 @@ app.whenReady().then(async () => {
         // we have not designed yet. Update state is surfaced in the tray.
       },
       rebuildTrayMenu: () => rebuildTrayMenu(),
+      onTrayStateChange: (snapshot) => applyUpdateIndicator(snapshot),
       onStateChange: (snapshot) => {
         try {
           if (state.mainWindow && !state.mainWindow.isDestroyed()) {

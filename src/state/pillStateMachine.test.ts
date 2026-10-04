@@ -172,12 +172,18 @@ describe("pillStateMachine", () => {
 
     it("keeps the panel expanded for update notifications handled inline", () => {
       expect(
-        dispatch(expanded, { type: "NOTIFY", msg: "Update available" }),
+        dispatch(expanded, { type: "NOTIFY", msg: "Downloading Spoke 0.1.33" }),
       ).toEqual(expanded);
       expect(
         dispatch(expanded, {
           type: "NOTIFY",
-          msg: "Update ready. Restart to update",
+          msg: "Spoke 0.1.33 is ready. Restart to update.",
+        }),
+      ).toEqual(expanded);
+      expect(
+        dispatch(expanded, {
+          type: "NOTIFY",
+          msg: "Update ready. Restart to update.",
         }),
       ).toEqual(expanded);
     });

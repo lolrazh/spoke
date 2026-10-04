@@ -56,7 +56,13 @@ async function loadController(
   const sendNotify = vi.fn();
   const rebuildTrayMenu = vi.fn();
   const onStateChange = vi.fn();
-  controller.initUpdateController({ sendNotify, rebuildTrayMenu, onStateChange });
+  const onTrayStateChange = vi.fn();
+  controller.initUpdateController({
+    sendNotify,
+    rebuildTrayMenu,
+    onStateChange,
+    onTrayStateChange,
+  });
 
   return {
     controller,
@@ -64,6 +70,7 @@ async function loadController(
     sendNotify,
     rebuildTrayMenu,
     onStateChange,
+    onTrayStateChange,
   };
 }
 
@@ -101,7 +108,7 @@ describe("updateController", () => {
     expect(sendNotify).not.toHaveBeenCalled();
   });
 
-  it("announces an available update when the updater finds one", async () => {
+  it("starts downloading as soon as a manual check finds an update", async () => {
     const { controller, electron, sendNotify } = await loadController({
       version: "0.1.4",
     });
@@ -109,26 +116,30 @@ describe("updateController", () => {
     await controller.manualCheckForUpdates(false);
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
 
-    expect(controller.getUpdateStatus()).toBe("available");
+    expect(controller.getUpdateStatus()).toBe("downloading");
     expect(controller.getUpdateSnapshot().version).toBe("0.1.7");
     expect(controller.isUpdateReadyToInstall()).toBe(false);
+    // The manual check answers once, with what it found.
     expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
-      "Update available",
+      "Downloading Spoke 0.1.7",
     ]);
-    // autoDownload is off: finding an update must not start the transfer.
-    expect(electron.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+    expect(electron.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
     expect(controller.getUpdateSnapshot().downloadPercent).toBeNull();
   });
 
-  it("starts the download on demand via downloadUpdate", async () => {
-    const { controller, electron } = await loadController();
+  it("downloads silently when a background check finds an update", async () => {
+    const { controller, electron, sendNotify } = await loadController();
 
     await controller.manualCheckForUpdates(true);
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
 
-    controller.downloadUpdate();
     expect(electron.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
     expect(controller.getUpdateStatus()).toBe("downloading");
+    expect(sendNotify).not.toHaveBeenCalled();
+
+    // A tap while it is already downloading does not start a second transfer.
+    controller.downloadUpdate();
+    expect(electron.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 
   it("ignores downloadUpdate unless an update is available", async () => {
@@ -185,13 +196,62 @@ describe("updateController", () => {
       status: "downloading",
       downloadPercent: 30,
     });
-    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
 
     electron.autoUpdater.emit("download-progress", { percent: 30 });
     await vi.advanceTimersByTimeAsync(50);
 
     expect(onStateChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the tray on coarse progress only, at most once a second", async () => {
+    const { controller, electron, rebuildTrayMenu, onTrayStateChange } =
+      await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    // Entering the downloading phase refreshes the tray right away.
+    expect(rebuildTrayMenu).toHaveBeenCalled();
+    rebuildTrayMenu.mockClear();
+    onTrayStateChange.mockClear();
+
+    // A 10s download with a progress event every 100ms.
+    for (let percent = 1; percent <= 100; percent += 1) {
+      electron.autoUpdater.emit("download-progress", { percent });
+      await vi.advanceTimersByTimeAsync(100);
+    }
+
+    // 100 progress events collapse into roughly one refresh per 10% bucket.
+    expect(rebuildTrayMenu.mock.calls.length).toBeGreaterThan(0);
+    expect(rebuildTrayMenu.mock.calls.length).toBeLessThanOrEqual(11);
+    expect(onTrayStateChange).toHaveBeenCalledTimes(
+      rebuildTrayMenu.mock.calls.length,
+    );
+
+    // The finished download is a phase change and refreshes immediately.
+    rebuildTrayMenu.mockClear();
+    electron.autoUpdater.emit("update-downloaded", { version: "0.1.7" });
     expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+    expect(onTrayStateChange.mock.lastCall?.[0]).toMatchObject({
+      readyToInstall: true,
+      version: "0.1.7",
+    });
+  });
+
+  it("catches the tray up with a trailing refresh when progress pauses", async () => {
+    const { controller, electron, rebuildTrayMenu } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    rebuildTrayMenu.mockClear();
+
+    // Jumps two buckets within the first second, then goes quiet.
+    electron.autoUpdater.emit("download-progress", { percent: 25 });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(rebuildTrayMenu).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+    expect(controller.getUpdateSnapshot().downloadPercent).toBe(25);
   });
 
   it("marks the update ready once it finishes downloading", async () => {
@@ -206,7 +266,10 @@ describe("updateController", () => {
     expect(controller.isUpdateReadyToInstall()).toBe(true);
     expect(controller.getUpdateSnapshot().version).toBe("0.1.5");
     expect(controller.getUpdateSnapshot().downloadPercent).toBe(100);
-    expect(sendNotify).toHaveBeenCalledWith("Update ready. Restart to update");
+    expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
+      "Downloading Spoke 0.1.5",
+      "Spoke 0.1.5 is ready. Restart to update.",
+    ]);
     expect(electron.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
     expect(electron.app.quit).not.toHaveBeenCalled();
     expect(electron.app.exit).not.toHaveBeenCalled();
@@ -231,7 +294,7 @@ describe("updateController", () => {
     await controller.manualCheckForUpdates(false);
 
     expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
-    expect(sendNotify).toHaveBeenLastCalledWith("Downloading update");
+    expect(sendNotify).toHaveBeenLastCalledWith("Downloading Spoke 0.1.7");
     expect(controller.getUpdateStatus()).toBe("downloading");
   });
 
@@ -251,7 +314,7 @@ describe("updateController", () => {
   it("errors out when the download stalls with no progress", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
-    await controller.manualCheckForUpdates(true);
+    await controller.manualCheckForUpdates(false);
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
     electron.autoUpdater.emit("download-progress", { percent: 20 });
 
@@ -287,13 +350,14 @@ describe("updateController", () => {
     );
   });
 
-  it("notifies when the download fails, even without a manual check in flight", async () => {
+  it("notifies when a download the user asked for fails", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
     await controller.manualCheckForUpdates(true);
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
     sendNotify.mockClear();
 
+    // A tap on the running background download makes it user-driven.
     controller.downloadUpdate();
     electron.autoUpdater.emit("error", new Error("ENOENT: no such file"));
 
@@ -306,13 +370,11 @@ describe("updateController", () => {
   it("surfaces a download rejection even if no error event is emitted", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
-    await controller.manualCheckForUpdates(true);
-    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
     electron.autoUpdater.downloadUpdate.mockRejectedValueOnce(
       new Error("boom"),
     );
-
-    controller.downloadUpdate();
+    await controller.manualCheckForUpdates(false);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
     await vi.advanceTimersByTimeAsync(0);
 
     expect(controller.getUpdateStatus()).toBe("error");
@@ -348,27 +410,48 @@ describe("updateController", () => {
     expect(electron.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
   });
 
-  it("announces the same available version only once across background checks", async () => {
+  it("never announces an available update from background checks", async () => {
     const { controller, electron, sendNotify } = await loadController();
 
     await controller.manualCheckForUpdates(true);
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
-    electron.autoUpdater.emit("update-not-available");
+    electron.autoUpdater.emit("download-progress", { percent: 50 });
+
+    expect(sendNotify).not.toHaveBeenCalled();
+  });
+
+  it("retries a failed background download quietly on a backoff", async () => {
+    const { controller, electron, sendNotify } = await loadController();
 
     await controller.manualCheckForUpdates(true);
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    electron.autoUpdater.emit("error", new Error("network reset"));
 
-    expect(
-      sendNotify.mock.calls.filter((call) => call[0] === "Update available"),
-    ).toHaveLength(1);
+    expect(controller.getUpdateStatus()).toBe("error");
+    expect(sendNotify).not.toHaveBeenCalled();
+    expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
 
-    // A manual check must still answer, even about an announced version.
-    electron.autoUpdater.emit("update-not-available");
-    await controller.manualCheckForUpdates(false);
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(electron.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+
+    // The retry check finds the update again and downloads it, still silently.
     electron.autoUpdater.emit("update-available", { version: "0.1.7" });
-    expect(
-      sendNotify.mock.calls.filter((call) => call[0] === "Update available"),
-    ).toHaveLength(2);
+    expect(electron.autoUpdater.downloadUpdate).toHaveBeenCalledTimes(2);
+    electron.autoUpdater.emit("update-downloaded", { version: "0.1.7" });
+    expect(sendNotify.mock.calls.map((call) => call[0])).toEqual([
+      "Spoke 0.1.7 is ready. Restart to update.",
+    ]);
+  });
+
+  it("stays quiet when a background download stalls", async () => {
+    const { controller, electron, sendNotify } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    await vi.advanceTimersByTimeAsync(90_000);
+
+    expect(controller.getUpdateStatus()).toBe("error");
+    expect(sendNotify).not.toHaveBeenCalled();
   });
 
   it("only reports ready to install after the download completes (restart guard)", async () => {
