@@ -11,8 +11,10 @@ import {
   app,
   Menu,
   nativeImage,
+  systemPreferences,
   Tray,
   type MenuItemConstructorOptions,
+  type NativeImage,
 } from "electron";
 
 import {
@@ -47,10 +49,27 @@ import {
 } from "./updateController";
 import { pasteLastTranscript } from "./pasteOrchestrator";
 import { state } from "./windowState";
+import {
+  alphaFromBGRA,
+  ICON_PX,
+  maskToBGRA,
+  type AlphaMask,
+} from "./trayIconFrames";
+import {
+  createTrayIndicator,
+  deriveVisual,
+  type IndicatorVisual,
+  type TrayIndicator,
+} from "./trayIndicator";
 
 // ── Internal state ─────────────────────────────────────────────────────
 
 let tray: Tray | null = null;
+let trayBaseIcon: NativeImage | null = null;
+let indicator: TrayIndicator | null = null;
+let installHandoff = false;
+let demoRunning = false;
+let demoTimers: ReturnType<typeof setTimeout>[] = [];
 
 // ── Floating bar submenu ───────────────────────────────────────────────
 
@@ -305,12 +324,106 @@ export function updateIndicatorTooltip(snapshot: UpdateSnapshot): string {
   return "Spoke";
 }
 
-// The menu-bar surface for update state. The update controller calls this on
-// phase changes and coarse download progress. For now it only sets the
-// tooltip; state-specific icons will hang off the same hook.
+// Tooltip half of the menu-bar indicator. The update controller calls this on
+// phase changes and coarse download progress, alongside menu rebuilds.
 export function applyUpdateIndicator(snapshot: UpdateSnapshot): void {
   if (!tray || tray.isDestroyed()) return;
   tray.setToolTip(updateIndicatorTooltip(snapshot));
+}
+
+// Icon half of the indicator. Fed on every published update change so the
+// download bar moves smoothly; the indicator only swaps images.
+export function applyUpdateIcon(snapshot: UpdateSnapshot): void {
+  if (demoRunning) return;
+  indicator?.show(deriveVisual(snapshot, installHandoff));
+}
+
+export function setUpdateInstalling(installing: boolean): void {
+  installHandoff = installing;
+  applyUpdateIcon(getUpdateSnapshot());
+}
+
+export function disposeTrayIndicator(): void {
+  stopTrayDemo();
+  indicator?.dispose();
+  indicator = null;
+}
+
+function loadLogoAlpha(): AlphaMask | null {
+  const onePx = getTrayIconPath();
+  for (const file of [onePx.replace(/\.png$/, "@2x.png"), onePx]) {
+    const img = nativeImage.createFromPath(file);
+    if (img.isEmpty()) continue;
+    for (const scaleFactor of [2, 1]) {
+      const bitmap = img.toBitmap({ scaleFactor });
+      if (bitmap.length === ICON_PX * ICON_PX * 4) return alphaFromBGRA(bitmap);
+    }
+  }
+  console.warn("[Tray] Could not read the 32px tray logo; update icons disabled");
+  return null;
+}
+
+function createIndicator(): TrayIndicator {
+  let logo: AlphaMask | null | undefined;
+  return createTrayIndicator<NativeImage>({
+    baseImage: () => trayBaseIcon ?? nativeImage.createEmpty(),
+    logoAlpha: () => {
+      if (logo === undefined) logo = loadLogoAlpha();
+      return logo;
+    },
+    toImage: (mask) => {
+      const img = nativeImage.createFromBitmap(maskToBGRA(mask), {
+        width: ICON_PX,
+        height: ICON_PX,
+        scaleFactor: 2,
+      });
+      img.setTemplateImage(true);
+      return img;
+    },
+    setImage: (img) => {
+      if (tray && !tray.isDestroyed()) tray.setImage(img);
+    },
+    prefersReducedMotion: () => {
+      try {
+        return systemPreferences.getAnimationSettings().prefersReducedMotion;
+      } catch {
+        return false;
+      }
+    },
+  });
+}
+
+// ── Dev-only state preview ─────────────────────────────────────────────
+// SPOKE_TRAY_DEMO=1 npm run dev cycles every update state in the menu bar
+// without a real update. Never runs in a packaged build.
+
+function stopTrayDemo() {
+  for (const t of demoTimers) clearTimeout(t);
+  demoTimers = [];
+  demoRunning = false;
+}
+
+function startTrayDemo() {
+  if (app.isPackaged || process.env.SPOKE_TRAY_DEMO !== "1" || !indicator) return;
+  console.log("[Tray] SPOKE_TRAY_DEMO: cycling update states");
+  demoRunning = true;
+  const at = (ms: number, fn: () => void) => demoTimers.push(setTimeout(fn, ms));
+  const cycle = () => {
+    demoTimers = [];
+    const show = (visual: IndicatorVisual) => indicator?.show(visual);
+    at(0, () => show({ kind: "idle" }));
+    const downloadStart = 1500;
+    const downloadMs = 8000;
+    for (let p = 0; p <= 100; p++)
+      at(downloadStart + (downloadMs * p) / 100, () => show({ kind: "download", percent: p }));
+    const readyAt = downloadStart + downloadMs + 100;
+    at(readyAt, () => show({ kind: "ready" }));
+    at(readyAt + 3500, () => show({ kind: "failed" }));
+    at(readyAt + 5500, () => show({ kind: "installing" }));
+    at(readyAt + 8500, () => show({ kind: "idle" }));
+    at(readyAt + 10000, cycle);
+  };
+  cycle();
 }
 
 export const createTray = () => {
@@ -375,6 +488,10 @@ export const createTray = () => {
     // Set the native context menu
     console.log("[Tray] Setting context menu...");
     tray.setContextMenu(contextMenu);
+    trayBaseIcon = icon;
+    indicator = createIndicator();
+    applyUpdateIcon(getUpdateSnapshot());
+    startTrayDemo();
     console.log("[Tray] ✅ Tray created successfully with enhanced menu!");
     bootTimeline.mark("tray:create:done");
   } catch (error) {
