@@ -22,6 +22,7 @@ import fs from "node:fs";
 import { ISLAND_HIDDEN_Y } from "../../constants/window";
 import type { PttTarget } from "../../types/shared";
 import { logger } from "../../utils/logger";
+import { primeNativeNotifications } from "../nativeNotifications";
 import { state } from "../windowState";
 import {
   createWindow,
@@ -137,6 +138,8 @@ export function registerSettingsIpc(): void {
       smoothShow(state.mainWindow);
     }
     createTray();
+    // Onboarding defers the notification authorization prompt to here.
+    primeNativeNotifications();
     // Start helper only if IM is already granted; otherwise defer
     state.pttTarget = "main";
     startHelperIfIMGranted();
