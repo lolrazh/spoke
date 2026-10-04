@@ -116,7 +116,9 @@ async function performInsertion(
     // when the helper did not ACK. Keep a manual paste available instead.
     console.warn("[Paste] Insertion failed:", error);
     try {
-      clipboard.writeText(payload);
+      // Electron 44+ clipboard writes are async; await so a rejected write
+      // falls through to the catch instead of becoming an unhandled rejection.
+      await clipboard.writeText(payload);
     } catch {
       /* original clipboard retained */
     }
