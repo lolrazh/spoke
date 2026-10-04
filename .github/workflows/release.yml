@@ -3,8 +3,11 @@ name: Release
 # Build, sign, notarize, and publish a GitHub Release on a version tag.
 # Tag a release with:  npm version patch && git push --follow-tags
 # (or push any tag matching v*). The release publishes LIVE immediately
-# (forge.config.ts sets draft: false), and update.electronjs.org then
-# serves it to clients. A tag means ship.
+# (forge.config.ts sets draft: false), and electron-updater clients pick it up
+# from latest-mac.yml. A tag means ship.
+#
+# Running the workflow manually (workflow_dispatch) is a dry run: it builds,
+# signs, notarizes and checks the app, but uploads nothing.
 
 on:
   push:
@@ -17,8 +20,11 @@ permissions:
 
 jobs:
   release:
-    # Apple Silicon runner — required because the MLX STT sidecar is arm64-only.
-    runs-on: macos-14
+    # Apple Silicon runner, required because the MLX STT sidecar is arm64-only.
+    # Pinned rather than macos-latest: native pieces inherit the build
+    # machine's macOS, so a silent runner bump would raise Spoke's minimum.
+    # Changing this label means re-checking LSMinimumSystemVersion.
+    runs-on: macos-26
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -87,7 +93,9 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
           rm -f "$CERT_PATH"
 
-      - name: Build, sign, notarize & publish
+      # Package and make without uploading, so the checks below run before
+      # anything is public. Tags upload these exact artifacts afterwards.
+      - name: Build, sign & notarize
         env:
           # Signing + notarization (read by forge.config.ts)
           APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
@@ -95,9 +103,18 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_NOTARIZE: "1"
-          # GitHub Releases publisher auth
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run publish
+        run: npx electron-forge publish --dry-run
+
+      # Fail if any binary needs a newer macOS than Info.plist declares.
+      - name: Check minimum macOS
+        run: node scripts/check-min-macos.mjs out/Spoke-darwin-arm64/Spoke.app
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-forge publish --from-dry-run
 
       # electron-updater resolves updates from latest-mac.yml on the Release.
       # Electron Forge does not emit it, so we generate it from the same zip the
