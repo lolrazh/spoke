@@ -22,7 +22,9 @@ mkdir -p "$APP_BUNDLE_PATH/Contents/Resources"
 
 # --- Compile the executable ---
 echo "Compiling $EXECUTABLE_NAME (Objective-C with AX support)..."
-clang -x objective-c -fobjc-arc \
+# Pin the deployment target; without it clang uses the build machine's macOS
+# and the helper silently stops launching on older supported releases.
+clang -x objective-c -fobjc-arc -mmacosx-version-min=14.0 \
       -framework Foundation -framework AppKit \
       -framework ApplicationServices -framework IOKit -framework CoreGraphics \
       -o "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME" \
