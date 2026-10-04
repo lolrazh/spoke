@@ -40,9 +40,11 @@ export function registerInsertTextAtCursorIpc(): void {
 }
 
 export function registerTranscriptIpc(): void {
-  ipcMain.handle("clipboard:write-text", (_event, text: string) => {
+  ipcMain.handle("clipboard:write-text", async (_event, text: string) => {
     try {
-      clipboard.writeText(typeof text === "string" ? text : String(text ?? ""));
+      await clipboard.writeText(
+        typeof text === "string" ? text : String(text ?? ""),
+      );
       return { ok: true };
     } catch (error) {
       return { ok: false, error: (error as Error).message };

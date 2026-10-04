@@ -5,7 +5,7 @@ const clipboardStore = { text: "" };
 vi.mock("electron", () => ({
   clipboard: {
     readText: vi.fn(() => clipboardStore.text),
-    writeText: vi.fn((text: string) => {
+    writeText: vi.fn(async (text: string) => {
       clipboardStore.text = text;
     }),
   },
