@@ -53,6 +53,12 @@ const UPDATE_INSTALL_HANDOFF_TIMEOUT_MS = 120_000;
 // Progress events can arrive faster than the tray and renderer need to update.
 // Keep the authoritative percentage current, but publish at most 20 times/sec.
 const UPDATE_PROGRESS_PUBLISH_INTERVAL_MS = 50;
+// The tray menu and tooltip show the download percent, but rebuilding a native
+// menu is far heavier than a renderer broadcast, and an open macOS menu is a
+// snapshot that never refreshes anyway. Only refresh them when the percent
+// crosses a 10% bucket, and at most once a second.
+const TRAY_PROGRESS_BUCKET_PERCENT = 10;
+const TRAY_PROGRESS_MIN_INTERVAL_MS = 1000;
 // Long-lived menu-bar app: re-check on a slow cadence so a build released while
 // the app stays open eventually gets picked up without a restart.
 const PERIODIC_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -69,7 +75,11 @@ export type UpdateStatus =
 
 export interface UpdateCallbacks {
   sendNotify: (message: string) => void;
+  // Tray surfaces (menu and menu-bar indicator). Throttled: fires on phase
+  // changes and on coarse download progress only.
   rebuildTrayMenu: () => void;
+  onTrayStateChange?: (snapshot: UpdateSnapshot) => void;
+  // Renderer broadcast. Fires on every published change, progress included.
   onStateChange?: (snapshot: UpdateSnapshot) => void;
 }
 
@@ -117,6 +127,12 @@ let publishedUpdateVersion: string | null = null;
 let publishedUpdateReadyToInstall = false;
 let publishedUpdateError: string | null = null;
 let publishedUpdateDownloadPercent: number | null = null;
+// What the tray last rendered, so progress ticks that would not change it skip
+// the rebuild entirely.
+let trayPublishedKey: string | null = null;
+let trayPublishedProgressBucket: number | null = null;
+let trayLastPublishedAt = 0;
+let pendingTrayPublishTimer: NodeJS.Timeout | null = null;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -168,12 +184,73 @@ function publishUpdateState() {
   publishedUpdateReadyToInstall = updateReadyToInstall;
   publishedUpdateError = updateError;
   publishedUpdateDownloadPercent = updateDownloadPercent;
+  publishTrayState();
+  try {
+    callbacks.onStateChange?.(getUpdateSnapshot());
+  } catch {}
+}
+
+function clearPendingTrayPublish() {
+  if (!pendingTrayPublishTimer) return;
+  try {
+    clearTimeout(pendingTrayPublishTimer);
+  } catch {}
+  pendingTrayPublishTimer = null;
+}
+
+function flushTrayState() {
+  clearPendingTrayPublish();
+  trayPublishedKey = trayPhaseKey();
+  trayPublishedProgressBucket = trayProgressBucket();
+  trayLastPublishedAt = Date.now();
   try {
     callbacks.rebuildTrayMenu();
   } catch {}
   try {
-    callbacks.onStateChange?.(getUpdateSnapshot());
+    callbacks.onTrayStateChange?.(getUpdateSnapshot());
   } catch {}
+}
+
+// Everything the tray shows except download progress.
+function trayPhaseKey(): string {
+  return [
+    updateStatus,
+    updateAvailableVersion ?? "",
+    updateReadyToInstall ? "ready" : "",
+    updateError ?? "",
+  ].join("|");
+}
+
+function trayProgressBucket(): number | null {
+  if (updateStatus !== "downloading" || updateDownloadPercent == null)
+    return null;
+  return Math.floor(updateDownloadPercent / TRAY_PROGRESS_BUCKET_PERCENT);
+}
+
+function publishTrayState() {
+  // Phase changes (found, downloading, ready, failed) refresh right away.
+  if (trayPhaseKey() !== trayPublishedKey) {
+    flushTrayState();
+    return;
+  }
+  if (trayProgressBucket() === trayPublishedProgressBucket) return;
+  // Same phase, new progress bucket: refresh at most once a second, with a
+  // trailing refresh so the label catches up when progress pauses.
+  const wait = trayLastPublishedAt + TRAY_PROGRESS_MIN_INTERVAL_MS - Date.now();
+  if (wait <= 0) {
+    flushTrayState();
+    return;
+  }
+  if (pendingTrayPublishTimer) return;
+  pendingTrayPublishTimer = setTimeout(() => {
+    pendingTrayPublishTimer = null;
+    if (
+      trayPhaseKey() !== trayPublishedKey ||
+      trayProgressBucket() !== trayPublishedProgressBucket
+    )
+      flushTrayState();
+  }, wait);
+  pendingTrayPublishTimer.unref?.();
 }
 
 function clearPendingUpdateStatePublish() {

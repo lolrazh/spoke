@@ -56,7 +56,13 @@ async function loadController(
   const sendNotify = vi.fn();
   const rebuildTrayMenu = vi.fn();
   const onStateChange = vi.fn();
-  controller.initUpdateController({ sendNotify, rebuildTrayMenu, onStateChange });
+  const onTrayStateChange = vi.fn();
+  controller.initUpdateController({
+    sendNotify,
+    rebuildTrayMenu,
+    onStateChange,
+    onTrayStateChange,
+  });
 
   return {
     controller,
@@ -64,6 +70,7 @@ async function loadController(
     sendNotify,
     rebuildTrayMenu,
     onStateChange,
+    onTrayStateChange,
   };
 }
 
@@ -189,13 +196,62 @@ describe("updateController", () => {
       status: "downloading",
       downloadPercent: 30,
     });
-    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
 
     electron.autoUpdater.emit("download-progress", { percent: 30 });
     await vi.advanceTimersByTimeAsync(50);
 
     expect(onStateChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the tray on coarse progress only, at most once a second", async () => {
+    const { controller, electron, rebuildTrayMenu, onTrayStateChange } =
+      await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    // Entering the downloading phase refreshes the tray right away.
+    expect(rebuildTrayMenu).toHaveBeenCalled();
+    rebuildTrayMenu.mockClear();
+    onTrayStateChange.mockClear();
+
+    // A 10s download with a progress event every 100ms.
+    for (let percent = 1; percent <= 100; percent += 1) {
+      electron.autoUpdater.emit("download-progress", { percent });
+      await vi.advanceTimersByTimeAsync(100);
+    }
+
+    // 100 progress events collapse into roughly one refresh per 10% bucket.
+    expect(rebuildTrayMenu.mock.calls.length).toBeGreaterThan(0);
+    expect(rebuildTrayMenu.mock.calls.length).toBeLessThanOrEqual(11);
+    expect(onTrayStateChange).toHaveBeenCalledTimes(
+      rebuildTrayMenu.mock.calls.length,
+    );
+
+    // The finished download is a phase change and refreshes immediately.
+    rebuildTrayMenu.mockClear();
+    electron.autoUpdater.emit("update-downloaded", { version: "0.1.7" });
     expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+    expect(onTrayStateChange.mock.lastCall?.[0]).toMatchObject({
+      readyToInstall: true,
+      version: "0.1.7",
+    });
+  });
+
+  it("catches the tray up with a trailing refresh when progress pauses", async () => {
+    const { controller, electron, rebuildTrayMenu } = await loadController();
+
+    await controller.manualCheckForUpdates(true);
+    electron.autoUpdater.emit("update-available", { version: "0.1.7" });
+    rebuildTrayMenu.mockClear();
+
+    // Jumps two buckets within the first second, then goes quiet.
+    electron.autoUpdater.emit("download-progress", { percent: 25 });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(rebuildTrayMenu).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(rebuildTrayMenu).toHaveBeenCalledTimes(1);
+    expect(controller.getUpdateSnapshot().downloadPercent).toBe(25);
   });
 
   it("marks the update ready once it finishes downloading", async () => {
