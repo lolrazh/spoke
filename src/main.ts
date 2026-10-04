@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   session,
   globalShortcut,
+  Notification,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import path from "node:path";
@@ -36,10 +37,6 @@ import {
   jitterMs,
 } from "./main/updateController";
 import { bootTimeline } from "./main/bootTimeline";
-import {
-  primeNativeNotifications,
-  showNativeNotification,
-} from "./main/nativeNotifications";
 import { installMainConsoleFileSink } from "./main/diagnosticLog";
 import { state } from "./main/windowState";
 import {
@@ -149,7 +146,13 @@ app.whenReady().then(async () => {
             state.onboardingWindow.webContents.send("notify", message);
         } catch {}
         try {
-          showNativeNotification(message);
+          if (Notification.isSupported()) {
+            new Notification({
+              title: "Spoke",
+              body: message,
+              silent: false,
+            }).show();
+          }
         } catch (err) {
           console.warn("[auto-update] native notification failed:", err);
         }
@@ -303,9 +306,6 @@ app.whenReady().then(async () => {
           });
       }
 
-      // Ask macOS for notification authorization now (first launch only)
-      // rather than when the first update notification is posted.
-      primeNativeNotifications();
       // Schedule background update check ~60s after startup with jitter
       scheduleUpdateCheck(jitterMs(60_000, 0.2), "startup", true);
     } catch (error) {
