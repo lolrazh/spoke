@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { AnimatePresence, m } from "framer-motion";
+import { m } from "framer-motion";
 import { Switch } from "./ui/switch";
 import { CompactSelect } from "./ui/compact-select";
 import {
@@ -15,11 +15,8 @@ import {
 } from "../state/panelPrefetch";
 import SettingsCard from "./SettingsCard";
 import SfIcon from "./icons/SfIcon";
-import Spinner from "./ui/Spinner";
-import ProgressRing from "./ui/ProgressRing";
 import { usePanelAutoHeight } from "../hooks/usePanelAutoHeight";
 import { SectionSeparator } from "./SectionSeparator";
-import DownloadGlyph from "./DownloadGlyph";
 import {
   panelCascadeContainer,
   panelCascadeItem,
@@ -48,36 +45,6 @@ const TabLoadingFallback: React.FC = () => (
     Loading…
   </div>
 );
-
-type UpdatePanelState = {
-  status:
-    | "idle"
-    | "checking"
-    | "available"
-    | "downloading"
-    | "not-available"
-    | "error";
-  version: string | null;
-  readyToInstall: boolean;
-  error: string | null;
-  // 0..100 while downloading, 100 when ready, null otherwise.
-  downloadPercent: number | null;
-};
-
-function sameUpdatePanelState(
-  previous: UpdatePanelState | null,
-  next: UpdatePanelState | null,
-): boolean {
-  if (previous === next) return true;
-  if (!previous || !next) return previous === next;
-  return (
-    previous.status === next.status &&
-    previous.version === next.version &&
-    previous.readyToInstall === next.readyToInstall &&
-    previous.error === next.error &&
-    previous.downloadPercent === next.downloadPercent
-  );
-}
 
 // --- Clean Spoke Components --- //
 const Toggle: React.FC<{
@@ -210,418 +177,26 @@ const TabButton: React.FC<{
   </button>
 );
 
-type UpdateCapsuleMode =
-  | "available"
-  | "downloading"
-  | "checking"
-  | "ready"
-  | "error";
-
-// Smooth spring for the hover label expansion.
-const UPDATE_CAPSULE_SPRING = {
-  type: "spring",
-  stiffness: 480,
-  damping: 30,
-  mass: 0.85,
-} as const;
-
-// Clean pop for the capsule scaling up in place (and the version easing aside
-// to match) — snappy with just a little overshoot, not a wobble.
-const UPDATE_CAPSULE_POP = {
-  type: "spring",
-  stiffness: 600,
-  damping: 26,
-  mass: 0.7,
-} as const;
-
-// Visible text per mode. `available` rests as an icon and only reveals this
-// label on hover; the other modes always show it.
-const UPDATE_CAPSULE_LABELS: Record<UpdateCapsuleMode, string> = {
-  available: "Update available",
-  downloading: "Downloading",
-  checking: "Checking",
-  ready: "Restart",
-  error: "Try again",
-};
-
-// Spoken label — the icon-only rest state needs a name for screen readers and
-// for tests to target.
-const UPDATE_CAPSULE_ARIA: Record<UpdateCapsuleMode, string> = {
-  available: "Download update",
-  downloading: "Downloading update",
-  checking: "Checking for updates",
-  ready: "Restart to update",
-  error: "Retry update check",
-};
-
-const UPDATE_INTERACTIVE_MODES = new Set<UpdateCapsuleMode>([
-  "available",
-  "ready",
-  "error",
-]);
-
-// Draw-on checkmark — the exact path/animation the Models card uses for its
-// "ready" state, so the update's completion reads as the same moment.
-const InstalledCheck: React.FC = () => (
-  <m.svg
-    width="13"
-    height="13"
-    viewBox="0 0 24 24"
-    fill="none"
-    className="shrink-0"
-    aria-hidden
-  >
-    <m.path
-      initial={{ pathLength: 0 }}
-      animate={{ pathLength: 1 }}
-      transition={{ duration: 0.45, ease: [0.25, 0.8, 0.25, 1] }}
-      d="M5 13l4 4L19 7"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </m.svg>
-);
-
-// The single slot at the trailing edge of the chip cross-fades between the
-// download glyph, the working spinner/ring, and the success checkmark, all in
-// the same spot, same size, so nothing shifts as the state advances. While
-// downloading we know the real percent, so the slot fills a determinate
-// ProgressRing (the determinate cousin of Spinner, same monochrome geometry the
-// Models card uses); `checking` has no percent yet so it keeps the indeterminate
-// spinner, and `downloading` falls back to the spinner if percent is missing.
-function updateCapsuleIcon(
-  mode: UpdateCapsuleMode,
-  downloadPercent: number | null,
-): {
-  key: string;
-  node: React.ReactNode;
-} {
-  if (mode === "downloading" && downloadPercent != null) {
-    return {
-      key: "ring",
-      node: (
-        <ProgressRing
-          progress={downloadPercent / 100}
-          className="h-3.5 w-3.5"
-        />
-      ),
-    };
-  }
-  if (mode === "downloading" || mode === "checking") {
-    return { key: "spinner", node: <Spinner className="h-3.5 w-3.5" /> };
-  }
-  if (mode === "ready") {
-    return { key: "check", node: <InstalledCheck /> };
-  }
-  return { key: "download", node: <DownloadGlyph /> };
-}
-
-function deriveUpdateCapsuleMode(
-  state: UpdatePanelState | null,
-): UpdateCapsuleMode | null {
-  if (!state) return null;
-  if (state.readyToInstall) return "ready";
-  // The downloading visual comes straight from the engine's real status, not a
-  // renderer-local guess, so it stays correct even if the panel is closed and
-  // reopened mid-download.
-  if (state.status === "downloading") return "downloading";
-  if (state.status === "checking") return "checking";
-  if (state.status === "available") return "available";
-  if (state.status === "error") return "error";
-  return null;
-}
-
-const UpdateCapsule: React.FC<{
-  mode: UpdateCapsuleMode;
-  // Real download progress (0..100) from the engine; drives the determinate
-  // ring while `mode` is "downloading". Null in every other mode.
-  downloadPercent: number | null;
-  // The capsule is mounted (reserving its layout slot) as soon as an update
-  // exists, but stays invisible until `revealed` flips after the entrance
-  // delay. Reserving the slot up front means the version never reflows when the
-  // icon appears — it simply blooms in place.
-  revealed: boolean;
-  // Hover is tracked on the whole version+capsule row (in the parent), not the
-  // button, so the expanded label stays open as the cursor moves left onto the
-  // version — the hover target never collapses out from under you.
-  hovered: boolean;
-  onInstall: () => void;
-  onRestart: () => void;
-  onRetry: () => void;
-}> = ({
-  mode,
-  downloadPercent,
-  revealed,
-  hovered,
-  onInstall,
-  onRestart,
-  onRetry,
-}) => {
-  const interactive = UPDATE_INTERACTIVE_MODES.has(mode);
-  // The working states (downloading / checking) collapse to a bare spinner —
-  // no label — so clicking the download glyph simply morphs it into a spinner
-  // in place while the text slides away. The actionable states rest as their
-  // icon and reveal their label on hover (Update available / Restart /
-  // Try again) so the chip stays compact until you reach for it.
-  const showLabel = interactive && hovered;
-  const icon = updateCapsuleIcon(mode, downloadPercent);
-
-  const handleClick = () => {
-    if (mode === "ready") onRestart();
-    else if (mode === "available") onInstall();
-    else if (mode === "error") onRetry();
-  };
-
+// The version label in the panel corner. Update status lives in the menu-bar
+// icon and tray menu, so this is just a link to the changelog.
+const VersionLink: React.FC<{ appVersion: string }> = ({ appVersion }) => {
+  if (!appVersion) return null;
   return (
-    // The whole chip — background, border and icon together — scales up from
-    // its center while fading in, as one cohesive motion on a single spring.
-    // It reserves its slot while invisible (scale is a transform, so layout is
-    // unaffected); nothing slides — the version is handled separately.
-    <m.div
-      style={{
-        transformOrigin: "center center",
-        pointerEvents: revealed ? "auto" : "none",
-      }}
-      initial={{ opacity: 0, scale: 0 }}
-      animate={{ opacity: revealed ? 1 : 0, scale: revealed ? 1 : 0 }}
-      exit={{ opacity: 0, scale: 0 }}
-      transition={UPDATE_CAPSULE_POP}
-    >
-      <m.button
-        type="button"
-        whileTap={interactive ? { scale: 0.95 } : undefined}
-        onClick={interactive ? handleClick : undefined}
-        disabled={!interactive}
-        aria-label={UPDATE_CAPSULE_ARIA[mode]}
+    <div className="absolute right-4 bottom-3 z-30 flex items-center gap-2">
+      <a
+        href="https://spoke.so/changelog"
+        onClick={(e) => {
+          e.preventDefault();
+          window.electron?.openExternal?.("https://spoke.so/changelog");
+        }}
+        className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        className={`no-drag relative flex h-6 items-center overflow-hidden rounded-md px-2 text-[11px] font-medium leading-none transition-colors duration-200 ${
-          interactive
-            ? "onboarding-cta cursor-pointer"
-            : "cursor-default border border-white/[0.08] bg-[rgba(10,10,10,0.55)] text-white/55"
-        }`}
       >
-        {/* Hover label for the actionable states; its width animates 0 -> auto
-            so it extends the chip leftward while the icon slot stays pinned to
-            the right edge. */}
-        <m.span
-          initial={false}
-          animate={{
-            width: showLabel ? "auto" : 0,
-            opacity: showLabel ? 1 : 0,
-            marginRight: showLabel ? 6 : 0,
-          }}
-          transition={UPDATE_CAPSULE_SPRING}
-          className="overflow-hidden whitespace-nowrap"
-        >
-          {UPDATE_CAPSULE_LABELS[mode]}
-        </m.span>
-
-        {/* Trailing icon slot — fixed-size; the chip's scale handles the
-            entrance, and this only cross-fades the glyph / spinner / checkmark
-            in place as the state advances. Like the Models card, it's a plain
-            opacity cross-fade (no scale pop) — but simultaneous, since the slot
-            is fixed-size and the icons overlap, so one dissolves into the next
-            with no dead gap. The checkmark then draws itself on. */}
-        <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
-          <AnimatePresence initial={false}>
-            <m.span
-              key={icon.key}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18, ease: "easeOut" }}
-              className="absolute inset-0 flex items-center justify-center"
-            >
-              {icon.node}
-            </m.span>
-          </AnimatePresence>
-        </span>
-      </m.button>
-    </m.div>
+        Spoke v{appVersion}
+      </a>
+    </div>
   );
 };
-
-const UpdateCapsuleRow: React.FC<{ appVersion: string }> = React.memo(
-  ({ appVersion }) => {
-    const [updateState, setUpdateState] = useState<UpdatePanelState | null>(
-      null,
-    );
-    const [showUpdateCapsule, setShowUpdateCapsule] = useState(false);
-    const [capsuleHovered, setCapsuleHovered] = useState(false);
-    const capsuleHoverTimers = useRef<{
-      open: ReturnType<typeof setTimeout> | null;
-      close: ReturnType<typeof setTimeout> | null;
-    }>({ open: null, close: null });
-    const pendingStateRef = useRef<UpdatePanelState | null>(null);
-    const scheduledStateFrameRef = useRef<number | null>(null);
-    const scheduledWithRafRef = useRef(false);
-
-    const capsuleMode = deriveUpdateCapsuleMode(updateState);
-
-    const handleCapsuleHoverEnter = () => {
-      const timers = capsuleHoverTimers.current;
-      if (timers.close) clearTimeout(timers.close);
-      if (timers.open) clearTimeout(timers.open);
-      timers.close = null;
-      timers.open = setTimeout(() => setCapsuleHovered(true), 150);
-    };
-
-    const handleCapsuleHoverLeave = () => {
-      const timers = capsuleHoverTimers.current;
-      if (timers.open) clearTimeout(timers.open);
-      timers.open = null;
-      timers.close = setTimeout(() => setCapsuleHovered(false), 100);
-    };
-
-    useEffect(
-      () => () => {
-        const timers = capsuleHoverTimers.current;
-        if (timers.open) clearTimeout(timers.open);
-        if (timers.close) clearTimeout(timers.close);
-      },
-      [],
-    );
-
-    useEffect(() => {
-      const timer = setTimeout(() => setShowUpdateCapsule(true), 520);
-      return () => clearTimeout(timer);
-    }, []);
-
-    const commitUpdateState = (next: UpdatePanelState | null) => {
-      setUpdateState((previous) =>
-        sameUpdatePanelState(previous, next) ? previous : next,
-      );
-    };
-
-    const handleInstallUpdate = () => {
-      window.update
-        ?.installWhenReady?.()
-        .then((result) => {
-          if (result?.snapshot) commitUpdateState(result.snapshot);
-        })
-        .catch(() => {
-          // ignore. The engine keeps broadcasting the authoritative state.
-        });
-    };
-
-    useEffect(() => {
-      let isMounted = true;
-
-      const flushPendingState = () => {
-        scheduledStateFrameRef.current = null;
-        const pending = pendingStateRef.current;
-        pendingStateRef.current = null;
-        if (isMounted && pending) commitUpdateState(pending);
-      };
-
-      const cancelPendingFrame = () => {
-        const scheduled = scheduledStateFrameRef.current;
-        if (scheduled === null) return;
-        if (scheduledWithRafRef.current) {
-          window.cancelAnimationFrame(scheduled);
-        } else {
-          window.clearTimeout(scheduled);
-        }
-        scheduledStateFrameRef.current = null;
-      };
-
-      const scheduleProgressState = (state: UpdatePanelState) => {
-        pendingStateRef.current = state;
-        if (scheduledStateFrameRef.current !== null) return;
-        if (typeof window.requestAnimationFrame === "function") {
-          scheduledWithRafRef.current = true;
-          scheduledStateFrameRef.current = window.requestAnimationFrame(
-            flushPendingState,
-          );
-        } else {
-          scheduledWithRafRef.current = false;
-          scheduledStateFrameRef.current = window.setTimeout(
-            flushPendingState,
-            0,
-          );
-        }
-      };
-
-      const applyBroadcastState = (state: UpdatePanelState) => {
-        // Progress is the only high-frequency update. Keep its latest value
-        // for the next paint, but apply phase changes immediately so a
-        // completed or failed update cannot wait behind a queued frame.
-        if (state.status === "downloading" && !state.readyToInstall) {
-          scheduleProgressState(state);
-          return;
-        }
-        pendingStateRef.current = null;
-        cancelPendingFrame();
-        if (isMounted) commitUpdateState(state);
-      };
-
-      window.update
-        ?.getState?.()
-        .then((state) => {
-          if (isMounted) commitUpdateState(state);
-        })
-        .catch(() => {
-          if (isMounted) commitUpdateState(null);
-        });
-
-      const unsubscribe = window.update?.onStateChanged?.((state) => {
-        applyBroadcastState(state as UpdatePanelState);
-      });
-
-      return () => {
-        isMounted = false;
-        pendingStateRef.current = null;
-        cancelPendingFrame();
-        unsubscribe?.();
-      };
-    }, []);
-
-    if (!appVersion) return null;
-
-    return (
-      <div
-        className="absolute right-4 bottom-3 z-30 flex items-center gap-2"
-        onMouseEnter={handleCapsuleHoverEnter}
-        onMouseLeave={handleCapsuleHoverLeave}
-      >
-        {/* Reserve the capsule slot immediately; only the version text shifts
-            when the update affordance is visually revealed. */}
-        <m.a
-          initial={false}
-          animate={{ x: capsuleMode && !showUpdateCapsule ? 40 : 0 }}
-          transition={{
-            x: showUpdateCapsule ? UPDATE_CAPSULE_POP : { duration: 0 },
-          }}
-          href="https://spoke.so/changelog"
-          onClick={(e) => {
-            e.preventDefault();
-            window.electron?.openExternal?.("https://spoke.so/changelog");
-          }}
-          className="no-drag text-[10px] text-muted-foreground opacity-70 whitespace-nowrap cursor-pointer hover:opacity-95 transition-opacity duration-200"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          Spoke v{appVersion}
-        </m.a>
-        <AnimatePresence initial={false}>
-          {capsuleMode && (
-            <UpdateCapsule
-              key="update-capsule"
-              mode={capsuleMode}
-              downloadPercent={updateState?.downloadPercent ?? null}
-              revealed={showUpdateCapsule}
-              hovered={capsuleHovered}
-              onInstall={handleInstallUpdate}
-              onRestart={() => window.update?.restart?.()}
-              onRetry={handleInstallUpdate}
-            />
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  },
-);
 
 // --- Main Component --- //
 interface SettingsPanelProps {
@@ -807,7 +382,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
       className={`${embeddedMode ? "min-h-0" : "h-screen"} bg-background text-foreground flex flex-col relative`}
     >
       {/* Version + update capsule on bottom-right (embedded mode) */}
-      {embeddedMode && <UpdateCapsuleRow appVersion={appVersion} />}
+      {embeddedMode && <VersionLink appVersion={appVersion} />}
 
       {/* Draggable Header - only show in standalone mode */}
       {!embeddedMode && (

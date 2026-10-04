@@ -711,8 +711,8 @@ function startDownload(userInitiated: boolean): void {
   }
 }
 
-// User-driven download: the tray "Download Update" item and the settings
-// capsule. With auto-download these are mostly retry paths after a failure.
+// User-driven download: the tray "Download Update" item. With auto-download
+// this is mostly a retry path after a failure.
 export function downloadUpdate(): void {
   startDownload(true);
 }

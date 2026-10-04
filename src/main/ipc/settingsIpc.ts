@@ -37,13 +37,10 @@ import { smoothShow } from "../windowAnimation";
 import { respawnPasteDaemon } from "../pasteDaemon";
 import { openExternalUrlSafely } from "../navigationGuards";
 import {
-  manualCheckForUpdates,
   scheduleUpdateCheck,
-  getUpdateStatus,
   isUpdateReadyToInstall,
   getUpdateSnapshot,
   quitAndInstallUpdate,
-  downloadUpdate,
   jitterMs,
 } from "../updateController";
 
@@ -229,33 +226,5 @@ export function registerSettingsIpc(): void {
     if (!isUpdateReadyToInstall()) return { ok: false };
     quitAndInstallUpdate();
     return { ok: true };
-  });
-
-  ipcMain.handle("update:install-when-ready", async () => {
-    if (isUpdateReadyToInstall()) {
-      return { ok: true, snapshot: getUpdateSnapshot() };
-    }
-
-    // Starts the transfer when the engine already knows the update, including
-    // resuming after a failed download attempt (no-op otherwise). Download
-    // completion only marks the update ready; the explicit restart handler is
-    // the only path that calls quitAndInstall().
-    downloadUpdate();
-
-    if (
-      getUpdateStatus() !== "downloading" &&
-      getUpdateStatus() !== "checking"
-    ) {
-      // Nothing cached to download (the failure was in the check itself, or
-      // the state went stale). Re-check quietly; the capsule broadcasts every
-      // step, so a notification here would only collapse the open panel to
-      // repeat what it already shows. The check starts the download itself;
-      // calling downloadUpdate() after it marks that download as user-driven
-      // so a failure is reported instead of silently retried.
-      await manualCheckForUpdates(true);
-      downloadUpdate();
-    }
-
-    return { ok: true, snapshot: getUpdateSnapshot() };
   });
 }

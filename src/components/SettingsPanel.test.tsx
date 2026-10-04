@@ -44,15 +44,6 @@ describe("components/SettingsPanel", () => {
         error: null,
       })),
       restart: vi.fn(async () => ({ ok: true })),
-      installWhenReady: vi.fn(async () => ({
-        ok: true,
-        snapshot: {
-          status: "available",
-          version: "v0.1.8",
-          readyToInstall: false,
-          error: null,
-        },
-      })),
       onStateChanged: vi.fn(() => () => {}),
     };
     // Ensure electron + mic bridges exist
@@ -154,128 +145,30 @@ describe("components/SettingsPanel", () => {
     unmount();
   });
 
-  it("shows a single restart capsule when an update is ready", async () => {
+  it("shows the version link and no update controls when an update is ready", async () => {
     (window as any).update.getState = vi.fn(async () => ({
       status: "available",
       version: "v0.1.8",
       readyToInstall: true,
       error: null,
+      downloadPercent: 100,
     }));
-
     const SettingsPanel = (await import("./SettingsPanel")).default;
     const { container, unmount } = render(
       React.createElement(SettingsPanel, { embeddedMode: true }),
     );
 
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 540));
-      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 600));
     });
 
-    const restartButtons = Array.from(container.querySelectorAll("button")).filter(
-      (button) =>
-        button.getAttribute("aria-label") === "Restart to update",
-    );
-    expect(restartButtons).toHaveLength(1);
     expect(container.textContent ?? "").toContain("Spoke v0.1.7");
-
-    await act(async () => {
-      restartButtons[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(window.update.restart).toHaveBeenCalledTimes(1);
-    unmount();
-  });
-
-  it("starts install-when-ready from the available capsule, then shows real download progress", async () => {
-    (window as any).update.getState = vi.fn(async () => ({
-      status: "available",
-      version: "v0.1.8",
-      readyToInstall: false,
-      error: null,
-      downloadPercent: null,
-    }));
-    // Capture the broadcast callback so the test can push the engine's real
-    // "downloading" snapshot, the way autoDownload does after install is armed.
-    let pushState: ((snapshot: unknown) => void) | null = null;
-    (window as any).update.onStateChanged = vi.fn(
-      (cb: (snapshot: unknown) => void) => {
-        pushState = cb;
-        return () => {};
-      },
+    const labels = Array.from(container.querySelectorAll("button")).map(
+      (b) => b.getAttribute("aria-label") ?? "",
     );
+    expect(labels).not.toContain("Restart to update");
+    expect(labels).not.toContain("Download update");
 
-    const SettingsPanel = (await import("./SettingsPanel")).default;
-    const { container, unmount } = render(
-      React.createElement(SettingsPanel, { embeddedMode: true }),
-    );
-
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 540));
-      await Promise.resolve();
-    });
-
-    const updateButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.getAttribute("aria-label") === "Download update",
-    );
-    expect(updateButton).toBeTruthy();
-
-    await act(async () => {
-      updateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    // Clicking only arms auto-install; it does not fake a downloading visual.
-    expect(window.update.installWhenReady).toHaveBeenCalledTimes(1);
-
-    // The engine begins downloading on its own and broadcasts real progress.
-    await act(async () => {
-      pushState?.({
-        status: "downloading",
-        version: "v0.1.8",
-        readyToInstall: false,
-        error: null,
-        downloadPercent: 42,
-      });
-      await Promise.resolve();
-    });
-
-    // The chip collapses to an icon-only working state. Assert the downloading
-    // state via its (always-present) aria-label rather than text.
-    const downloadingButton = Array.from(
-      container.querySelectorAll("button"),
-    ).find(
-      (button) => button.getAttribute("aria-label") === "Downloading update",
-    );
-    expect(downloadingButton).toBeTruthy();
-    // Determinate progress (the ring), not the indeterminate spinner.
-    expect(
-      container.querySelector('[data-testid="progress-ring"]'),
-    ).toBeTruthy();
-
-    await act(async () => {
-      pushState?.({
-        status: "available",
-        version: "v0.1.8",
-        readyToInstall: true,
-        error: null,
-        downloadPercent: 100,
-      });
-      await Promise.resolve();
-    });
-
-    const restartButton = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.getAttribute("aria-label") === "Restart to update",
-    );
-    expect(restartButton).toBeTruthy();
-
-    await act(async () => {
-      restartButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await Promise.resolve();
-    });
-
-    expect(window.update.restart).toHaveBeenCalledTimes(1);
     unmount();
   });
 
