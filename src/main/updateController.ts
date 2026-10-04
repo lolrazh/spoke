@@ -79,6 +79,11 @@ export interface UpdateCallbacks {
   // changes and on coarse download progress only.
   rebuildTrayMenu: () => void;
   onTrayStateChange?: (snapshot: UpdateSnapshot) => void;
+  // Menu-bar icon. Fires on every published change (coalesced to 20/s, whole
+  // percents), so the progress bar moves smoothly without menu rebuilds.
+  onIndicatorStateChange?: (snapshot: UpdateSnapshot) => void;
+  // True while the native install handoff runs, false if it is abandoned.
+  onInstallHandoffChange?: (installing: boolean) => void;
   // Renderer broadcast. Fires on every published change, progress included.
   onStateChange?: (snapshot: UpdateSnapshot) => void;
 }
@@ -186,8 +191,23 @@ function publishUpdateState() {
   publishedUpdateDownloadPercent = updateDownloadPercent;
   publishTrayState();
   try {
+    callbacks.onIndicatorStateChange?.(getUpdateSnapshot());
+  } catch {}
+  try {
     callbacks.onStateChange?.(getUpdateSnapshot());
   } catch {}
+}
+
+function setInstallHandoff(installing: boolean) {
+  if (quitAndInstallInvoked === installing) return;
+  quitAndInstallInvoked = installing;
+  try {
+    callbacks.onInstallHandoffChange?.(installing);
+  } catch {}
+}
+
+export function isInstallHandoffInProgress(): boolean {
+  return quitAndInstallInvoked;
 }
 
 function clearPendingTrayPublish() {
@@ -394,7 +414,7 @@ function startUpdateInstallHandoffWatchdog() {
       UPDATE_INSTALL_HANDOFF_TIMEOUT_MS / 1000,
     )}s`;
     console.warn("[auto-update] install handoff timed out:", msg);
-    quitAndInstallInvoked = false;
+    setInstallHandoff(false);
     clearUpdateInstallHandoffTracking();
     setUpdateState("error", { error: msg });
     callbacks.sendNotify("Update install did not start. Try again.");
@@ -529,7 +549,7 @@ async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
   updater.on("error", (err: Error) => {
     clearAllWatchdogs();
     const failedDownload = downloadInFlight;
-    quitAndInstallInvoked = false;
+    setInstallHandoff(false);
     const msg = err?.message || String(err) || "Unknown updater error";
     // Log even on silent background checks. An invisible error here is exactly
     // what makes a stuck updater impossible to tell apart from "up to date".
@@ -553,7 +573,7 @@ async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
     downloadInFlight = false;
     downloadUserInitiated = false;
     downloadRetryBackoffMs = null;
-    quitAndInstallInvoked = false;
+    setInstallHandoff(false);
     lastFailedPhase = null;
     if (info?.version) updateAvailableVersion = String(info.version);
     updateReadyToInstall = true;
@@ -691,8 +711,8 @@ function startDownload(userInitiated: boolean): void {
   }
 }
 
-// User-driven download: the tray "Download Update" item and the settings
-// capsule. With auto-download these are mostly retry paths after a failure.
+// User-driven download: the tray "Download Update" item. With auto-download
+// this is mostly a retry path after a failure.
 export function downloadUpdate(): void {
   startDownload(true);
 }
@@ -721,7 +741,7 @@ function quitAndInstallWithUpdater(updater: ElectronUpdater): void {
       onBeforeQuitForUpdate,
     );
     updateInstallHandoffListener = onBeforeQuitForUpdate;
-    quitAndInstallInvoked = true;
+    setInstallHandoff(true);
     startUpdateInstallHandoffWatchdog();
 
     // On macOS electron-updater hands the install to Squirrel.Mac through
@@ -732,7 +752,7 @@ function quitAndInstallWithUpdater(updater: ElectronUpdater): void {
     // the new build once installed instead of just quitting).
     updater.quitAndInstall(false, true);
   } catch (e) {
-    quitAndInstallInvoked = false;
+    setInstallHandoff(false);
     clearUpdateInstallHandoffTracking();
     console.warn(
       "[Updater] quitAndInstall failed; relaunching as fallback:",

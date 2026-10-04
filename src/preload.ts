@@ -317,7 +317,6 @@ contextBridge.exposeInMainWorld("app", {
 contextBridge.exposeInMainWorld("update", {
   getState: () => ipcRenderer.invoke("update:get-state"),
   restart: () => ipcRenderer.invoke("update:restart"),
-  installWhenReady: () => ipcRenderer.invoke("update:install-when-ready"),
   onStateChanged: (cb: (snapshot: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown) =>
       cb(snapshot);

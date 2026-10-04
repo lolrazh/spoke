@@ -50,7 +50,13 @@ import {
   emitActiveDisplayInfo,
   detectAndStoreNotchWidth,
 } from "./main/windows";
-import { applyUpdateIndicator, rebuildTrayMenu } from "./main/tray";
+import {
+  applyUpdateIcon,
+  applyUpdateIndicator,
+  disposeTrayIndicator,
+  rebuildTrayMenu,
+  setUpdateInstalling,
+} from "./main/tray";
 import { pasteLastTranscript } from "./main/pasteOrchestrator";
 import {
   registerInsertTextAtCursorIpc,
@@ -150,6 +156,8 @@ app.whenReady().then(async () => {
       },
       rebuildTrayMenu: () => rebuildTrayMenu(),
       onTrayStateChange: (snapshot) => applyUpdateIndicator(snapshot),
+      onIndicatorStateChange: (snapshot) => applyUpdateIcon(snapshot),
+      onInstallHandoffChange: (installing) => setUpdateInstalling(installing),
       onStateChange: (snapshot) => {
         try {
           if (state.mainWindow && !state.mainWindow.isDestroyed()) {
@@ -484,6 +492,7 @@ app.on("before-quit", () => {
 
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
+  disposeTrayIndicator();
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 

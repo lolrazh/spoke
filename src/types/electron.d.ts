@@ -37,10 +37,6 @@ declare global {
     update: {
       getState: () => Promise<UpdateSnapshot>;
       restart: () => Promise<{ ok: boolean }>;
-      installWhenReady: () => Promise<{
-        ok: boolean;
-        snapshot: UpdateSnapshot;
-      }>;
       onStateChanged: (cb: (snapshot: UpdateSnapshot) => void) => () => void;
     };
     devFlags: {
