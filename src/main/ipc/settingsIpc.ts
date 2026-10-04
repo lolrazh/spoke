@@ -249,10 +249,11 @@ export function registerSettingsIpc(): void {
       // Nothing cached to download (the failure was in the check itself, or
       // the state went stale). Re-check quietly; the capsule broadcasts every
       // step, so a notification here would only collapse the open panel to
-      // repeat what it already shows. Chain straight into the download when
-      // the check finds the update.
+      // repeat what it already shows. The check starts the download itself;
+      // calling downloadUpdate() after it marks that download as user-driven
+      // so a failure is reported instead of silently retried.
       await manualCheckForUpdates(true);
-      if (getUpdateStatus() === "available") downloadUpdate();
+      downloadUpdate();
     }
 
     return { ok: true, snapshot: getUpdateSnapshot() };

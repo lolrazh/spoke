@@ -31,10 +31,17 @@ export interface PillMachineState {
   };
 }
 
-const INLINE_EXPANDED_NOTIFICATIONS = new Set([
-  "Update available",
-  "Update ready. Restart to update",
-]);
+// Update progress the expanded panel already shows inline (the update
+// capsule), so these notifications must not collapse it. The messages carry
+// the version ("Downloading Spoke 0.1.33", "Spoke 0.1.33 is ready. Restart to
+// update."), so match by shape rather than exact text.
+function isInlineUpdateNotification(msg: string): boolean {
+  return (
+    msg.startsWith("Downloading Spoke ") ||
+    msg === "Downloading update" ||
+    msg.endsWith("Restart to update.")
+  );
+}
 
 // Reducer function for pill machine
 export const pillReducer = (
@@ -147,7 +154,7 @@ export const pillReducer = (
       // Handle NOTIFY while expanded (e.g., sign-out from settings panel)
       // Collapse first, then show notification
       if (event.type === "NOTIFY") {
-        if (INLINE_EXPANDED_NOTIFICATIONS.has(event.msg)) return state;
+        if (isInlineUpdateNotification(event.msg)) return state;
         return {
           state: "NOTIFICATION",
           context: {

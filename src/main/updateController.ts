@@ -92,13 +92,14 @@ let updateDownloadPercent: number | null = null;
 let updaterListenersInitialized = false;
 let feedConfigured = false;
 let manualUpdateCheckInFlight = false;
-// Which version "Update available" was last announced for. Background checks
-// re-run every few hours; the same version must only be announced once.
-let lastNotifiedAvailableVersion: string | null = null;
 // True from downloadUpdate() until a terminal download event. Lets the shared
-// "error" handler tell a failed download (always user-driven, always worth a
-// notification) apart from a failed background check.
+// "error" handler tell a failed download apart from a failed check.
 let downloadInFlight = false;
+// Whether the in-flight download was asked for by the user (a manual check or
+// a retry tap). Background downloads fail quietly and retry on a backoff; a
+// download the user asked for always reports its failure.
+let downloadUserInitiated = false;
+let downloadRetryBackoffMs: number | null = null;
 // Which phase the last error came from. A download failure keeps the checked
 // update info cached in electron-updater, so a retry can restart the transfer
 // directly instead of dropping back to a fresh check.
@@ -299,10 +300,8 @@ function startUpdateDownloadWatchdog() {
       UPDATE_DOWNLOAD_STALL_TIMEOUT_MS / 1000,
     )}s)`;
     console.warn("[auto-update] download stalled:", msg);
-    downloadInFlight = false;
-    lastFailedPhase = "download";
     setUpdateState("error", { error: msg });
-    callbacks.sendNotify("Update download stalled. Try again in a moment.");
+    handleDownloadFailure("Update download stalled. Try again in a moment.");
     manualUpdateCheckInFlight = false;
   }, UPDATE_DOWNLOAD_STALL_TIMEOUT_MS);
   updateDownloadWatchdog.unref?.();
@@ -361,14 +360,38 @@ function getErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-function notifyUpdateAvailable() {
-  if (
-    updateAvailableVersion != null &&
-    updateAvailableVersion === lastNotifiedAvailableVersion
-  )
+function downloadingMessage(): string {
+  return updateAvailableVersion
+    ? `Downloading Spoke ${updateAvailableVersion}`
+    : "Downloading update";
+}
+
+function readyMessage(): string {
+  return updateAvailableVersion
+    ? `Spoke ${updateAvailableVersion} is ready. Restart to update.`
+    : "Update ready. Restart to update.";
+}
+
+// A download failed or stalled. A download the user asked for reports the
+// failure; a background one stays quiet and retries on a growing backoff so a
+// flaky network still ends in a ready update without anyone noticing.
+function handleDownloadFailure(notifyMessage: string) {
+  const userInitiated = downloadUserInitiated;
+  downloadInFlight = false;
+  downloadUserInitiated = false;
+  lastFailedPhase = "download";
+  if (userInitiated) {
+    callbacks.sendNotify(notifyMessage);
     return;
-  callbacks.sendNotify("Update available");
-  lastNotifiedAvailableVersion = updateAvailableVersion;
+  }
+  downloadRetryBackoffMs = Math.min(
+    downloadRetryBackoffMs ? downloadRetryBackoffMs * 2 : 15 * 60 * 1000,
+    24 * 60 * 60 * 1000,
+  );
+  console.log(
+    `[auto-update] Background download failed; retrying in ${Math.round(downloadRetryBackoffMs / 60000)}m`,
+  );
+  scheduleUpdateCheck(downloadRetryBackoffMs, "download-retry", true);
 }
 
 // ── Updater event bridge ───────────────────────────────────────────────
@@ -378,10 +401,10 @@ async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
   if (updaterListenersInitialized) return updater;
   updaterListenersInitialized = true;
 
-  // The download is driven by a user action (the "available" capsule / tray
-  // item calls downloadUpdate), not started automatically, so the available
-  // state is a real beat the user taps. autoInstallOnAppQuit still applies a
-  // finished download on the next quit.
+  // We start the download ourselves from the update-available handler instead
+  // of letting electron-updater autoDownload, so every transfer goes through
+  // downloadUpdate() and gets the in-flight flag and stall watchdog.
+  // autoInstallOnAppQuit still applies a finished download on the next quit.
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = true;
 
@@ -399,17 +422,13 @@ async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
     lastFailedPhase = null;
     if (info?.version) updateAvailableVersion = String(info.version);
     setUpdateState("available", { version: updateAvailableVersion ?? undefined });
-    // autoDownload is off: we only announce the update here. The download (and
-    // its stall watchdog) starts when the user taps it, via downloadUpdate.
-    // A manual check must always answer, even about a version announced
-    // before; background checks announce each version once.
-    if (manualUpdateCheckInFlight) {
-      callbacks.sendNotify("Update available");
-      lastNotifiedAvailableVersion = updateAvailableVersion;
-    } else {
-      notifyUpdateAvailable();
-    }
+    // Download straight away and silently. Nobody needs to act on "an update
+    // exists"; the only proactive notification is the ready-to-restart one.
+    // A manual check still answers, once, with what it found.
+    const manual = manualUpdateCheckInFlight;
     manualUpdateCheckInFlight = false;
+    if (manual) callbacks.sendNotify(downloadingMessage());
+    startDownload(manual);
   });
 
   updater.on("download-progress", (progress) => {
@@ -433,19 +452,21 @@ async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
   updater.on("error", (err: Error) => {
     clearAllWatchdogs();
     const failedDownload = downloadInFlight;
-    downloadInFlight = false;
     quitAndInstallInvoked = false;
-    lastFailedPhase = failedDownload ? "download" : "check";
     const msg = err?.message || String(err) || "Unknown updater error";
     // Log even on silent background checks. An invisible error here is exactly
     // what makes a stuck updater impossible to tell apart from "up to date".
     console.error("[auto-update] error:", msg);
     setUpdateState("error", { error: msg });
-    // A download only ever starts from a user tap, so its failure always
-    // deserves a notification. Check failures notify only on manual checks.
-    if (failedDownload) callbacks.sendNotify(`Update download failed: ${msg}`);
-    else if (manualUpdateCheckInFlight)
-      callbacks.sendNotify(`Update check failed: ${msg}`);
+    // Download failures notify when the user asked for the download and retry
+    // quietly otherwise. Check failures notify only on manual checks.
+    if (failedDownload) {
+      handleDownloadFailure(`Update download failed: ${msg}`);
+    } else {
+      lastFailedPhase = "check";
+      if (manualUpdateCheckInFlight)
+        callbacks.sendNotify(`Update check failed: ${msg}`);
+    }
     manualUpdateCheckInFlight = false;
   });
 
@@ -453,13 +474,15 @@ async function initUpdaterEventBridgeOnce(): Promise<ElectronUpdater> {
     console.log("[auto-update] update-downloaded:", info?.version);
     clearAllWatchdogs();
     downloadInFlight = false;
+    downloadUserInitiated = false;
+    downloadRetryBackoffMs = null;
     quitAndInstallInvoked = false;
     lastFailedPhase = null;
     if (info?.version) updateAvailableVersion = String(info.version);
     updateReadyToInstall = true;
     updateDownloadPercent = 100;
     setUpdateState("available");
-    callbacks.sendNotify("Update ready. Restart to update");
+    callbacks.sendNotify(readyMessage());
     manualUpdateCheckInFlight = false;
   });
 
@@ -475,15 +498,18 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     return;
   }
   if (updateReadyToInstall) {
-    if (!silent) callbacks.sendNotify("Update ready. Restart to update");
+    if (!silent) callbacks.sendNotify(readyMessage());
     return;
   }
   if (updateStatus === "available") {
-    if (!silent) callbacks.sendNotify("Update available");
+    // Found but not downloading (the download normally starts the moment the
+    // update is found, so this is only a brief window or a start that failed).
+    if (!silent) callbacks.sendNotify(downloadingMessage());
+    startDownload(!silent);
     return;
   }
   if (updateStatus === "downloading") {
-    if (!silent) callbacks.sendNotify("Downloading update");
+    if (!silent) callbacks.sendNotify(downloadingMessage());
     return;
   }
   if (updateStatus === "checking") {
@@ -523,9 +549,9 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
     });
     startUpdateCheckWatchdog(silent);
 
-    // checkForUpdates drives the events wired above. autoDownload is off, so it
-    // only finds the update; downloadUpdate starts the transfer later. We don't
-    // need its return value; events are the source of truth. Errors surface via
+    // checkForUpdates drives the events wired above; the update-available
+    // handler starts the download. We don't need its return value; events are
+    // the source of truth. Errors surface via
     // the "error" event; the catch below is only a backstop for a
     // synchronous/rejecting throw with no event.
     await updater.checkForUpdates();
@@ -539,12 +565,18 @@ export async function manualCheckForUpdates(silent = false): Promise<void> {
   }
 }
 
-// Start downloading the update the last check found. autoDownload is off, so
-// this is the user-driven step behind the "available" capsule / tray tap. The
+// Start downloading the update the last check found. Called automatically the
+// moment an update is found, and again by the tray / settings retry paths. The
 // download stall watchdog is armed here and re-armed on every progress chunk.
-export function downloadUpdate(): void {
+function startDownload(userInitiated: boolean): void {
   if (!app.isPackaged) return;
   if (updateReadyToInstall) return;
+  if (downloadInFlight) {
+    // A user tap on an already-running background download upgrades it, so
+    // its failure (if any) gets reported.
+    if (userInitiated) downloadUserInitiated = true;
+    return;
+  }
   // A failed download leaves the checked update info cached in
   // electron-updater, so a retry can restart the transfer directly instead of
   // bouncing the user through another check.
@@ -557,17 +589,16 @@ export function downloadUpdate(): void {
   if (!updater) return;
 
   const failDownload = (err: unknown) => {
-    downloadInFlight = false;
-    lastFailedPhase = "download";
     clearUpdateDownloadWatchdog();
     const msg = getErrorMessage(err, "Unknown updater error");
     setUpdateState("error", { error: msg });
-    callbacks.sendNotify(`Update download failed: ${msg}`);
+    handleDownloadFailure(`Update download failed: ${msg}`);
   };
 
   try {
     updateDownloadPercent = null;
     downloadInFlight = true;
+    downloadUserInitiated = userInitiated;
     setUpdateState("downloading");
     startUpdateDownloadWatchdog();
     // electron-updater downloads the update info cached by the last check. On
@@ -581,6 +612,12 @@ export function downloadUpdate(): void {
   } catch (err: unknown) {
     failDownload(err);
   }
+}
+
+// User-driven download: the tray "Download Update" item and the settings
+// capsule. With auto-download these are mostly retry paths after a failure.
+export function downloadUpdate(): void {
+  startDownload(true);
 }
 
 function quitAndInstallWithUpdater(updater: ElectronUpdater): void {

@@ -148,16 +148,18 @@ function buildTrayMenu(): MenuItemConstructorOptions[] {
     quitAndInstallUpdate();
   }
   async function downloadAvailableUpdate() {
-    // Start the download for the available update. Download completion only
-    // enables the separate restart action.
+    // Updates download on their own, so this is mostly a retry after a failed
+    // download. Download completion only enables the separate restart action.
     downloadUpdate();
 
     if (
       getUpdateStatus() !== "downloading" &&
       getUpdateStatus() !== "checking"
     ) {
+      // Nothing cached to resume. The check starts the download itself;
+      // downloadUpdate() then marks it as user-driven.
       await manualCheckForUpdates(true);
-      if (getUpdateStatus() === "available") downloadUpdate();
+      downloadUpdate();
     }
   }
 
