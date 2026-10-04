@@ -1,5 +1,32 @@
 [
   {
+    "version": "0.1.34",
+    "headline": "There's a Dot for That",
+    "summary": "Spoke now downloads updates on its own and shows their progress right in the menu bar, then leaves a small dot until you restart. It also runs on a newer foundation built for the latest versions of macOS.",
+    "items": [
+      {
+        "type": "new",
+        "title": "Update Progress in the Menu Bar",
+        "description": "While an update downloads, the Spoke icon in the menu bar shows a progress bar. When it finishes, the bar flows into a small dot that stays until you restart, so a ready update is hard to miss."
+      },
+      {
+        "type": "improved",
+        "title": "Updates Download Automatically",
+        "description": "New versions now download in the background as soon as they are available. When you are ready, choose Restart to Update from the Spoke menu."
+      },
+      {
+        "type": "improved",
+        "title": "Ready for the Latest macOS",
+        "description": "Spoke now runs on a current version of its app framework, with fixes for macOS 26 and macOS 27. Spoke now requires macOS 13 or later."
+      },
+      {
+        "type": "improved",
+        "title": "A Simpler Settings Panel",
+        "description": "The update button in the settings panel is gone, since update status now lives in the menu bar."
+      }
+    ]
+  },
+  {
     "version": "0.1.33",
     "headline": "There Can Be Only One",
     "summary": "Spoke Helper now stays in the background when you dictate, so your first recording no longer adds a second app to the Dock.",
