@@ -44,8 +44,8 @@ const DISC_SPACING = 0.25;
 // Locked "Liquid flow" tuning from the tray motion studio.
 export const MORPH_TUNING = {
   fps: 60,
-  h1: [1.6, -7] as Pt, // outgoing handle, relative to the bar's right end
-  h2: [0.6, 7.5] as Pt, // incoming handle, relative to the dot
+  h1: [4.01, -7.69] as Pt, // outgoing handle, relative to the bar's right end
+  h2: [3.66, 8.78] as Pt, // incoming handle, relative to the dot
   headK: 420,
   headD: 22,
   headDelay: 0,
