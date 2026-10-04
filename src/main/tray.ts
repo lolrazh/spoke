@@ -43,6 +43,7 @@ import {
   manualCheckForUpdates,
   quitAndInstallUpdate,
   downloadUpdate,
+  type UpdateSnapshot,
 } from "./updateController";
 import { pasteLastTranscript } from "./pasteOrchestrator";
 import { state } from "./windowState";
@@ -131,11 +132,6 @@ function buildFloatingBarMenuItems(): MenuItemConstructorOptions[] {
 // ── Menu builders ───────────────────────────────────────────────────────
 
 function buildTrayMenu(): MenuItemConstructorOptions[] {
-  console.log(
-    "[Tray Menu] Building tray menu with",
-    getMicDevices().length,
-    "devices",
-  );
   const selectedMicId = getSelectedMicId();
 
   const micSubmenu = buildMicrophoneSubmenu(
@@ -288,16 +284,33 @@ export function buildPillContextMenu(): MenuItemConstructorOptions[] {
 // ── Tray lifecycle ─────────────────────────────────────────────────────
 
 export function rebuildTrayMenu(): void {
-  if (!tray || tray.isDestroyed()) {
-    console.log("[Tray] Cannot rebuild menu - tray not available");
-    return;
-  }
+  if (!tray || tray.isDestroyed()) return;
+  tray.setContextMenu(Menu.buildFromTemplate(buildTrayMenu()));
+}
 
-  console.log("[Tray] Rebuilding menu with updated microphone list");
-  const menuTemplate = buildTrayMenu();
-  const contextMenu = Menu.buildFromTemplate(menuTemplate);
-  tray.setContextMenu(contextMenu);
-  console.log("[Tray] Menu rebuilt successfully");
+// ── Update indicator ───────────────────────────────────────────────────
+
+export function updateIndicatorTooltip(snapshot: UpdateSnapshot): string {
+  if (snapshot.readyToInstall) {
+    return snapshot.version
+      ? `Spoke ${snapshot.version} is ready. Restart to update.`
+      : "Spoke update is ready. Restart to update.";
+  }
+  if (snapshot.status === "downloading") {
+    return snapshot.downloadPercent != null
+      ? `Spoke: downloading update, ${snapshot.downloadPercent}%`
+      : "Spoke: downloading update";
+  }
+  if (snapshot.status === "error") return "Spoke: update failed";
+  return "Spoke";
+}
+
+// The menu-bar surface for update state. The update controller calls this on
+// phase changes and coarse download progress. For now it only sets the
+// tooltip; state-specific icons will hang off the same hook.
+export function applyUpdateIndicator(snapshot: UpdateSnapshot): void {
+  if (!tray || tray.isDestroyed()) return;
+  tray.setToolTip(updateIndicatorTooltip(snapshot));
 }
 
 export const createTray = () => {
@@ -346,18 +359,10 @@ export const createTray = () => {
     // Additional debugging for tray visibility
     console.log(`[Tray] Tray destroyed state: ${tray.isDestroyed()}`);
 
-    tray.setToolTip("Spoke");
+    tray.setToolTip(updateIndicatorTooltip(getUpdateSnapshot()));
 
-    // Force tray to be visible (macOS sometimes hides it)
     if (process.platform === "darwin") {
       tray.setIgnoreDoubleClickEvents(false);
-      // Try to force display the tray
-      setTimeout(() => {
-        if (tray && !tray.isDestroyed()) {
-          console.log("[Tray] Forcing tray visibility on macOS");
-          tray.setToolTip("Spoke - AI Dictation");
-        }
-      }, 100);
     }
 
     console.log("[Tray] Tooltip set");
