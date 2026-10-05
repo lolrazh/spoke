@@ -14,19 +14,20 @@
 //   - Fail loudly (non-zero exit) on zero or multiple zips so a broken release
 //     can never ship a bad manifest.
 //
+// It also writes <zip>.blockmap, which lets electron-updater download only the
+// chunks that changed since the installed version. The updater finds the
+// installed version's blockmap by swapping the version in this release's zip
+// URL, so the zip name must contain the version. A missing or broken blockmap
+// only costs a full download.
+//
 // Usage: node scripts/generate-latest-mac-yml.mjs [--out <path>]
 // Reads version from package.json. Writes latest-mac.yml in the repo root by
-// default. Prints the exact zip it used to stdout.
+// default, and the blockmap next to it. Prints the exact zip it used to stdout.
 
-import { createHash } from "node:crypto";
-import {
-  readFileSync,
-  writeFileSync,
-  statSync,
-  readdirSync,
-} from "node:fs";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildBlockMap } from "./blockmap.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
@@ -84,9 +85,15 @@ if (zips.length > 1) {
 
 const zipPath = zips[0];
 const zipName = basename(zipPath);
-const buf = readFileSync(zipPath);
-const sha512 = createHash("sha512").update(buf).digest("base64");
-const size = statSync(zipPath).size;
+if (!zipName.includes(version)) {
+  fail(
+    `zip name ${zipName} does not contain version ${version}; the updater could not find the previous blockmap.`,
+  );
+}
+// One pass over the zip yields both the blockmap and the manifest digest, so
+// the two always describe the same bytes.
+const blockMapPath = join(dirname(outPath), `${zipName}.blockmap`);
+const { sha512, size } = await buildBlockMap(zipPath, "gzip", blockMapPath);
 const releaseDate = new Date().toISOString();
 
 // Build the manifest by hand. The shape must match electron-updater exactly:
@@ -117,6 +124,7 @@ const yml = [
 writeFileSync(outPath, yml, "utf8");
 
 console.log(`[generate-latest-mac-yml] wrote ${outPath}`);
+console.log(`[generate-latest-mac-yml] wrote ${blockMapPath}`);
 console.log(`[generate-latest-mac-yml] version: ${version}`);
 console.log(`[generate-latest-mac-yml] zip:     ${zipPath}`);
 console.log(`[generate-latest-mac-yml] asset:   ${zipName}`);
