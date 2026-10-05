@@ -1,5 +1,27 @@
 [
   {
+    "version": "0.1.35",
+    "headline": "While You Were Away",
+    "summary": "Spoke now installs a downloaded update on its own while you are away from your Mac, so you no longer have to remember to restart. Updates after this one will also be much smaller downloads.",
+    "items": [
+      {
+        "type": "new",
+        "title": "Updates Install While You're Away",
+        "description": "When an update is ready, Spoke installs it and reopens after your Mac has been idle for 10 minutes, or a minute after you lock your screen. It never restarts while you are dictating or downloading a speech model, and Restart to Update in the Spoke menu still works anytime."
+      },
+      {
+        "type": "improved",
+        "title": "Now Requires macOS 26.2",
+        "description": "Spoke now requires macOS 26.2 or later. Macs on older versions of macOS keep their current version of Spoke."
+      },
+      {
+        "type": "performance",
+        "title": "Smaller Updates",
+        "description": "Starting with the next version, Spoke downloads only the parts of an update that changed instead of the whole app, so most updates will be a fraction of the size."
+      }
+    ]
+  },
+  {
     "version": "0.1.34",
     "headline": "There's a Dot for That",
     "summary": "Spoke now downloads updates on its own and shows their progress right in the menu bar, then leaves a small dot until you restart. It also runs on a newer foundation built for the latest versions of macOS.",
