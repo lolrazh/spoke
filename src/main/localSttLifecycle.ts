@@ -102,6 +102,11 @@ function waitForTranscriptionsToDrain(): Promise<void> {
   return new Promise((resolve) => transcriptionDrainWaiters.add(resolve));
 }
 
+/** True while a transcription or live dictation holds the sidecar. */
+export function isLocalTranscriptionInFlight(): boolean {
+  return transcriptionsInFlight > 0;
+}
+
 function releaseTranscriptionLease(): void {
   transcriptionsInFlight = Math.max(0, transcriptionsInFlight - 1);
   if (transcriptionsInFlight !== 0) return;

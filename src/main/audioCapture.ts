@@ -98,6 +98,11 @@ export class NativeAudioCaptureManager {
   private sessionId: string | undefined;
   private removeOwnerListeners: (() => void) | null = null;
 
+  /** True from start() until the capture is stopped or fails. */
+  isCapturing(): boolean {
+    return this.active;
+  }
+
   async start(target: WebContents, deviceId: string, sessionId: string): Promise<void> {
     if (!isNativeAudioCaptureAvailable()) {
       throw new Error("Native macOS audio capture is unavailable.");
