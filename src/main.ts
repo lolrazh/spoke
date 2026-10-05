@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   session,
   globalShortcut,
+  powerMonitor,
 } from "electron";
 // 'net' is imported via eval'd require to avoid bundling issues when unused
 import path from "node:path";
@@ -12,10 +13,11 @@ import fs from "node:fs";
 
 import { logger } from "./utils/logger";
 import {
+  isLocalTranscriptionInFlight,
   stopLocalSidecar,
   syncLocalSidecarForCurrentProvider,
 } from "./main/localSttLifecycle";
-import { initModelManager } from "./main/modelManager";
+import { getAllModelStatuses, initModelManager } from "./main/modelManager";
 import { registerPermissionHandlers } from "./main/permissions";
 import {
   initPreferences,
@@ -32,9 +34,11 @@ import {
 } from "./main/fnListener";
 import {
   initUpdateController,
+  quitAndInstallUpdate,
   scheduleUpdateCheck,
   jitterMs,
 } from "./main/updateController";
+import { createIdleInstaller } from "./main/idleInstall";
 import { bootTimeline } from "./main/bootTimeline";
 import { installMainConsoleFileSink } from "./main/diagnosticLog";
 import { state } from "./main/windowState";
@@ -67,7 +71,10 @@ import { registerSttIpc } from "./main/ipc/sttIpc";
 import { registerSettingsIpc } from "./main/ipc/settingsIpc";
 import { registerMiscIpc } from "./main/ipc/miscIpc";
 import { registerAudioCaptureIpc } from "./main/ipc/audioCaptureIpc";
-import { shutdownNativeAudioCapture } from "./main/audioCapture";
+import {
+  nativeAudioCapture,
+  shutdownNativeAudioCapture,
+} from "./main/audioCapture";
 
 bootTimeline.configure({
   enabled: !app.isPackaged || process.env.SF_BOOT_TIMELINE === "1",
@@ -106,6 +113,19 @@ const FORCE_ONBOARDING =
 // inside app.whenReady()) to match the original evaluation order.
 registerWindowLifecycleIpc();
 registerInsertTextAtCursorIpc();
+
+// Install a downloaded update while the user is away (see idleInstall.ts).
+const idleInstaller = createIdleInstaller({
+  idleSeconds: () => powerMonitor.getSystemIdleTime(),
+  isScreenLocked: () => powerMonitor.getSystemIdleState(1) === "locked",
+  isBusy: () =>
+    nativeAudioCapture.isCapturing() ||
+    isLocalTranscriptionInFlight() ||
+    getAllModelStatuses().some(
+      (s) => s.state === "downloading" || s.state === "installing",
+    ),
+  install: () => quitAndInstallUpdate(),
+});
 
 // Preference checking for first run
 // Removed onboarding persistence - always show onboarding
@@ -155,7 +175,10 @@ app.whenReady().then(async () => {
         // we have not designed yet. Update state is surfaced in the tray.
       },
       rebuildTrayMenu: () => rebuildTrayMenu(),
-      onTrayStateChange: (snapshot) => applyUpdateIndicator(snapshot),
+      onTrayStateChange: (snapshot) => {
+        applyUpdateIndicator(snapshot);
+        idleInstaller.update(snapshot);
+      },
       onIndicatorStateChange: (snapshot) => applyUpdateIcon(snapshot),
       onInstallHandoffChange: (installing) => setUpdateInstalling(installing),
       onStateChange: (snapshot) => {
@@ -493,6 +516,7 @@ app.on("before-quit", () => {
 app.on("will-quit", () => {
   console.log("[MainProcess] App is quitting.");
   disposeTrayIndicator();
+  idleInstaller.dispose();
   // Extra guard to ensure polling is stopped
   stopFollowCursor();
 
