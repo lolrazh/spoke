@@ -96,6 +96,7 @@ dist/
 
 # Generated at release time (electron-updater manifest + CI scratch)
 latest-mac.yml
+*.zip.blockmap
 release-assets.txt
 
 # repomix
