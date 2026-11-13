@@ -26,6 +26,7 @@ import {
   loadAppPreferences,
 } from "./main/preferences";
 import { initMicManager } from "./main/micManager";
+import { stopScreenContext } from "./main/screenContext";
 import { killPasteDaemon } from "./main/pasteDaemon";
 import { fnHelpers, pasteHelpers } from "./main/helperProcess";
 import {
@@ -485,6 +486,7 @@ app.on("before-quit", () => {
 
   // Clean up pre-spawned paste helper
   killPasteDaemon();
+  stopScreenContext();
 
   // brutally nuke anything we forgot
   for (const p of [...fnHelpers, ...pasteHelpers]) {
@@ -525,6 +527,7 @@ app.on("will-quit", () => {
 
   // Clean up pre-spawned paste helper
   killPasteDaemon();
+  stopScreenContext();
 
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {

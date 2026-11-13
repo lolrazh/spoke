@@ -1590,10 +1590,10 @@ class ParakeetEngine(Engine):
         return "".join(token.text for token in result.tokens).strip()
 
     def transcribe(self, audio: np.ndarray, prompt: str | None = None) -> None:
-        # Parakeet's TDT transducer decodes audio frames directly; there is no
-        # text-conditioning input (no initial_prompt equivalent) to seed with a
-        # vocabulary hint. The request-level prompt is accepted for API
-        # symmetry with WhisperEngine but intentionally ignored here.
+        # This MLX adapter has no Whisper-style initial_prompt and currently
+        # does not score context phrases during decoding. NVIDIA NeMo supports
+        # TDT phrase boosting, but that requires decoder integration here;
+        # passing this string alone cannot enable it. Keep the shared API shape.
         del prompt
 
         request_start = time.perf_counter()

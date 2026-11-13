@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildSTTPrompt, DEFAULT_STT_PROMPT } from "./sttPrompt";
 
 describe("buildSTTPrompt", () => {
+  it("preserves names outside ASCII", () => {
+    expect(buildSTTPrompt({ extraVocab: ["José", "தமிழ்"] })).toContain("José, தமிழ்");
+  });
   it("returns the default prompt when no options are given", () => {
     expect(buildSTTPrompt()).toBe(DEFAULT_STT_PROMPT);
     expect(buildSTTPrompt({})).toBe(DEFAULT_STT_PROMPT);

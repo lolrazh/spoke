@@ -57,6 +57,48 @@ async function flushLifecycle(): Promise<void> {
 }
 
 describe("localSttLifecycle", () => {
+  it("uses a frozen DFlash2 hint for Parakeet correction without sending a fake prompt or saving the hint", async () => {
+    mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    mocks.transcribeLocal.mockResolvedValue({ text: "Use D flash two for this project.", metrics: {} });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const { screenContextSession } = await import("./screenContextSession");
+    screenContextSession.begin("numbered-name");
+    screenContextSession.accept("numbered-name", ["DFlash2"]);
+    screenContextSession.freeze("numbered-name");
+    expect((await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "numbered-name")).text)
+      .toBe("Use DFlash2 for this project.");
+    expect(mocks.transcribeLocal.mock.calls[0][1]).toBeUndefined();
+    expect(mocks.state.appPreferences.vocabularyDictionary).toBeUndefined();
+    screenContextSession.end("numbered-name");
+    expect((await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "numbered-name")).text)
+      .not.toContain("DFlash2");
+  });
+  it("uses ready session names for Whisper without saving them", async () => {
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const { screenContextSession } = await import("./screenContextSession");
+    screenContextSession.begin("speech");
+    screenContextSession.accept("speech", ["Priyanka Sharma"]);
+    screenContextSession.freeze("speech");
+    await transcribeWithLocalSidecar("current-model", Buffer.from([]), undefined, "speech");
+    expect(mocks.transcribeLocal.mock.calls[0][1]).toContain("Priyanka Sharma");
+    expect(mocks.state.appPreferences.vocabularyDictionary).toBeUndefined();
+    screenContextSession.end("speech");
+    await transcribeWithLocalSidecar("current-model", Buffer.from([]), undefined, "speech");
+    expect(mocks.transcribeLocal.mock.calls[1][1]).toBeUndefined();
+  });
+
+  it("uses names that arrive during a live stream in final local correction", async () => {
+    const { beginLocalStreamingSession } = await importLifecycle();
+    const { screenContextSession } = await import("./screenContextSession");
+    screenContextSession.begin("speech");
+    const stream = await beginLocalStreamingSession("current-model", vi.fn(), undefined, "speech");
+    screenContextSession.accept("speech", ["TypeScript"]);
+    screenContextSession.freeze("speech");
+    mocks.streamingFinish.mockResolvedValue({ text: "Use typescript", metrics: {} });
+    expect((await stream.finish()).text).toBe("Use TypeScript");
+  });
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();

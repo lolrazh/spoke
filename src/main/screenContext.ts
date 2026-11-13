@@ -1,0 +1,110 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
+import { getHelperPath } from "./helperPaths";
+import { screenContextSession } from "./screenContextSession";
+import { contextDictionary, clearContextVocabulary } from "./contextVocabulary";
+import { contextDebugEnabled, recordContextDebug, recordNativeContextDebug } from "./contextDebug";
+
+let child: ChildProcessWithoutNullStreams | null = null;
+let deadline: ReturnType<typeof setTimeout> | undefined;
+let idle: ReturnType<typeof setTimeout> | undefined;
+let pendingId: string | null = null;
+let lastStarted = 0;
+const DEADLINE_MS = 2000;
+
+export function stopScreenContext(): void {
+  clearContextVocabulary();
+  screenContextSession.clear();
+  clearTimeout(deadline);
+  clearTimeout(idle);
+  const previous = child;
+  child = null;
+  pendingId = null;
+  previous?.kill("SIGKILL");
+}
+
+export function prewarmScreenContext(): void {
+  if (child || process.platform !== "darwin") return;
+  // A broken helper must not enter a restart loop on each key event.
+  if (Date.now() - lastStarted < 5000) return;
+  const path = getHelperPath();
+  if (!existsSync(path)) return;
+  lastStarted = Date.now();
+  const worker = spawn(path, ["--mode=context-daemon"], { stdio: "pipe" });
+  worker.stderr.resume();
+  child = worker;
+  let buffer = "";
+  worker.stdout.setEncoding("utf8");
+  worker.stdout.on("data", (chunk: string) => {
+    if (child !== worker) return;
+    buffer += chunk;
+    if (buffer.length > 4_200_000) { stopScreenContext(); return; }
+    let end: number;
+    while ((end = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, end);
+      buffer = buffer.slice(end + 1);
+      try {
+        const result = JSON.parse(line);
+        if (result.event === "debug") { recordNativeContextDebug(result.id, result); continue; }
+        recordContextDebug(result.id, "capture-result", { source: result.source, status: result.status, nativeMs: result.ms, terms: result.terms });
+        if (result.status === "target-changed") {
+          screenContextSession.invalidate(result.id);
+          clearContextVocabulary();
+        }
+        if (result.id !== pendingId) continue;
+        clearTimeout(deadline);
+        pendingId = null;
+        const accepted = screenContextSession.accept(result.id, result.terms);
+        recordContextDebug(result.id, "context-acceptance", { accepted, terms: screenContextSession.read(result.id) });
+        if (accepted) contextDictionary(result.id);
+        // Never log pixels, screen text, window titles, or the extracted terms.
+        console.info("[Context] Local capture", {
+          source: result.source, status: result.status, ms: result.ms,
+          terms: Array.isArray(result.terms) ? result.terms.length : 0, accepted,
+        });
+      } catch { /* Ignore non-protocol startup output. */ }
+    }
+  });
+  worker.stdin.on("error", () => { if (child === worker) stopScreenContext(); });
+  worker.on("error", () => { if (child === worker) stopScreenContext(); });
+  worker.on("exit", () => { if (child === worker) stopScreenContext(); });
+  // A tiny synthetic image warms Vision; this reads no screen content.
+  worker.stdin.write('{"command":"warm"}\n');
+  idle = setTimeout(stopScreenContext, 60_000);
+  idle.unref?.();
+}
+
+export function beginScreenContext(id: string): void {
+  clearTimeout(idle);
+  clearTimeout(deadline);
+  // Supersede blocked capture rather than queue work from a previous utterance.
+  if (pendingId) stopScreenContext();
+  clearContextVocabulary();
+  screenContextSession.begin(id);
+  prewarmScreenContext();
+  clearTimeout(idle);
+  if (!child) { recordContextDebug(id, "capture-unavailable", {}); return; }
+  pendingId = id;
+  child.stdin.write(JSON.stringify({ command: "capture", id, debug: contextDebugEnabled(id) }) + "\n");
+  deadline = setTimeout(() => {
+    recordContextDebug(id, "capture-timeout", { deadlineMs: DEADLINE_MS });
+    screenContextSession.freeze(id);
+    stopScreenContext();
+  }, DEADLINE_MS);
+  deadline.unref?.();
+}
+
+export function freezeScreenContext(id: string): void {
+  recordContextDebug(id, "speech-stopped", { termsReady: screenContextSession.read(id) });
+  screenContextSession.freeze(id);
+}
+
+export function endScreenContext(id: string): void {
+  screenContextSession.end(id);
+  clearContextVocabulary();
+  child?.stdin.write(JSON.stringify({ command: "cancel", id }) + "\n");
+  if (pendingId === id) stopScreenContext();
+  clearTimeout(idle);
+  idle = setTimeout(stopScreenContext, 60_000);
+  idle.unref?.();
+}

@@ -9,6 +9,7 @@ import type {
   TranscriptionItem,
   LocalTranscribeResult,
 } from "./shared";
+import type { ContextDebugApi } from "../../shared/contextDebug";
 
 type UpdateStatus =
   | "idle"
@@ -137,7 +138,8 @@ declare global {
         enabled: boolean,
       ) => Promise<{ ok: boolean; error?: string }>;
       // Vocabulary dictionary (words/phrases used to correct transcripts)
-      getVocabularyDictionary: () => Promise<{ dictionary: string[] }>;
+      getVocabularyDictionary: () => Promise<{ dictionary: string[]; learnedWords?: { from: string; to: string; learnedAt: number }[] }>;
+      onVocabularyChanged?: (callback: () => void) => () => void;
       addVocabularyEntry: (value: string) => Promise<{
         ok: boolean;
         dictionary: string[];
@@ -161,14 +163,25 @@ declare global {
     onActiveDisplay?: (
       cb: (payload: ActiveDisplayPayload) => void,
     ) => () => void;
+    localContext?: {
+      outcome?: (id: string, text: string) => void;
+      begin: (id: string) => void;
+      freeze: (id: string) => void;
+      end: (id: string) => void;
+      getSettings: () => Promise<{ screenContext: boolean; learnFromEdits: boolean }>;
+      setSettings: (value: { screenContext?: boolean; learnFromEdits?: boolean }) => Promise<{ screenContext: boolean; learnFromEdits: boolean }>;
+      requestScreenPermission: () => Promise<boolean>;
+    };
+    contextDebug?: ContextDebugApi;
     stt: {
       transcribeLocal: (
         modelId: string,
         pcmBuffer: ArrayBuffer | Uint8Array,
         prompt?: string,
+        contextId?: string,
       ) => Promise<LocalTranscribeResult>;
       cancelLocalTranscription: () => Promise<void>;
-      startLocalStream: (modelId: string) => Promise<{ sessionId: string }>;
+      startLocalStream: (modelId: string, contextId?: string) => Promise<{ sessionId: string }>;
       pushLocalStream: (
         sessionId: string,
         pcmBuffer: ArrayBuffer,

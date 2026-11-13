@@ -100,6 +100,6 @@ export const localStt = {
       ? (pcm16.buffer as ArrayBuffer)
       : new Uint8Array(pcm16.buffer, pcm16.byteOffset, pcm16.byteLength);
 
-    return window.stt.transcribeLocal(modelId, pcmPayload, context?.sttPrompt);
+    return window.stt.transcribeLocal(modelId, pcmPayload, context?.sttPrompt, context?.screenContextId);
   },
 };
