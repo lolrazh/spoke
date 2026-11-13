@@ -45,6 +45,16 @@ describe("main/dictionaryCorrection", () => {
     expect(correctTranscript("Use Llama three", ["Llama3"])).toBe("Use Llama3");
     expect(correctTranscript("Use H two O", ["H2O"])).toBe("Use H2O");
   });
+  it("repairs a voiced initial only when the rest of a spoken identifier is exact", () => {
+    expect(correctTranscript("Use T flash 2.", ["DFlash2"])).toBe("Use DFlash2.");
+    expect(correctTranscript("Use T flash two.", ["DFlash2"])).toBe("Use DFlash2.");
+    expect(correctTranscript("Use T flash three.", ["DFlash2"])).toBe("Use T flash three.");
+    expect(correctTranscript("Tflash2", ["DFlash2"])).toBe("Tflash2");
+    expect(correctTranscript("G lass 4", ["Class4"])).toBe("G lass 4");
+    expect(correctTranscript("T flash 2", ["DFlash2", "TFlash2"])).toBe("TFlash2");
+    expect(correctTranscript("T flash 2", ["DFlash2", "D Flash 2"])).toBe("T flash 2");
+    expect(correctTranscript("T flash two", ["DFlash2", "TFlash2", "T Flash 2"])).toBe("T flash two");
+  });
   it("corrects a phonetically garbled name against the dictionary", () => {
     expect(
       correctTranscript("I met with Sandheap yesterday", ["Sandheep"]),

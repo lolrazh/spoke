@@ -295,8 +295,25 @@ function numberedAcronymMatch(stem: string, index: Index): Match | null | undefi
 type PhraseMatch = {
   entry: string;
   sim: number;
-  path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase";
+  path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase" | "spoken-initial";
 };
+
+const VOICED_INITIAL: Readonly<Record<string, string>> = {
+  d: "t", t: "d", b: "p", p: "b", g: "k", k: "g", f: "v", v: "f",
+};
+
+function findSpokenInitialMatch(source: string, key: string, index: Index): PhraseMatch | null {
+  // A separately spoken initial can lose voicing through a microphone: the
+  // live test produced "T flash 2". Require the rest of the full identifier
+  // (including every digit) to match exactly. Compact words are not eligible.
+  if (!/^[A-Z][ \t]+/u.test(source) || !/\d/u.test(key) || index.phraseCanonical.has(key)) return null;
+  const alternate = VOICED_INITIAL[key[0]];
+  if (!alternate) return null;
+  return unambiguousPhrase(
+    scorePhraseCandidates(index.phraseCanonical.get(alternate + key.slice(1)) ?? [], key, FUZZY_THRESHOLD),
+    "spoken-initial",
+  );
+}
 
 type ScoredPhrase = { candidate: PhraseKey; sim: number };
 
@@ -550,7 +567,7 @@ export function correctTranscript(
       const digitMatch = /\d/u.test(identifierKey) && identifierKey !== key
         ? unambiguousPhrase(scorePhraseCandidates(index.phraseCanonical.get(identifierKey) ?? [], identifierKey, 1), "exact-phrase")
         : null;
-      const match = digitMatch ?? findPhraseMatch(key, index);
+      const match = digitMatch ?? findPhraseMatch(key, index) ?? findSpokenInitialMatch(source, identifierKey, index);
       if (trace) record({ kind: "phrase", source, key, outcome: match ? "matched" : "no-match-or-ambiguous", ...(match ? { target: match.entry, path: match.path, score: match.sim } : {}) });
       if (!match) continue;
       phrase = {
