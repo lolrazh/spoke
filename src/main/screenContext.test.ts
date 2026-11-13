@@ -19,11 +19,11 @@ describe.runIf(process.platform === "darwin")("context helper deadlines", () => 
     const { screenContextSession: session } = await import("./screenContextSession");
     return { worker, nextWorker, service, session };
   }
-  it("returns immediately and kills a stalled worker after two seconds", async () => {
+  it("returns immediately and kills a stalled worker after four seconds", async () => {
     const { worker, service, session } = await setup();
     expect(service.beginScreenContext("a")).toBeUndefined();
     expect(session.read("a")).toEqual([]);
-    vi.advanceTimersByTime(1999);
+    vi.advanceTimersByTime(3999);
     expect(worker.kill).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(worker.kill).toHaveBeenCalledWith("SIGKILL");
@@ -53,6 +53,16 @@ describe.runIf(process.platform === "darwin")("context helper deadlines", () => 
     worker.stdout.emit("data", JSON.stringify({ id: "a", terms: ["LateName"] }) + "\n");
     expect(session.read("a")).toEqual([]);
     expect(mocks.prepare).not.toHaveBeenCalled();
+    service.stopScreenContext();
+  });
+  it("accepts cold initialization while speech continues without waiting at stop", async () => {
+    const { worker, service, session } = await setup();
+    service.beginScreenContext("a");
+    vi.advanceTimersByTime(2500);
+    worker.stdout.emit("data", JSON.stringify({ id: "a", status: "ready", terms: ["DFlash2"] }) + "\n");
+    service.freezeScreenContext("a");
+    expect(session.read("a")).toEqual(["DFlash2"]);
+    expect(worker.kill).not.toHaveBeenCalled();
     service.stopScreenContext();
   });
   it("supplements sparse Accessibility terms with OCR without waiting at speech stop", async () => {

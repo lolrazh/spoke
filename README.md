@@ -105,7 +105,10 @@ step because they do not accept this prompt. No context or edit text is sent
 to a server. Only accepted word pairs and removal preferences are saved.
 
 Context never waits on the paste path. Results that are not ready when speech
-stops are skipped. A context worker that stalls is stopped after two seconds.
+stops are skipped. A context worker that stalls is stopped after four seconds.
+That background budget allows cold initialization while speech continues; it
+does not extend recording or delay paste. Idle preparation warms the worker,
+but a cold capture never queues behind an extra synthetic OCR request.
 App/window changes and protected fields discard context. Moving focus within
 the same window keeps its context. Starting another dictation stops edit watching.
 Learning skips protected fields, unsupported AX fields, and documents whose
@@ -118,6 +121,8 @@ Numbered identifiers match their complete spoken spelling (`D flash two`).
 One letter in an uppercase numbered acronym can be corrected (`NBFP4` to
 `NVFP4`) only if there is one matching candidate. Exact entries win; ambiguous
 matches stay unchanged. Matching cannot insert, remove, or change digits.
+For a separately spoken initial, a voiced/unvoiced pair such as D/T can match
+only when the rest of the complete numbered identifier is exact and unique.
 Verified edit learning uses the same full-spelling
 check for names with digits. It does not learn version changes.
 

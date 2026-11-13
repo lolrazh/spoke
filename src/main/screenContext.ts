@@ -10,7 +10,9 @@ let deadline: ReturnType<typeof setTimeout> | undefined;
 let idle: ReturnType<typeof setTimeout> | undefined;
 let pendingId: string | null = null;
 let retryAfter = 0;
-const DEADLINE_MS = 2000;
+// Allow cold native initialization while the user is still speaking. Speech
+// stop freezes ready terms immediately; this budget never extends paste time.
+const DEADLINE_MS = 4000;
 
 export function stopScreenContext(): void {
   clearContextVocabulary();
