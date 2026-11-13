@@ -9,8 +9,8 @@ let child: ChildProcessWithoutNullStreams | null = null;
 let deadline: ReturnType<typeof setTimeout> | undefined;
 let pendingId: string | null = null;
 let retryAfter = 0;
-// Allow cold native initialization while the user is still speaking. Speech
-// stop freezes ready terms immediately; this budget never extends paste time.
+// Bound capture work. Prompt creation and final correction use only results
+// already available; this deadline never extends decode or paste time.
 const DEADLINE_MS = 8000;
 
 export function stopScreenContext(): void {
@@ -59,7 +59,7 @@ function startWorker(warmVision: boolean): void {
         }
         if (result.id !== pendingId) continue;
         // A quick Accessibility result can arrive before the full-window OCR.
-        // Keep the deadline until the final result; never wait at speech stop.
+        // Keep the deadline until the final result; never wait on the transcription path.
         if (result.status !== "partial") {
           clearTimeout(deadline);
           pendingId = null;
@@ -106,9 +106,14 @@ export function beginScreenContext(id: string): void {
   deadline.unref?.();
 }
 
+export function markScreenContextSpeechStopped(id: string): void {
+  if (screenContextSession.owns(id)) recordContextDebug(id, "speech-stopped", { termsReady: screenContextSession.read(id) });
+}
+
+/** Take what is ready at the point of use. Never wait for the capture worker. */
 export function freezeScreenContext(id: string): void {
   if (!screenContextSession.owns(id)) return;
-  recordContextDebug(id, "speech-stopped", { termsReady: screenContextSession.read(id) });
+  recordContextDebug(id, "context-frozen", { termsReady: screenContextSession.read(id) });
   screenContextSession.freeze(id);
 }
 

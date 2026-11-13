@@ -74,6 +74,34 @@ describe("localSttLifecycle", () => {
     expect((await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "numbered-name")).text)
       .not.toContain("DFlash2");
   });
+  it("takes a Parakeet context result that arrives during decode without waiting for OCR", async () => {
+    mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const { screenContextSession: session } = await import("./screenContextSession");
+    const { markScreenContextSpeechStopped } = await import("./screenContext");
+    session.begin("in-flight");
+    markScreenContextSpeechStopped("in-flight");
+    mocks.transcribeLocal.mockImplementation(async () => {
+      expect(session.accept("in-flight", ["DFlash2"])).toBe(true);
+      return { text: "T flash two.", metrics: {} };
+    });
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "in-flight");
+    expect(result.text).toBe("DFlash2.");
+    expect(session.accept("in-flight", ["TooLate"])).toBe(false);
+  });
+  it("freezes Whisper context before decode and rejects names that arrive afterwards", async () => {
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const { screenContextSession: session } = await import("./screenContextSession");
+    session.begin("whisper-start");
+    session.accept("whisper-start", ["DFlash2"]);
+    mocks.transcribeLocal.mockImplementation(async () => {
+      expect(session.accept("whisper-start", ["OtherName"])).toBe(false);
+      return { text: "D flash two.", metrics: {} };
+    });
+    await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "whisper-start");
+    expect(mocks.transcribeLocal.mock.calls[0][1]).toContain("DFlash2");
+  });
   it("uses ready session names for Whisper without saving them", async () => {
     const { transcribeWithLocalSidecar } = await importLifecycle();
     const { screenContextSession } = await import("./screenContextSession");

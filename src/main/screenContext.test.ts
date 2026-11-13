@@ -70,7 +70,17 @@ describe.runIf(process.platform === "darwin")("context helper deadlines", () => 
     service.stopScreenContext();
     expect(worker.kill).toHaveBeenCalledWith("SIGKILL");
   });
-  it("cannot add a late OCR result after speech ends", async () => {
+  it("accepts an in-flight result after speech stops until correction consumes it", async () => {
+    const { worker, service, session } = await setup();
+    service.beginScreenContext("a");
+    service.markScreenContextSpeechStopped("a");
+    worker.stdout.emit("data", JSON.stringify({ id: "a", status: "ready", terms: ["DFlash2"] }) + "\n");
+    service.freezeScreenContext("a");
+    expect(session.read("a")).toEqual(["DFlash2"]);
+    expect(session.accept("a", ["TooLate"])).toBe(false);
+    service.stopScreenContext();
+  });
+  it("cannot add an OCR result after its consumer freezes context", async () => {
     const { worker, service, session } = await setup();
     service.beginScreenContext("a");
     service.freezeScreenContext("a");

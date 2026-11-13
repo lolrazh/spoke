@@ -22,6 +22,7 @@ import { bootTimeline } from "./bootTimeline";
 import { getVocabularyDictionary } from "./vocabularyService";
 import { screenContextSession } from "./screenContextSession";
 import { contextDictionary } from "./contextVocabulary";
+import { freezeScreenContext } from "./screenContext";
 import { contextDebugEnabled, recordContextDebug, recordContextAudio, finishContextAudio } from "./contextDebug";
 import type { CorrectionTrace } from "../../shared/contextDebug";
 import { state } from "./windowState";
@@ -382,6 +383,7 @@ export async function transcribeWithLocalSidecar(
   // guard blocks the stop.
   armIdleTimer();
   try {
+    if (contextId && getModelStatus(modelId).family === "whisper") freezeScreenContext(contextId);
     const usedPrompt = buildWhisperPrompt(modelId, prompt, contextId);
     if (contextDebugEnabled(contextId)) {
       recordContextAudio(contextId, pcmBuffer);
@@ -393,6 +395,7 @@ export async function transcribeWithLocalSidecar(
       usedPrompt,
     );
     recordContextDebug(contextId, "decode-result", { raw: result.text, metrics: result.metrics });
+    if (contextId) freezeScreenContext(contextId);
     const dictionary = contextDictionary(contextId);
     return {
       ...result,
@@ -472,6 +475,7 @@ export async function beginLocalStreamingSession(
         const result = await sidecarSession.finish();
         finishContextAudio(contextId);
         recordContextDebug(contextId, "decode-result", { raw: result.text, metrics: result.metrics });
+        if (contextId) freezeScreenContext(contextId);
         const dictionary = contextDictionary(contextId);
         return {
           ...result,

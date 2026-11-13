@@ -1,6 +1,6 @@
 import { ipcMain, type WebContents } from "electron";
 import { spawn } from "node:child_process";
-import { beginScreenContext, endScreenContext, freezeScreenContext, stopScreenContext, prewarmScreenContext } from "../screenContext";
+import { beginScreenContext, endScreenContext, markScreenContextSpeechStopped, stopScreenContext, prewarmScreenContext } from "../screenContext";
 import { state } from "../windowState";
 import { saveAppPreferences } from "../preferences";
 import { getHelperPath } from "../helperPaths";
@@ -41,7 +41,7 @@ export function registerContextIpc(): void {
     if (state.appPreferences.screenContextEnabled !== false) beginScreenContext(id);
   });
   ipcMain.on("context:freeze", (event, id: string) => {
-    if (ownsScreenContext(event.sender, id)) freezeScreenContext(id);
+    if (ownsScreenContext(event.sender, id)) markScreenContextSpeechStopped(id);
   });
   ipcMain.on("context:outcome", (event, id: string, text: unknown) => {
     if (ownsScreenContext(event.sender, id) && typeof text === "string") recordContextDebug(id, "renderer-final", { text: text.slice(0, 20_000) });

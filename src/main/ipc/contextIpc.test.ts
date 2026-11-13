@@ -9,7 +9,7 @@ vi.mock("electron", () => ({ ipcMain: {
   on: (name: string, fn: (...args: any[]) => any) => mocks.on.set(name, fn),
   handle: (name: string, fn: (...args: any[]) => any) => mocks.handlers.set(name, fn),
 } }));
-vi.mock("../screenContext", () => ({ beginScreenContext: mocks.begin, endScreenContext: mocks.end, freezeScreenContext: mocks.freeze, stopScreenContext: mocks.stop, prewarmScreenContext: mocks.warm }));
+vi.mock("../screenContext", () => ({ beginScreenContext: mocks.begin, endScreenContext: mocks.end, markScreenContextSpeechStopped: mocks.freeze, stopScreenContext: mocks.stop, prewarmScreenContext: mocks.warm }));
 vi.mock("../pasteDaemon", () => ({ stopEditLearning: mocks.stopLearning }));
 vi.mock("../preferences", () => ({ saveAppPreferences: mocks.save }));
 vi.mock("../helperPaths", () => ({ getHelperPath: () => "/unused/helper" }));
