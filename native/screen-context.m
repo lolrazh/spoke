@@ -245,27 +245,44 @@ static CGWindowID TopWindow(pid_t pid) {
     return 0;
 }
 
-static BOOL SameTarget(pid_t pid, id window, CGWindowID windowID) {
-    // ScreenCaptureKit can initialize AppKit on the main queue for seconds.
-    // Ask the target app whether it is frontmost instead of waiting on that queue.
-    AXUIElementRef app = AXUIElementCreateApplication(pid);
-    BOOL frontmost = [Attribute(app, kAXFrontmostAttribute) isEqual:@YES];
-    if (!frontmost || (!window && windowID && TopWindow(pid) != windowID)) { CFRelease(app); return NO; }
-    id nextFocus = Attribute(app, kAXFocusedUIElementAttribute);
-    id nextWindow = Attribute(app, kAXFocusedWindowAttribute);
-    CFRelease(app);
-    return (!window || [window isEqual:nextWindow]) &&
-           (!nextFocus || !Protected((__bridge AXUIElementRef)nextFocus));
+// Tree walking uses a short per-call budget. Identity checks retry a missing
+// value once: a busy browser can exceed that budget without changing focus.
+static id TargetAttribute(AXUIElementRef element, CFStringRef key) {
+    id value = Attribute(element, key);
+    if (value) return value;
+    AXUIElementSetMessagingTimeout(element, 0.075f);
+    CFTypeRef retry = NULL;
+    if (AXUIElementCopyAttributeValue(element, key, &retry) != kAXErrorSuccess) return nil;
+    return CFBridgingRelease(retry);
 }
 
-static void WatchTarget(NSString *identifier, pid_t pid, id window, CGWindowID windowID, unsigned int generation, dispatch_queue_t queue, CFAbsoluteTime start) {
+static BOOL SameTarget(pid_t pid, id window, CGWindowID windowID, NSString **reason) {
+    // Browser AXFrontmost can remain true after an app switch. Read the OS
+    // active app on the main run loop; idle preparation initializes AppKit
+    // before capture so this check does not wait behind its cold startup.
+    __block pid_t current;
+    dispatch_sync(dispatch_get_main_queue(), ^{ current = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier; });
+    if (current != pid) { *reason = @"target-app-changed"; return NO; }
+    AXUIElementRef app = AXUIElementCreateApplication(pid);
+    if (!window && windowID && TopWindow(pid) != windowID) { *reason = @"target-window-changed"; CFRelease(app); return NO; }
+    id nextFocus = TargetAttribute(app, kAXFocusedUIElementAttribute);
+    id nextWindow = TargetAttribute(app, kAXFocusedWindowAttribute);
+    CFRelease(app);
+    if (window && ![window isEqual:nextWindow]) { *reason = nextWindow ? @"target-window-changed" : @"target-window-unavailable"; return NO; }
+    if (nextFocus && Protected((__bridge AXUIElementRef)nextFocus)) { *reason = @"target-protected"; return NO; }
+    return YES;
+}
+
+static void WatchTarget(NSString *identifier, pid_t pid, id window, CGWindowID windowID, unsigned int generation, dispatch_queue_t queue, CFAbsoluteTime start, BOOL debug) {
     if (atomic_load(&captureGeneration) != generation || CFAbsoluteTimeGetCurrent() - start > 300) return;
-    if (!SameTarget(pid, window, windowID)) {
+    NSString *reason = nil;
+    if (!SameTarget(pid, window, windowID, &reason)) {
+        DebugStage(debug, identifier, reason, start);
         Reply(identifier, @[], @"none", @"target-changed", start);
         return;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), queue, ^{
-        @autoreleasepool { WatchTarget(identifier, pid, window, windowID, generation, queue, start); }
+        @autoreleasepool { WatchTarget(identifier, pid, window, windowID, generation, queue, start, debug); }
     });
 }
 
@@ -288,21 +305,22 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
     DebugStage(debug, identifier, @"accessibility-ready", start);
     CGWindowID target = TopWindow(pid);
     if (trace) trace[@"accessibility"] = axTrace;
-    if (!SameTarget(pid, window, target)) { Reply(identifier, @[], @"none", @"target-changed", start); return; }
+    NSString *reason = nil;
+    if (!SameTarget(pid, window, target, &reason)) { DebugStage(debug, identifier, reason, start); Reply(identifier, @[], @"none", @"target-changed", start); return; }
     if (coversContent) {
         Reply(identifier, names, @"accessibility", @"ready", start);
         trace[@"source"] = @"accessibility";
         DebugReply(identifier, trace, NULL);
-        WatchTarget(identifier, pid, window, target, generation, queue, start);
+        WatchTarget(identifier, pid, window, target, generation, queue, start, debug);
         return;
     }
-    if (!CGPreflightScreenCaptureAccess()) { Reply(identifier, names, @"accessibility", @"screen-permission", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start); return; }
+    if (!CGPreflightScreenCaptureAccess()) { Reply(identifier, names, @"accessibility", @"screen-permission", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start, debug); return; }
 
     // Pin the frontmost on-screen window of this process. Never fall back to
     // another app or the whole display when a window cannot be identified.
-    if (!target) { Reply(identifier, names, @"accessibility", @"no-window", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start); return; }
+    if (!target) { Reply(identifier, names, @"accessibility", @"no-window", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start, debug); return; }
     if (names.count) Reply(identifier, names, @"accessibility", @"partial", start);
-    WatchTarget(identifier, pid, window, target, generation, queue, start);
+    WatchTarget(identifier, pid, window, target, generation, queue, start, debug);
     [SCShareableContent getShareableContentExcludingDesktopWindows:YES onScreenWindowsOnly:YES completionHandler:^(SCShareableContent *content, NSError *error) {
         DebugStage(debug, identifier, @"windows-ready", start);
         SCWindow *selected = nil;
@@ -362,7 +380,9 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
                     DebugStage(debug, identifier, @"ocr-ready", start);
                     if (trace) trace[@"ocr"] = ocrTrace;
                     if (atomic_load(&captureGeneration) != generation) { CGImageRelease(image); return; }
-                    BOOL valid = SameTarget(pid, window, target);
+                    NSString *reason = nil;
+                    BOOL valid = SameTarget(pid, window, target, &reason);
+                    if (!valid) DebugStage(debug, identifier, reason, start);
                     Reply(identifier, valid ? terms : @[], @"ocr", valid ? @"ready" : @"target-changed", start);
                     DebugReply(identifier, trace, image);
                     CGImageRelease(image);
