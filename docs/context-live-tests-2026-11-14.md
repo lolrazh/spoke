@@ -1,0 +1,64 @@
+# Local context live tests — 14 November 2026
+
+Tests ran in the development app on the Mac’s Virtual 16:9 display. These are local microphone and paste tests, not a packaged-release certification.
+
+## Method
+
+- A native helper focused only named test windows on the virtual display and sent real Right Option down/up events. The user approved this automation.
+- Local Samantha speech played through the Mac speakers into the default Mac microphone. The test used a one-second lead-in after key-down. Spoke ran microphone capture, VAD, local Parakeet, local correction, and its normal paste helper.
+- TextEdit held the names in an accessible document. Safari and Dia used a localhost page with the names drawn on a canvas near the bottom. The canvas text was absent from Accessibility.
+- Each field was cleared before a run. Native AX readback checked the inserted text against the final transcript, allowing only surrounding whitespace and case differences. CUA also confirmed visible results.
+- The full phrase was “Use D flash two for this project. Test N, V, F, P, four as well.” The short phrase was “D flash two.” No audio device or volume preference was changed.
+
+## Repeat matrix before the final timing changes
+
+This nine-run matrix followed the window-capture and acronym fixes. Later tests below led to additional idle-worker and context-consumption changes. It must not be treated as nine trials of the final commit.
+
+| App | Path | Context names found | Paste matched final text | Both names in output | Context ready (ms) |
+| --- | --- | --- | --- | --- | --- |
+| TextEdit | accessibility | 3/3 | 3/3 | 2/3 | 553, 139, 114 |
+| Safari | ocr | 3/3 | 3/3 | 3/3 | 4315, 1252, 1558 |
+| Dia | ocr | 3/3 | 3/3 | 3/3 | 1992, 2044, 1748 |
+
+The TextEdit name failure contained `N, E, F, P, 4`. Correction kept the commas. The selected lists had 4 terms in TextEdit, 8 in Safari, and 5 in Dia, below the 24-term cap. Browser UI labels added some noise, but the cap did not exclude either target name. Native insertion took 40–119 ms in these nine runs; this excludes recognition time and is not an A/B performance comparison.
+
+## Final consumption-timing build
+
+| Case | App | Context ready (ms) | Context names found | Inserted text | Paste matched |
+| --- | --- | --- | --- | --- | --- |
+| consume-safari-full | Safari | 2092 | yes | Use DFlash2 for this project. Test NVFP4 as well. | yes |
+| consume-safari-short-1 | Safari | 438 | yes | DFlash2. | yes |
+| consume-textedit-full | TextEdit | 350 | yes | Use DFlash2 for this project. Test NVFP4 as well. | yes |
+| consume-safari-short-after-idle | Safari | 1944 | yes | DFlash2. | yes |
+
+## Failures found and changes made
+
+1. Desktop-independent window capture returned ScreenCaptureKit error `-3811` on the virtual display. Capture now uses a display filter that includes only the target window. Geometry checks cover an offset external display and a window spanning displays.
+2. ScreenCaptureKit initialized AppKit on the main queue during capture. A worker sample showed target validation blocked behind this initialization. Idle preparation now initializes AppKit and Vision without reading screen text or pixels. One worker remains ready while the feature is enabled; dictation terms are still cleared each time.
+3. A browser’s AX frontmost flag stayed true during a deliberate app switch. The final code uses the OS active-app check, plus AX window identity. The native switch test rejected the capture after moving from Dia to TextEdit. Missing AX identity attributes get one bounded retry, and debug stages record the reason for rejection.
+4. `T flash 2` needed a guarded voiced-initial correction. Spelled acronym normalization also transformed `N P F P 4` into `NPFP 4` before dictionary matching. Both forms now use a unique numbered-acronym match. Digits, ambiguous alternatives, ordinary conjunctions, and punctuation boundaries remain protected.
+5. A short run ended at 4,051 ms; OCR finished at 4,081 ms while Parakeet was still decoding. Freezing at speech stop discarded usable context. Whisper now freezes at prompt submission; other local models freeze immediately before final correction. Neither path waits for OCR. The capture work limit is eight seconds.
+6. Diagnostic records now include capture stages and native capture errors, so a terminated worker does not erase the location of a stall. Recording remains opt-in.
+
+## Controls and limits
+
+- Removing the reference names in Dia produced a new dictionary with neither `DFlash2` nor `NVFP4`. Ordinary control text was unchanged and pasted correctly. No prior screen terms leaked into that control.
+- An idle-worker sample showed about 33 MB before capture and 42–62 MB after use, with 0% CPU at the sampled idle times. The same worker remained alive beyond the former one-minute shutdown.
+- Earlier short runs failed when OCR arrived after the old freeze boundary. Other acoustic playback runs produced `and VFP4`, `St flash 2`, comma-separated letters, or omitted opening words. Those failures are retained in the local data. They are not counted as successful recognition merely because paste matched.
+- Recognition is not perfect. These speaker-to-microphone tests do not establish human-speech accuracy or microphone-start readiness for immediate speech. The remaining startup/audio-recognition failures need separate work; dictionary correction must not fabricate missing speech.
+- First capture after startup and captures under load still took several seconds in some runs. If context is not ready by its point of use, Spoke omits it instead of delaying dictation or paste.
+- Screen capture, OCR, tagging, correction, and test records stayed local. No cloud OCR was used. These tests do not cover every app, secure fields, live permission revocation, or live verified-edit learning.
+
+## Checks and local evidence
+
+- 675 tests across 76 files passed. The final run used two Vitest workers and a 15-second per-test limit after an earlier run timed out under system load; no test source timeout was relaxed. TypeScript passed. ESLint had no errors and 18 warnings.
+- Native name/coverage assertions and 12 OCR fixtures passed their expected assertions. Ten of the 12 fixtures detected `DFlash2`; all six at 1.5x did. Small 1x text remains a known Vision fast-mode limit.
+- Local debug sets are under `~/Library/Application Support/Spoke/context-debug/`. Raw screen text, audio, images, and saved personal vocabulary are not committed or uploaded.
+- Initial repeat set: `2026-11-13T20-21-50-188Z-9ea108f3`.
+- Final timing set: `2026-11-13T21-33-02-384Z-43b2af42`.
+- The local evidence bundle beside the final set contains the native driver source, localhost fixture, run results, and focus-switch trace. Run IDs below map each final check to its JSON, image, and audio in the app’s debug viewer.
+
+- `consume-safari-full`: `87759bea-d3fa-4df1-b649-f7561ecafa07`
+- `consume-safari-short-1`: `dbe1f701-9a33-4ace-a3bb-e26bdb779cd7`
+- `consume-textedit-full`: `e7b6f7ae-45c1-4acd-8fcd-1edbb2bf7fa6`
+- `consume-safari-short-after-idle`: `07035951-0c10-46be-acbe-bd18d88370be`

@@ -87,8 +87,9 @@ The Dictionary view has two independent controls, enabled by default:
   area covers at least 80% of the window, it supplements those terms with local
   Apple Vision OCR. OCR needs the
   optional screen recording permission; the app requests it only from the
-  **Allow local screen reading** button. It reads the visible window at
-  1–1.5 pixels per point, with an 8-million-pixel limit. An oversized window is
+  **Allow local screen reading** button. It reads the visible portion of the
+  target window on the display with the largest overlap, at 1–1.5 pixels per
+  point, with an 8-million-pixel limit. An oversized window is
   cropped around its centre; debug records show when that limit clipped it.
   It does not reduce a full window to a small, unreadable image.
 - **Learn verified name corrections** first checks that the exact pasted text
@@ -104,11 +105,15 @@ vocabulary hints. Other models use the existing local dictionary correction
 step because they do not accept this prompt. No context or edit text is sent
 to a server. Only accepted word pairs and removal preferences are saved.
 
-Context never waits on the paste path. Results that are not ready when speech
-stops are skipped. A context worker that stalls is stopped after four seconds.
-That background budget allows cold initialization while speech continues; it
-does not extend recording or delay paste. Idle preparation warms the worker,
-but a cold capture never queues behind an extra synthetic OCR request.
+Context never waits on the decode or paste path. Whisper takes the available
+terms when its prompt is submitted. Other local models take them when final
+dictionary correction starts, so in-flight OCR can finish during decode. Later
+results are skipped. A stalled capture is stopped after eight seconds; this
+background budget does not extend recording or delay paste. Idle preparation
+initializes AppKit and Vision without reading screen content.
+One prepared worker stays idle while this feature is enabled; it stops when the
+feature is disabled or the app quits. Each dictation still starts with no terms.
+An unexpected cold capture does not queue behind an extra synthetic OCR request.
 App/window changes and protected fields discard context. Moving focus within
 the same window keeps its context. Starting another dictation stops edit watching.
 Learning skips protected fields, unsupported AX fields, and documents whose
@@ -240,3 +245,5 @@ See [the release notes guide](releases/README.md) for the release process.
 
 Spoke's application code is available under the [MIT License](LICENSE).
 Third-party dependencies and speech-model weights retain their own licenses.
+
+Live microphone, capture, and paste results: [14 November test report](docs/context-live-tests-2026-11-14.md).
