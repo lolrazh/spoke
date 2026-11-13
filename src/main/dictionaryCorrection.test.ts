@@ -1,8 +1,42 @@
 import { describe, expect, it } from "vitest";
 import { correctTranscript } from "./dictionaryCorrection";
 import { isDictionaryWord } from "./dictionaryMembership";
+import type { CorrectionTrace } from "../../shared/contextDebug";
 
 describe("main/dictionaryCorrection", () => {
+  it("records phrase decisions without changing the normal correction result", () => {
+    const trace: CorrectionTrace[] = [];
+    const input = "D flash two";
+    expect(correctTranscript(input, ["DFlash2"], trace)).toBe(correctTranscript(input, ["DFlash2"]));
+    expect(correctTranscript(input, ["DFlash2"])).toBe("DFlash2");
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "phrase", source: "D flash two", target: "DFlash2", path: "exact-phrase" }));
+  });
+  it.each([
+    ["Use D flash two today.", "Use DFlash2 today."],
+    ["Use D flash 2 today.", "Use DFlash2 today."],
+    ["Use Dflash two today.", "Use DFlash2 today."],
+    ["DFlash2", "DFlash2"],
+    ["Use D flash today.", "Use D flash today."],
+    ["Use Dflash today.", "Use Dflash today."],
+    ["Use D flash three today.", "Use D flash three today."],
+    ["Use DFlash3 today.", "Use DFlash3 today."],
+    ["D flash to the left.", "D flash to the left."],
+    ["D flash too.", "D flash too."],
+    ["D flash. Two files.", "D flash. Two files."],
+    ["D flash\ntwo files.", "D flash\ntwo files."],
+  ])("matches the full numbered identifier, preserving other words: %s", (input, expected) => {
+    expect(correctTranscript(input, ["DFlash2"])).toBe(expected);
+  });
+  it("keeps digits intact across competing entries", () => {
+    expect(correctTranscript("D flash two", ["DFlash2", "DFlash3"])).toBe("DFlash2");
+    expect(correctTranscript("D flash four", ["DFlash2", "DFlash3"])).toBe("D flash four");
+    expect(correctTranscript("D flash two", ["DFlash2", "D Flash 2"])).toBe("D flash two");
+    expect(correctTranscript("DFlash2", ["DFlash"])).toBe("DFlash2");
+  });
+  it("handles numbered entries without internal capitals", () => {
+    expect(correctTranscript("Use Llama three", ["Llama3"])).toBe("Use Llama3");
+    expect(correctTranscript("Use H two O", ["H2O"])).toBe("Use H2O");
+  });
   it("corrects a phonetically garbled name against the dictionary", () => {
     expect(
       correctTranscript("I met with Sandheap yesterday", ["Sandheep"]),

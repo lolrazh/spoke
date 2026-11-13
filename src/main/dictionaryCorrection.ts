@@ -1,6 +1,8 @@
 import { doubleMetaphone } from "double-metaphone";
 import { distance } from "fastest-levenshtein";
 import subtlexWords from "subtlex-word-frequencies";
+import type { CorrectionTrace } from "../../shared/contextDebug";
+import { identifierSpellingKey, sameDigits } from "./identifierSpelling";
 
 const MIN_TOKEN_LENGTH = 4;
 const COMMON_WORD_LIMIT = 30000;
@@ -68,6 +70,7 @@ function isPhraseAwareEntry(entry: string): boolean {
   return (
     /\s/u.test(entry) ||
     /[^\p{L}\p{N}']/u.test(entry) ||
+    /\p{N}/u.test(entry) ||
     /\p{Lu}/u.test(entry.slice(1))
   );
 }
@@ -188,17 +191,15 @@ function* possibleLengths<T>(
 
 // The vocabulary service replaces the dictionary array on every mutation and
 // the prefs loader parses a fresh one. Neither mutates it in place, so reference
-// identity is a correct invalidation signal: one slot, rebuilt only when the
-// dictionary actually changes.
-let cachedDictionary: readonly string[] | null = null;
-let cachedIndex: Index | null = null;
+// identity is a correct invalidation signal. Keep saved and session indexes
+// independently, so a context result cannot cause a rebuild at finalization.
+// Weak keys release temporary screen names when their session ends.
+const cachedIndexes = new WeakMap<readonly string[], Index>();
 
 function getIndex(dictionary: readonly string[]): Index {
-  if (dictionary !== cachedDictionary || cachedIndex === null) {
-    cachedIndex = buildIndex(dictionary);
-    cachedDictionary = dictionary;
-  }
-  return cachedIndex;
+  let index = cachedIndexes.get(dictionary);
+  if (!index) { index = buildIndex(dictionary); cachedIndexes.set(dictionary, index); }
+  return index;
 }
 
 /** Build the vocabulary index while capture/ASR runs, before final text arrives. */
@@ -229,6 +230,7 @@ function bestFrom(
 
   const scan = (keys: Iterable<string>) => {
     for (const key of keys) {
+      if (!sameDigits(lower, key)) continue;
       if (key.length < minLength || key.length > maxLength) continue;
       const sim = similarity(lower, key);
       if (sim < threshold) continue;
@@ -276,6 +278,7 @@ function scorePhraseCandidates(
 ): ScoredPhrase[] {
   const bestByEntry = new Map<string, ScoredPhrase>();
   for (const candidate of candidates) {
+    if (!sameDigits(key, candidate.key)) continue;
     const sim = similarity(key, candidate.key);
     if (sim < threshold) continue;
     const entryKey = candidate.entry.toLowerCase();
@@ -434,8 +437,10 @@ function findMatchUncached(
 export function correctTranscript(
   text: string,
   dictionary: readonly string[],
+  trace?: CorrectionTrace[],
 ): string {
-  if (dictionary.length === 0) return text;
+  const record = (event: CorrectionTrace) => { if (trace && trace.length < 128) trace.push(event); };
+  if (!Array.isArray(dictionary) || dictionary.length === 0) return text;
   const index = getIndex(dictionary);
   const tokens = [...text.matchAll(WORD_SPAN)];
   if (tokens.length === 0) return text;
@@ -453,19 +458,21 @@ export function correctTranscript(
       stem = stem.slice(0, -1);
     }
 
-    if (stem.length < MIN_TOKEN_LENGTH) return token;
+    if (stem.length < MIN_TOKEN_LENGTH) { if (trace) record({ kind: "word", source: token, outcome: "too-short" }); return token; }
     const lower = stem.toLowerCase();
-    if (COMMON_WORDS.has(lower)) return token;
+    if (COMMON_WORDS.has(lower)) { if (trace) record({ kind: "word", source: token, outcome: "common-word" }); return token; }
 
     const exact = index.canonical.get(lower);
     if (exact !== undefined) {
       const cased = matchCasing(exact, stem);
+      if (trace) record({ kind: "word", source: token, outcome: "matched", target: cased, path: "exact" });
       return `${cased}${possessive}`;
     }
 
     const match = findMatch(stem, lower, index);
-    if (!match) return token;
+    if (!match) { if (trace) record({ kind: "word", source: token, outcome: "no-match-or-ambiguous" }); return token; }
     const cased = matchCasing(match.word, stem);
+    if (trace) record({ kind: "word", source: token, outcome: "matched", target: cased, path: match.path, score: match.sim });
     return `${cased}${possessive}`;
   };
 
@@ -502,7 +509,14 @@ export function correctTranscript(
       );
       const key = normalizePhrase(source);
       if (key.length < MIN_TOKEN_LENGTH) continue;
-      const match = findPhraseMatch(key, index);
+      // Spoken digits are allowed only for a complete, exact vocabulary entry.
+      // Do not feed this key into phonetic matching: that can swallow neighbors.
+      const identifierKey = identifierSpellingKey(source);
+      const digitMatch = /\d/u.test(identifierKey) && identifierKey !== key
+        ? unambiguousPhrase(scorePhraseCandidates(index.phraseCanonical.get(identifierKey) ?? [], identifierKey, 1), "exact-phrase")
+        : null;
+      const match = digitMatch ?? findPhraseMatch(key, index);
+      if (trace) record({ kind: "phrase", source, key, outcome: match ? "matched" : "no-match-or-ambiguous", ...(match ? { target: match.entry, path: match.path, score: match.sim } : {}) });
       if (!match) continue;
       phrase = {
         count,
