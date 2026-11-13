@@ -301,7 +301,7 @@ type PhraseMatch = {
 function findSpelledAcronymMatch(source: string, index: Index): PhraseMatch | null {
   // Preserve the same uniqueness and digit guards when ASR separates letters.
   // Ordinary words and conjunctions such as "and VFP4" are not eligible.
-  if (!/^[A-Z](?:[ \t]+[A-Z]){2,7}[ \t]*[0-9]+$/u.test(source)) return null;
+  if (!/^(?:[A-Z]{3,8}[ \t]+|[A-Z](?:[ \t]+[A-Z]){2,7}[ \t]*)[0-9]+$/u.test(source)) return null;
   const compact = source.replace(/[ \t]/gu, "");
   if (index.phraseCanonical.has(compact.toLowerCase())) return null;
   const match = numberedAcronymMatch(compact, index);

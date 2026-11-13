@@ -44,6 +44,7 @@ describe("main/dictionaryCorrection", () => {
   it("repairs separated acronym letters with the same ambiguity and digit guards", () => {
     expect(correctTranscript("Test N P F P 4 as well.", ["NVFP4"])).toBe("Test NVFP4 as well.");
     expect(correctTranscript("N P F P4", ["NVFP4"])).toBe("NVFP4");
+    expect(correctTranscript("NPFP 4", ["NVFP4"])).toBe("NVFP4");
     expect(correctTranscript("N P F P 5", ["NVFP4"])).toBe("N P F P 5");
     expect(correctTranscript("N P F P 4", ["NVFP4", "NBFP4"])).toBe("N P F P 4");
     expect(correctTranscript("N P F P 4", ["NVFP4", "NPFP4"])).toBe("NPFP4");
