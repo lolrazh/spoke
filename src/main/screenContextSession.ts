@@ -6,6 +6,8 @@ export class ScreenContextSession {
     this.current = { id, frozen: false, terms: [] };
   }
 
+  owns(id: string): boolean { return this.current?.id === id; }
+
   accept(id: string, terms: unknown): boolean {
     const current = this.current;
     if (!current || current.id !== id || current.frozen || !Array.isArray(terms)) return false;
@@ -27,7 +29,10 @@ export class ScreenContextSession {
   }
 
   invalidate(id: string): void {
-    if (this.current?.id === id) this.current.terms = [];
+    if (this.current?.id === id) {
+      this.current.terms = [];
+      this.current.frozen = true;
+    }
   }
 
   read(id?: string): readonly string[] {

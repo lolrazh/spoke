@@ -18,7 +18,7 @@ function RunDetails({ run, image }: { run: ContextDebugRun; image?: string }) {
   const ocr = native?.ocr as Record<string, unknown> | undefined;
   const chosen = ocr ?? ax;
   const selected = terms(chosen?.selectedTerms);
-  const accepted = run.events.find(event => event.stage === "context-acceptance")?.data;
+  const accepted = run.events.filter(event => event.stage === "context-acceptance").at(-1)?.data;
   const stopped = run.events.find(event => event.stage === "speech-stopped")?.data;
   const correction = run.events.filter(event => event.stage === "correction").at(-1)?.data;
   const dictionary = terms(correction?.dictionary);

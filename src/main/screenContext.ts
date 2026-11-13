@@ -9,7 +9,7 @@ let child: ChildProcessWithoutNullStreams | null = null;
 let deadline: ReturnType<typeof setTimeout> | undefined;
 let idle: ReturnType<typeof setTimeout> | undefined;
 let pendingId: string | null = null;
-let lastStarted = 0;
+let retryAfter = 0;
 const DEADLINE_MS = 2000;
 
 export function stopScreenContext(): void {
@@ -26,10 +26,9 @@ export function stopScreenContext(): void {
 export function prewarmScreenContext(): void {
   if (child || process.platform !== "darwin") return;
   // A broken helper must not enter a restart loop on each key event.
-  if (Date.now() - lastStarted < 5000) return;
+  if (Date.now() < retryAfter) return;
   const path = getHelperPath();
   if (!existsSync(path)) return;
-  lastStarted = Date.now();
   const worker = spawn(path, ["--mode=context-daemon"], { stdio: "pipe" });
   worker.stderr.resume();
   child = worker;
@@ -52,8 +51,12 @@ export function prewarmScreenContext(): void {
           clearContextVocabulary();
         }
         if (result.id !== pendingId) continue;
-        clearTimeout(deadline);
-        pendingId = null;
+        // A quick Accessibility result can arrive before the full-window OCR.
+        // Keep the deadline until the final result; never wait at speech stop.
+        if (result.status !== "partial") {
+          clearTimeout(deadline);
+          pendingId = null;
+        }
         const accepted = screenContextSession.accept(result.id, result.terms);
         recordContextDebug(result.id, "context-acceptance", { accepted, terms: screenContextSession.read(result.id) });
         if (accepted) contextDictionary(result.id);
@@ -65,9 +68,14 @@ export function prewarmScreenContext(): void {
       } catch { /* Ignore non-protocol startup output. */ }
     }
   });
-  worker.stdin.on("error", () => { if (child === worker) stopScreenContext(); });
-  worker.on("error", () => { if (child === worker) stopScreenContext(); });
-  worker.on("exit", () => { if (child === worker) stopScreenContext(); });
+  const failed = () => {
+    if (child !== worker) return;
+    retryAfter = Date.now() + 5000;
+    stopScreenContext();
+  };
+  worker.stdin.on("error", failed);
+  worker.on("error", failed);
+  worker.on("exit", failed);
   // A tiny synthetic image warms Vision; this reads no screen content.
   worker.stdin.write('{"command":"warm"}\n');
   idle = setTimeout(stopScreenContext, 60_000);
@@ -95,11 +103,13 @@ export function beginScreenContext(id: string): void {
 }
 
 export function freezeScreenContext(id: string): void {
+  if (!screenContextSession.owns(id)) return;
   recordContextDebug(id, "speech-stopped", { termsReady: screenContextSession.read(id) });
   screenContextSession.freeze(id);
 }
 
 export function endScreenContext(id: string): void {
+  if (!screenContextSession.owns(id)) return;
   screenContextSession.end(id);
   clearContextVocabulary();
   child?.stdin.write(JSON.stringify({ command: "cancel", id }) + "\n");

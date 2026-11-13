@@ -41,6 +41,7 @@ describe("debug test controls", () => {
     const value = await api.read();
     value.run.events = [
       { atMs: 1, stage: "native-context", data: { source: "ocr", ocr: { text: "Use DFlash2.", selectedTerms: ["DFlash2", "NVFP4"] } } },
+      { atMs: 1.5, stage: "context-acceptance", data: { accepted: true, terms: ["ChatGPT"] } },
       { atMs: 2, stage: "context-acceptance", data: { accepted: true, terms: ["DFlash2", "NVFP4"] } },
       { atMs: 3, stage: "speech-stopped", data: { termsReady: [] } },
       { atMs: 4, stage: "correction", data: { raw: "D flash two", corrected: "D flash two", dictionary: ["SavedName"], trace: [] } },
@@ -52,6 +53,7 @@ describe("debug test controls", () => {
     expect(summary.ocrCharacters).toBe(12);
     expect(summary.extractedTerms).toBe(2);
     expect(summary.acceptedBySession).toBe(true);
+    expect(summary.acceptedTerms).toEqual(["DFlash2", "NVFP4"]);
     expect(summary.termsAtSpeechStop).toEqual([]);
     expect(summary.finalDictionaryCount).toBe(1);
     expect(summary.extractedTermsAbsentFromFinalDictionary).toEqual(["DFlash2", "NVFP4"]);

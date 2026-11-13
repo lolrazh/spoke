@@ -1,5 +1,5 @@
-// A separate process from the clipboard helper. No network, image files, or raw
-// text output. Only a bounded name list leaves this process over stdin/stdout.
+// A separate process from the clipboard helper. Normal mode emits only bounded
+// terms. Explicit debug mode can emit local text and images. No network access.
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <Vision/Vision.h>
@@ -33,28 +33,12 @@ static CGRect ElementFrame(AXUIElementRef element) {
     return (CGRect){p, s};
 }
 
-static CGRect ContextFrame(AXUIElementRef element) {
-    id selected = Attribute(element, kAXSelectedTextRangeAttribute);
-    CFRange range;
-    if (selected && CFGetTypeID((__bridge CFTypeRef)selected) == AXValueGetTypeID() &&
-        AXValueGetValue((__bridge AXValueRef)selected, kAXValueCFRangeType, &range) && range.location >= 0) {
-        range.length = 0;
-        AXValueRef parameter = AXValueCreate(kAXValueCFRangeType, &range);
-        CFTypeRef result = NULL;
-        AXUIElementCopyParameterizedAttributeValue(element, kAXBoundsForRangeParameterizedAttribute, parameter, &result);
-        CFRelease(parameter);
-        CGRect caret = CGRectZero;
-        BOOL valid = result && CFGetTypeID(result) == AXValueGetTypeID() &&
-            AXValueGetValue((AXValueRef)result, kAXValueCGRectType, &caret);
-        if (result) CFRelease(result);
-        if (valid && caret.size.height > 0) { caret.size.width = MAX(1, caret.size.width); return caret; }
-    }
-    return ElementFrame(element);
-}
-
 static NSArray<NSString *> *ExtractNames(NSString *text, NSMutableDictionary *trace) {
     if (text.length > 4000) text = [text substringToIndex:4000];
     NSMutableArray<NSString *> *names = [NSMutableArray array];
+    NSMutableArray<NSString *> *tagged = [NSMutableArray array];
+    NSMutableArray<NSString *> *identifiers = [NSMutableArray array];
+    NSMutableArray<NSString *> *acronyms = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];
     NSMutableArray *tags = trace ? [NSMutableArray array] : nil;
     NSMutableArray *rules = trace ? [NSMutableArray array] : nil;
@@ -72,81 +56,133 @@ static NSArray<NSString *> *ExtractNames(NSString *text, NSMutableDictionary *tr
                      usingBlock:^(NLTag tag, NSRange range, BOOL *stop) {
         BOOL selected = [tag isEqual:NLTagPersonalName] || [tag isEqual:NLTagPlaceName] || [tag isEqual:NLTagOrganizationName];
         if (tags && tags.count < 256) [tags addObject:@{@"text": [text substringWithRange:range], @"tag": tag ?: @"Other", @"selected": @(selected)}];
-        if (selected)
-            add([text substringWithRange:range]);
-        *stop = names.count >= 24;
+        if (selected && tagged.count < 128) [tagged addObject:[text substringWithRange:range]];
     }];
     // NLTagger does not reliably know product names and code symbols. Keep
     // distinctive mixed-case identifiers, acronyms, and letter/digit product names.
     // NLTagger labels DFlash2 as OtherWord. Require a capital letter so units
     // such as 32px and ordinary lowercase tokens do not become product hints.
-    NSRegularExpression *tokens = [NSRegularExpression regularExpressionWithPattern:@"\\b(?:[\\p{Lu}]{2,12}|[\\p{L}]*\\p{Ll}\\p{Lu}[\\p{L}\\p{N}]*|[\\p{Lu}]{2,}[\\p{Ll}][\\p{L}]*|(?=[\\p{L}\\p{N}]*\\p{Lu})(?=[\\p{L}\\p{N}]*\\p{N})\\p{L}[\\p{L}\\p{N}]*)\\b" options:0 error:nil];
+    NSRegularExpression *tokens = [NSRegularExpression regularExpressionWithPattern:@"\\b(?:[\\p{Lu}]{2,12}|[\\p{L}]*\\p{Ll}\\p{Lu}[\\p{L}]*[0-9]*|[\\p{Lu}]{2,}[\\p{Ll}][\\p{L}]*|\\p{Lu}[\\p{L}]*[0-9]+|[A-Z]{2,}[0-9]+[a-z]+|[A-Z][A-Z0-9]*[0-9][A-Z0-9]*)\\b" options:0 error:nil];
     for (NSTextCheckingResult *match in [tokens matchesInString:text options:0 range:NSMakeRange(0, text.length)]) {
-        add([text substringWithRange:match.range]);
-        if (rules.count < 128) [rules addObject:[text substringWithRange:match.range]];
+        NSString *term = [text substringWithRange:match.range];
+        if ([@[@"KB", @"MB", @"GB", @"TB", @"PX"] containsObject:term]) continue;
+        BOOL acronym = [term isEqual:term.uppercaseString] && [term rangeOfCharacterFromSet:NSCharacterSet.decimalDigitCharacterSet].location == NSNotFound;
+        [(acronym ? acronyms : identifiers) addObject:term];
+        if (rules.count < 128) [rules addObject:term];
     }
+    // Read the entire bounded text before applying the limit. Distinctive
+    // identifiers near the bottom must not lose to 24 earlier generic names.
+    for (NSString *term in identifiers) add(term);
+    for (NSString *term in tagged) add(term);
+    for (NSString *term in acronyms) add(term);
     if (trace) { trace[@"text"] = text; trace[@"appleTags"] = tags; trace[@"identifierRuleMatches"] = rules; trace[@"selectedTerms"] = names; trace[@"maxTerms"] = @24; }
     return names;
 }
 
 NSArray<NSString *> *SpokeContextNames(NSString *text) { return ExtractNames(text, nil); }
 
-static NSString *BoundedText(AXUIElementRef element) {
-    NSNumber *count = Attribute(element, kAXNumberOfCharactersAttribute);
-    if ([count isKindOfClass:NSNumber.class] && count.integerValue > 4000) {
-        id selected = Attribute(element, kAXSelectedTextRangeAttribute);
-        CFRange range;
-        if (selected && CFGetTypeID((__bridge CFTypeRef)selected) == AXValueGetTypeID() &&
-            AXValueGetValue((__bridge AXValueRef)selected, kAXValueCFRangeType, &range) && range.location >= 0) {
-            range.location = MAX(0, range.location - 1000);
-            range.length = MIN(2000, count.longLongValue - range.location);
-            if (range.length <= 0) return @"";
-            AXValueRef value = AXValueCreate(kAXValueCFRangeType, &range);
-            CFTypeRef result = NULL;
-            AXUIElementCopyParameterizedAttributeValue(element, kAXStringForRangeParameterizedAttribute, value, &result);
-            CFRelease(value);
-            id string = CFBridgingRelease(result);
-            return [string isKindOfClass:NSString.class] ? string : @"";
-        }
-        return @"";
-    }
-    // Value is read only with a bounded character count. Static text normally
-    // exposes its text as Value without a count; those leaves are bounded below.
+// A name count is not evidence that Accessibility exposed the page. Only a
+// fully readable large text area can satisfy coverage without an image.
+static BOOL CoversWindow(CGRect textFrame, CGRect windowFrame, BOOL complete) {
+    if (!complete || CGRectIsEmpty(windowFrame)) return NO;
+    CGRect overlap = CGRectIntersection(textFrame, windowFrame);
+    return !CGRectIsNull(overlap) && overlap.size.width * overlap.size.height >=
+        windowFrame.size.width * windowFrame.size.height * 0.8;
+}
+
+static NSString *BoundedText(AXUIElementRef element, BOOL *complete) {
+    *complete = NO;
+    id count = Attribute(element, kAXNumberOfCharactersAttribute);
     NSString *role = Attribute(element, kAXRoleAttribute);
+    id visible = Attribute(element, kAXVisibleCharacterRangeAttribute);
+    CFRange range;
+    if (visible && CFGetTypeID((__bridge CFTypeRef)visible) == AXValueGetTypeID() &&
+        AXValueGetValue((__bridge AXValueRef)visible, kAXValueCFRangeType, &range) &&
+        range.location >= 0 && range.length >= 0) {
+        BOOL bounded = range.length <= 4000;
+        range.length = MIN(range.length, 4000);
+        AXValueRef parameter = AXValueCreate(kAXValueCFRangeType, &range);
+        CFTypeRef result = NULL;
+        AXUIElementCopyParameterizedAttributeValue(element, kAXStringForRangeParameterizedAttribute, parameter, &result);
+        CFRelease(parameter);
+        id value = CFBridgingRelease(result);
+        if ([value isKindOfClass:NSString.class] && [value length] <= 4000) {
+            *complete = bounded && [value length] == range.length;
+            return value;
+        }
+    }
+    if ([count isKindOfClass:NSNumber.class] && ([count longLongValue] < 0 || [count longLongValue] > 4000)) return @"";
     if (![count isKindOfClass:NSNumber.class] && ![role isEqual:@"AXStaticText"]) return @"";
     id value = Attribute(element, kAXValueAttribute);
     if (![value isKindOfClass:NSString.class]) return @"";
-    return [value length] <= 4000 ? value : [value substringToIndex:4000];
+    *complete = [count isKindOfClass:NSNumber.class] && [value length] == [count unsignedIntegerValue] && [value length] <= 4000;
+    return [value substringToIndex:MIN([value length], 4000)];
 }
 
-static NSString *AXContext(AXUIElementRef focus, AXUIElementRef window) {
+static NSString *AXContext(AXUIElementRef focus, AXUIElementRef window, BOOL *coversContent, NSMutableDictionary *trace) {
     NSMutableString *text = [NSMutableString string];
     NSMutableArray *queue = [NSMutableArray array];
+    NSMutableSet *seen = [NSMutableSet set];
+    CGRect windowFrame = ElementFrame(window);
     if (focus) [queue addObject:(__bridge id)focus];
-    if (window && (!focus || !CFEqual(focus, window))) [queue addObject:(__bridge id)window];
+    if (window) [queue addObject:(__bridge id)window];
     CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + 0.12;
-    for (NSUInteger index = 0; index < queue.count && index < 48 && text.length < 4000; index++) {
-        if (CFAbsoluteTimeGetCurrent() > deadline) break;
-        AXUIElementRef element = (__bridge AXUIElementRef)queue[index];
+    *coversContent = NO;
+    NSUInteger visited = 0;
+    for (NSUInteger index = 0; index < queue.count && text.length < 4000; index++) {
+        if (CFAbsoluteTimeGetCurrent() > deadline || visited >= 192) break;
+        id object = queue[index];
+        if ([seen containsObject:object]) continue;
+        [seen addObject:object]; visited++;
+        AXUIElementRef element = (__bridge AXUIElementRef)object;
         if (Protected(element)) continue;
-        NSString *part = BoundedText(element);
+        CGRect frame = ElementFrame(element);
+        if (!CGRectIsEmpty(frame) && !CGRectIsEmpty(windowFrame) && !CGRectIntersectsRect(frame, windowFrame)) continue;
+        BOOL complete = NO;
+        NSString *part = BoundedText(element, &complete);
         if (part.length) {
+            if ([Attribute(element, kAXRoleAttribute) isEqual:@"AXTextArea"] &&
+                CoversWindow(frame, windowFrame, complete) && text.length + part.length <= 4000) *coversContent = YES;
             [text appendString:[part substringToIndex:MIN(part.length, 4000 - text.length)]];
             if (text.length < 4000) [text appendString:@"\n"];
         }
-        if (queue.count < 48) {
-            id children = Attribute(element, kAXChildrenAttribute);
+        if (queue.count < 256) {
+            id children = Attribute(element, kAXVisibleChildrenAttribute);
+            if (![children isKindOfClass:NSArray.class]) children = Attribute(element, kAXChildrenAttribute);
             if ([children isKindOfClass:NSArray.class])
-                [queue addObjectsFromArray:[children subarrayWithRange:NSMakeRange(0, MIN([children count], 48 - queue.count))]];
+                [queue addObjectsFromArray:[children subarrayWithRange:NSMakeRange(0, MIN([children count], 256 - queue.count))]];
         }
     }
+    if (trace) { trace[@"visitedNodes"] = @(visited); trace[@"coversContent"] = @(*coversContent); }
     return text;
+}
+
+// Keep all visible window content when it fits the pixel budget. Never shrink
+// a whole window to the old 960x360 crop. Oversized windows are explicitly capped.
+static CGRect WindowCrop(CGRect window, CGRect displays, CGFloat scale) {
+    CGRect visible = CGRectIntersection(window, displays);
+    if (CGRectIsNull(visible) || CGRectIsEmpty(visible)) return CGRectZero;
+    double ratio = MIN(1, sqrt(8000000.0 / (visible.size.width * visible.size.height * scale * scale)));
+    CGSize size = CGSizeMake(floor(visible.size.width * ratio), floor(visible.size.height * ratio));
+    return CGRectMake(CGRectGetMidX(visible) - window.origin.x - size.width / 2,
+                      CGRectGetMidY(visible) - window.origin.y - size.height / 2, size.width, size.height);
+}
+
+static NSArray *MergeNames(NSArray *first, NSArray *second) {
+    NSMutableArray *result = [NSMutableArray array];
+    NSMutableSet *seen = [NSMutableSet set];
+    for (NSString *name in [first arrayByAddingObjectsFromArray:second]) {
+        if (![seen containsObject:name.lowercaseString] && result.count < 24) {
+            [seen addObject:name.lowercaseString]; [result addObject:name];
+        }
+    }
+    return result;
 }
 
 static NSArray *Recognize(CGImageRef image, NSMutableDictionary *trace) {
     VNRecognizeTextRequest *request = [VNRecognizeTextRequest new];
     // Predictable startup: fast avoids accurate-mode's observed ANE compilation
-    // stall. Crop at >=1 pixel/point rather than shrinking an entire display.
+    // stall. Keep readable window pixels instead of shrinking a whole display.
     request.recognitionLevel = VNRequestTextRecognitionLevelFast;
     request.usesLanguageCorrection = NO;
     request.preferBackgroundProcessing = YES;
@@ -199,7 +235,7 @@ static CGWindowID TopWindow(pid_t pid) {
     return 0;
 }
 
-static BOOL SameTarget(pid_t pid, id focused, id window, CGWindowID windowID) {
+static BOOL SameTarget(pid_t pid, id window, CGWindowID windowID) {
     __block pid_t current;
     dispatch_sync(dispatch_get_main_queue(), ^{ current = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier; });
     if (current != pid) return NO;
@@ -208,18 +244,18 @@ static BOOL SameTarget(pid_t pid, id focused, id window, CGWindowID windowID) {
     id nextFocus = Attribute(app, kAXFocusedUIElementAttribute);
     id nextWindow = Attribute(app, kAXFocusedWindowAttribute);
     CFRelease(app);
-    return (!focused || [focused isEqual:nextFocus]) && (!window || [window isEqual:nextWindow]) &&
+    return (!window || [window isEqual:nextWindow]) &&
            (!nextFocus || !Protected((__bridge AXUIElementRef)nextFocus));
 }
 
-static void WatchTarget(NSString *identifier, pid_t pid, id focused, id window, CGWindowID windowID, unsigned int generation, dispatch_queue_t queue, CFAbsoluteTime start) {
+static void WatchTarget(NSString *identifier, pid_t pid, id window, CGWindowID windowID, unsigned int generation, dispatch_queue_t queue, CFAbsoluteTime start) {
     if (atomic_load(&captureGeneration) != generation || CFAbsoluteTimeGetCurrent() - start > 300) return;
-    if (!SameTarget(pid, focused, window, windowID)) {
+    if (!SameTarget(pid, window, windowID)) {
         Reply(identifier, @[], @"none", @"target-changed", start);
         return;
     }
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), queue, ^{
-        @autoreleasepool { WatchTarget(identifier, pid, focused, window, windowID, generation, queue, start); }
+        @autoreleasepool { WatchTarget(identifier, pid, window, windowID, generation, queue, start); }
     });
 }
 
@@ -235,40 +271,43 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
     if (focus && Protected(focus)) { Reply(identifier, @[], @"none", @"protected", start); return; }
     NSMutableDictionary *trace = debug ? [NSMutableDictionary dictionaryWithDictionary:@{@"pid": @(pid), @"app": [NSRunningApplication runningApplicationWithProcessIdentifier:pid].localizedName ?: @"unknown"}] : nil;
     NSMutableDictionary *axTrace = debug ? [NSMutableDictionary dictionary] : nil;
-    NSArray *names = ExtractNames(AXContext(focus, (__bridge AXUIElementRef)window), axTrace);
+    BOOL coversContent = NO;
+    NSString *axText = AXContext(focus, (__bridge AXUIElementRef)window, &coversContent, axTrace);
+    NSArray *names = ExtractNames(axText, axTrace);
+    CGWindowID target = TopWindow(pid);
     if (trace) trace[@"accessibility"] = axTrace;
-    if (!SameTarget(pid, focused, window, 0)) { Reply(identifier, @[], @"none", @"target-changed", start); return; }
-    if (names.count) {
+    if (!SameTarget(pid, window, target)) { Reply(identifier, @[], @"none", @"target-changed", start); return; }
+    if (coversContent) {
         Reply(identifier, names, @"accessibility", @"ready", start);
         trace[@"source"] = @"accessibility";
         DebugReply(identifier, trace, NULL);
-        WatchTarget(identifier, pid, focused, window, 0, generation, queue, start);
+        WatchTarget(identifier, pid, window, target, generation, queue, start);
         return;
     }
-    if (!CGPreflightScreenCaptureAccess()) { Reply(identifier, @[], @"none", @"screen-permission", start); DebugReply(identifier, trace, NULL); return; }
-    CGRect focusFrame = focus ? ContextFrame(focus) : CGRectZero;
+    if (!CGPreflightScreenCaptureAccess()) { Reply(identifier, names, @"accessibility", @"screen-permission", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start); return; }
 
     // Pin the frontmost on-screen window of this process. Never fall back to
     // another app or the whole display when a window cannot be identified.
-    CGWindowID target = TopWindow(pid);
-    if (!target) { Reply(identifier, @[], @"none", @"no-window", start); DebugReply(identifier, trace, NULL); return; }
+    if (!target) { Reply(identifier, names, @"accessibility", @"no-window", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start); return; }
+    if (names.count) Reply(identifier, names, @"accessibility", @"partial", start);
+    WatchTarget(identifier, pid, window, target, generation, queue, start);
     [SCShareableContent getShareableContentExcludingDesktopWindows:YES onScreenWindowsOnly:YES completionHandler:^(SCShareableContent *content, NSError *error) {
         SCWindow *selected = nil;
         for (SCWindow *candidate in content.windows) if (candidate.windowID == target) { selected = candidate; break; }
-        if (!selected || error) { Reply(identifier, @[], @"none", @"capture-unavailable", start); DebugReply(identifier, trace, NULL); return; }
+        if (atomic_load(&captureGeneration) != generation) return;
+        if (!selected || error) { Reply(identifier, names, @"accessibility", @"capture-unavailable", start); DebugReply(identifier, trace, NULL); return; }
         SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:selected];
         CGRect frame = selected.frame;
-        CGSize size = CGSizeMake(MIN(960, frame.size.width), MIN(360, frame.size.height));
-        CGPoint center = CGRectIsEmpty(focusFrame) ? CGPointMake(CGRectGetMidX(frame), CGRectGetMidY(frame)) :
-            CGPointMake(CGRectGetMidX(focusFrame), CGRectGetMinY(focusFrame));
-        // Independent-window source coordinates are relative to the window.
-        CGRect crop = CGRectMake(MAX(0, MIN(frame.size.width - size.width, center.x - frame.origin.x - size.width / 2)),
-                                 MAX(0, MIN(frame.size.height - size.height, center.y - frame.origin.y - size.height / 2)), size.width, size.height);
         CGFloat scale = MAX(1, MIN(1.5, filter.pointPixelScale));
+        CGRect displayBounds = CGRectNull;
+        for (SCDisplay *display in content.displays) displayBounds = CGRectUnion(displayBounds, display.frame);
+        CGRect crop = WindowCrop(frame, displayBounds, scale);
+        if (CGRectIsEmpty(crop)) { Reply(identifier, names, @"accessibility", @"no-visible-window", start); DebugReply(identifier, trace, NULL); return; }
+        CGSize size = crop.size;
         SCStreamConfiguration *config = [SCStreamConfiguration new];
         config.sourceRect = crop;
-        config.width = (size_t)ceil(size.width * scale);
-        config.height = (size_t)ceil(size.height * scale);
+        config.width = (size_t)floor(size.width * scale);
+        config.height = (size_t)floor(size.height * scale);
         config.showsCursor = NO;
         config.ignoreShadowsSingleWindow = YES;
         if (trace) {
@@ -276,20 +315,25 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
             trace[@"windowFrame"] = @[@(frame.origin.x), @(frame.origin.y), @(frame.size.width), @(frame.size.height)];
             trace[@"cropInWindowPoints"] = @[@(crop.origin.x), @(crop.origin.y), @(crop.size.width), @(crop.size.height)];
             trace[@"pixels"] = @[@(config.width), @(config.height)];
+            CGRect visible = CGRectIntersection(frame, displayBounds);
+            trace[@"pixelBudgetClipped"] = @(crop.size.width < floor(visible.size.width) || crop.size.height < floor(visible.size.height));
         }
         [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:^(CGImageRef image, NSError *captureError) {
-            if (!image || captureError) { Reply(identifier, @[], @"none", @"capture-failed", start); DebugReply(identifier, trace, NULL); return; }
+            if (atomic_load(&captureGeneration) != generation) return;
+            if (!image || captureError) { Reply(identifier, names, @"accessibility", @"capture-failed", start); DebugReply(identifier, trace, NULL); return; }
             CGImageRetain(image);
             dispatch_async(queue, ^{
                 @autoreleasepool {
+                    if (atomic_load(&captureGeneration) != generation) { CGImageRelease(image); return; }
                     NSMutableDictionary *ocrTrace = debug ? [NSMutableDictionary dictionary] : nil;
-                    NSArray *terms = Recognize(image, ocrTrace);
+                    NSArray *terms = MergeNames(Recognize(image, ocrTrace), names);
                     if (trace) trace[@"ocr"] = ocrTrace;
-                    BOOL valid = SameTarget(pid, focused, window, target);
+                    if (atomic_load(&captureGeneration) != generation) { CGImageRelease(image); return; }
+                    BOOL valid = SameTarget(pid, window, target);
                     Reply(identifier, valid ? terms : @[], @"ocr", valid ? @"ready" : @"target-changed", start);
                     DebugReply(identifier, trace, image);
                     CGImageRelease(image);
-                    if (valid) WatchTarget(identifier, pid, focused, window, target, generation, queue, start);
+                    // The window watcher started before asynchronous OCR.
                 }
             });
         }];
