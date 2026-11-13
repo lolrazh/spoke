@@ -383,6 +383,10 @@ int SpokeContextDaemon(void) {
                 NSDictionary *request = [NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:line length:length] options:0 error:nil];
                 if (![request isKindOfClass:NSDictionary.class]) continue;
                 if ([request[@"command"] isEqual:@"warm"]) {
+                    // ScreenCaptureKit lazily initializes AppKit and display
+                    // metadata. Prepare that runtime without reading screen
+                    // text, enumerating windows, or capturing any pixels.
+                    dispatch_async(dispatch_get_main_queue(), ^{ [NSApplication sharedApplication]; });
                     dispatch_async(queue, ^{
                         @autoreleasepool {
                             CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();

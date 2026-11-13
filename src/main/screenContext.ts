@@ -7,7 +7,6 @@ import { contextDebugEnabled, recordContextDebug, recordNativeContextDebug } fro
 
 let child: ChildProcessWithoutNullStreams | null = null;
 let deadline: ReturnType<typeof setTimeout> | undefined;
-let idle: ReturnType<typeof setTimeout> | undefined;
 let pendingId: string | null = null;
 let retryAfter = 0;
 // Allow cold native initialization while the user is still speaking. Speech
@@ -18,13 +17,14 @@ export function stopScreenContext(): void {
   clearContextVocabulary();
   screenContextSession.clear();
   clearTimeout(deadline);
-  clearTimeout(idle);
   const previous = child;
   child = null;
   pendingId = null;
   previous?.kill("SIGKILL");
 }
 
+// Keep one idle worker while enabled. Cancel stops screen watching; retaining
+// the process avoids repeating macOS capture startup after each short pause.
 export function prewarmScreenContext(): void {
   startWorker(true);
 }
@@ -86,19 +86,15 @@ function startWorker(warmVision: boolean): void {
   // Idle preparation reads no screen. An on-demand capture must not queue
   // behind a synthetic OCR job, especially when Accessibility is sufficient.
   if (warmVision) worker.stdin.write('{"command":"warm"}\n');
-  idle = setTimeout(stopScreenContext, 60_000);
-  idle.unref?.();
 }
 
 export function beginScreenContext(id: string): void {
-  clearTimeout(idle);
   clearTimeout(deadline);
   // Supersede blocked capture rather than queue work from a previous utterance.
   if (pendingId) stopScreenContext();
   clearContextVocabulary();
   screenContextSession.begin(id);
   startWorker(false);
-  clearTimeout(idle);
   if (!child) { recordContextDebug(id, "capture-unavailable", {}); return; }
   pendingId = id;
   child.stdin.write(JSON.stringify({ command: "capture", id, debug: contextDebugEnabled(id) }) + "\n");
@@ -121,8 +117,5 @@ export function endScreenContext(id: string): void {
   screenContextSession.end(id);
   clearContextVocabulary();
   child?.stdin.write(JSON.stringify({ command: "cancel", id }) + "\n");
-  if (pendingId === id) stopScreenContext();
-  clearTimeout(idle);
-  idle = setTimeout(stopScreenContext, 60_000);
-  idle.unref?.();
+  if (pendingId === id) { stopScreenContext(); startWorker(true); }
 }

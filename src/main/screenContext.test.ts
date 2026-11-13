@@ -56,6 +56,20 @@ describe.runIf(process.platform === "darwin")("context helper deadlines", () => 
     expect(JSON.parse(worker.stdin.read().toString()).command).toBe("capture");
     service.stopScreenContext();
   });
+  it("keeps the prepared process through idle time without reusing old terms", async () => {
+    const { worker, service, session } = await setup();
+    service.prewarmScreenContext();
+    service.beginScreenContext("a");
+    worker.stdout.emit("data", JSON.stringify({ id: "a", status: "ready", terms: ["OldName"] }) + "\n");
+    service.endScreenContext("a");
+    vi.advanceTimersByTime(120_000);
+    expect(worker.kill).not.toHaveBeenCalled();
+    service.beginScreenContext("b");
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    expect(session.read("b")).toEqual([]);
+    service.stopScreenContext();
+    expect(worker.kill).toHaveBeenCalledWith("SIGKILL");
+  });
   it("cannot add a late OCR result after speech ends", async () => {
     const { worker, service, session } = await setup();
     service.beginScreenContext("a");

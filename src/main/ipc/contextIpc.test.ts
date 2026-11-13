@@ -3,13 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WebContents } from "electron";
 const mocks = vi.hoisted(() => ({
   on: new Map<string, (...args: any[]) => any>(), handlers: new Map<string, (...args: any[]) => any>(),
-  begin: vi.fn(), end: vi.fn(), freeze: vi.fn(), stop: vi.fn(), stopLearning: vi.fn(), save: vi.fn(),
+  warm: vi.fn(), begin: vi.fn(), end: vi.fn(), freeze: vi.fn(), stop: vi.fn(), stopLearning: vi.fn(), save: vi.fn(),
 }));
 vi.mock("electron", () => ({ ipcMain: {
   on: (name: string, fn: (...args: any[]) => any) => mocks.on.set(name, fn),
   handle: (name: string, fn: (...args: any[]) => any) => mocks.handlers.set(name, fn),
 } }));
-vi.mock("../screenContext", () => ({ beginScreenContext: mocks.begin, endScreenContext: mocks.end, freezeScreenContext: mocks.freeze, stopScreenContext: mocks.stop }));
+vi.mock("../screenContext", () => ({ beginScreenContext: mocks.begin, endScreenContext: mocks.end, freezeScreenContext: mocks.freeze, stopScreenContext: mocks.stop, prewarmScreenContext: mocks.warm }));
 vi.mock("../pasteDaemon", () => ({ stopEditLearning: mocks.stopLearning }));
 vi.mock("../preferences", () => ({ saveAppPreferences: mocks.save }));
 vi.mock("../helperPaths", () => ({ getHelperPath: () => "/unused/helper" }));
@@ -39,6 +39,12 @@ describe("context IPC ownership", () => {
     expect(mocks.begin).not.toHaveBeenCalled();
     expect(mocks.stopLearning).toHaveBeenCalledOnce();
     mocks.on.get("context:end")!({ sender: a }, "disabled");
+  });
+  it("prepares the worker when enabled and stops it when disabled", () => {
+    mocks.handlers.get("context:set-settings")!({}, { screenContext: true });
+    expect(mocks.warm).toHaveBeenCalledOnce();
+    mocks.handlers.get("context:set-settings")!({}, { screenContext: false });
+    expect(mocks.stop).toHaveBeenCalledOnce();
   });
   it("rolls back settings when persistence fails", () => {
     mocks.save.mockReturnValue(false);

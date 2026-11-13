@@ -1,6 +1,6 @@
 import { ipcMain, type WebContents } from "electron";
 import { spawn } from "node:child_process";
-import { beginScreenContext, endScreenContext, freezeScreenContext, stopScreenContext } from "../screenContext";
+import { beginScreenContext, endScreenContext, freezeScreenContext, stopScreenContext, prewarmScreenContext } from "../screenContext";
 import { state } from "../windowState";
 import { saveAppPreferences } from "../preferences";
 import { getHelperPath } from "../helperPaths";
@@ -60,6 +60,7 @@ export function registerContextIpc(): void {
     if (typeof value?.learnFromEdits === "boolean") state.appPreferences.learnFromEdits = value.learnFromEdits;
     if (!saveAppPreferences(state.appPreferences)) state.appPreferences = previous;
     if (state.appPreferences.screenContextEnabled === false) { active?.dispose(); stopScreenContext(); }
+    else prewarmScreenContext();
     if (state.appPreferences.learnFromEdits === false) stopEditLearning();
     return settings();
   });
