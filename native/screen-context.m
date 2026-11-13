@@ -224,6 +224,16 @@ static void Reply(NSString *identifier, NSArray *terms, NSString *source, NSStri
     fflush(stdout);
 }
 
+// Stage-only records remain useful if the bounded worker is terminated.
+static void DebugStage(BOOL enabled, NSString *identifier, NSString *stage, CFAbsoluteTime start) {
+    if (!enabled) return;
+    NSDictionary *record = @{@"event": @"debug-stage", @"id": identifier, @"stage": stage,
+                             @"ms": @((CFAbsoluteTimeGetCurrent() - start) * 1000)};
+    NSData *json = [NSJSONSerialization dataWithJSONObject:record options:0 error:nil];
+    printf("%s\n", [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding].UTF8String);
+    fflush(stdout);
+}
+
 static CGWindowID TopWindow(pid_t pid) {
     NSArray *windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID));
     for (NSDictionary *entry in windows) {
@@ -236,11 +246,11 @@ static CGWindowID TopWindow(pid_t pid) {
 }
 
 static BOOL SameTarget(pid_t pid, id window, CGWindowID windowID) {
-    __block pid_t current;
-    dispatch_sync(dispatch_get_main_queue(), ^{ current = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier; });
-    if (current != pid) return NO;
-    if (windowID && TopWindow(pid) != windowID) return NO;
+    // ScreenCaptureKit can initialize AppKit on the main queue for seconds.
+    // Ask the target app whether it is frontmost instead of waiting on that queue.
     AXUIElementRef app = AXUIElementCreateApplication(pid);
+    BOOL frontmost = [Attribute(app, kAXFrontmostAttribute) isEqual:@YES];
+    if (!frontmost || (!window && windowID && TopWindow(pid) != windowID)) { CFRelease(app); return NO; }
     id nextFocus = Attribute(app, kAXFocusedUIElementAttribute);
     id nextWindow = Attribute(app, kAXFocusedWindowAttribute);
     CFRelease(app);
@@ -261,6 +271,7 @@ static void WatchTarget(NSString *identifier, pid_t pid, id window, CGWindowID w
 
 static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BOOL debug, dispatch_queue_t queue) {
     CFAbsoluteTime start = CFAbsoluteTimeGetCurrent();
+    DebugStage(debug, identifier, @"capture-start", start);
     if (atomic_load(&captureGeneration) != generation) return;
     if (pid <= 0 || pid == getppid() || pid == getpid()) { Reply(identifier, @[], @"none", @"own-app", start); return; }
     AXUIElementRef app = AXUIElementCreateApplication(pid);
@@ -274,6 +285,7 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
     BOOL coversContent = NO;
     NSString *axText = AXContext(focus, (__bridge AXUIElementRef)window, &coversContent, axTrace);
     NSArray *names = ExtractNames(axText, axTrace);
+    DebugStage(debug, identifier, @"accessibility-ready", start);
     CGWindowID target = TopWindow(pid);
     if (trace) trace[@"accessibility"] = axTrace;
     if (!SameTarget(pid, window, target)) { Reply(identifier, @[], @"none", @"target-changed", start); return; }
@@ -292,6 +304,7 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
     if (names.count) Reply(identifier, names, @"accessibility", @"partial", start);
     WatchTarget(identifier, pid, window, target, generation, queue, start);
     [SCShareableContent getShareableContentExcludingDesktopWindows:YES onScreenWindowsOnly:YES completionHandler:^(SCShareableContent *content, NSError *error) {
+        DebugStage(debug, identifier, @"windows-ready", start);
         SCWindow *selected = nil;
         for (SCWindow *candidate in content.windows) if (candidate.windowID == target) { selected = candidate; break; }
         if (atomic_load(&captureGeneration) != generation) return;
@@ -331,6 +344,7 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
             trace[@"pixelBudgetClipped"] = @(crop.size.width < floor(visible.size.width) || crop.size.height < floor(visible.size.height));
         }
         [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:^(CGImageRef image, NSError *captureError) {
+            DebugStage(debug, identifier, @"screenshot-ready", start);
             if (atomic_load(&captureGeneration) != generation) return;
             if (!image || captureError) {
                 if (trace && captureError) trace[@"captureError"] = @{@"domain": captureError.domain, @"code": @(captureError.code), @"description": captureError.localizedDescription};
@@ -342,8 +356,10 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
             dispatch_async(queue, ^{
                 @autoreleasepool {
                     if (atomic_load(&captureGeneration) != generation) { CGImageRelease(image); return; }
+                    DebugStage(debug, identifier, @"ocr-start", start);
                     NSMutableDictionary *ocrTrace = debug ? [NSMutableDictionary dictionary] : nil;
                     NSArray *terms = MergeNames(Recognize(image, ocrTrace), names);
+                    DebugStage(debug, identifier, @"ocr-ready", start);
                     if (trace) trace[@"ocr"] = ocrTrace;
                     if (atomic_load(&captureGeneration) != generation) { CGImageRelease(image); return; }
                     BOOL valid = SameTarget(pid, window, target);

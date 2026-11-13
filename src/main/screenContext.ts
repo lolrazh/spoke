@@ -12,7 +12,7 @@ let pendingId: string | null = null;
 let retryAfter = 0;
 // Allow cold native initialization while the user is still speaking. Speech
 // stop freezes ready terms immediately; this budget never extends paste time.
-const DEADLINE_MS = 4000;
+const DEADLINE_MS = 8000;
 
 export function stopScreenContext(): void {
   clearContextVocabulary();
@@ -50,6 +50,7 @@ function startWorker(warmVision: boolean): void {
       buffer = buffer.slice(end + 1);
       try {
         const result = JSON.parse(line);
+        if (result.event === "debug-stage") { recordContextDebug(result.id, "capture-stage", { stage: result.stage, nativeMs: result.ms }); continue; }
         if (result.event === "debug") { recordNativeContextDebug(result.id, result); continue; }
         recordContextDebug(result.id, "capture-result", { source: result.source, status: result.status, nativeMs: result.ms, terms: result.terms });
         if (result.status === "target-changed") {

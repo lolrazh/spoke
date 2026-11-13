@@ -19,15 +19,25 @@ describe.runIf(process.platform === "darwin")("context helper deadlines", () => 
     const { screenContextSession: session } = await import("./screenContextSession");
     return { worker, nextWorker, service, session };
   }
-  it("returns immediately and kills a stalled worker after four seconds", async () => {
+  it("returns immediately and kills a stalled worker after eight seconds", async () => {
     const { worker, service, session } = await setup();
     expect(service.beginScreenContext("a")).toBeUndefined();
     expect(session.read("a")).toEqual([]);
-    vi.advanceTimersByTime(3999);
+    vi.advanceTimersByTime(7999);
     expect(worker.kill).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(worker.kill).toHaveBeenCalledWith("SIGKILL");
     expect(session.read("a")).toEqual([]);
+    service.stopScreenContext();
+  });
+  it("keeps the capture pending when a diagnostic stage arrives", async () => {
+    const { worker, service, session } = await setup();
+    service.beginScreenContext("a");
+    worker.stdout.emit("data", JSON.stringify({ event: "debug-stage", id: "a", stage: "screenshot-ready", ms: 120 }) + "\n");
+    expect(session.read("a")).toEqual([]);
+    expect(mocks.prepare).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(8000);
+    expect(worker.kill).toHaveBeenCalledWith("SIGKILL");
     service.stopScreenContext();
   });
   it("does not put synthetic OCR ahead of a cold on-demand capture", async () => {
