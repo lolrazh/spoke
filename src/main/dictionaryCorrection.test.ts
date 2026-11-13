@@ -41,6 +41,15 @@ describe("main/dictionaryCorrection", () => {
     expect(correctTranscript("Try NBFP4 as well.", ["NBFP4", "NVFP4"])).toBe("Try NBFP4 as well.");
     expect(correctTranscript("Class4", ["GLASS4"])).toBe("Class4");
   });
+  it("repairs separated acronym letters with the same ambiguity and digit guards", () => {
+    expect(correctTranscript("Test N P F P 4 as well.", ["NVFP4"])).toBe("Test NVFP4 as well.");
+    expect(correctTranscript("N P F P4", ["NVFP4"])).toBe("NVFP4");
+    expect(correctTranscript("N P F P 5", ["NVFP4"])).toBe("N P F P 5");
+    expect(correctTranscript("N P F P 4", ["NVFP4", "NBFP4"])).toBe("N P F P 4");
+    expect(correctTranscript("N P F P 4", ["NVFP4", "NPFP4"])).toBe("NPFP4");
+    expect(correctTranscript("and VFP4", ["NVFP4"])).toBe("and VFP4");
+    expect(correctTranscript("N P F. P 4", ["NVFP4"])).toBe("N P F. P 4");
+  });
   it("handles numbered entries without internal capitals", () => {
     expect(correctTranscript("Use Llama three", ["Llama3"])).toBe("Use Llama3");
     expect(correctTranscript("Use H two O", ["H2O"])).toBe("Use H2O");

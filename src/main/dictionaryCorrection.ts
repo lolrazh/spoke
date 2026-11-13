@@ -295,8 +295,18 @@ function numberedAcronymMatch(stem: string, index: Index): Match | null | undefi
 type PhraseMatch = {
   entry: string;
   sim: number;
-  path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase" | "spoken-initial";
+  path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase" | "spoken-initial" | "numbered-acronym";
 };
+
+function findSpelledAcronymMatch(source: string, index: Index): PhraseMatch | null {
+  // Preserve the same uniqueness and digit guards when ASR separates letters.
+  // Ordinary words and conjunctions such as "and VFP4" are not eligible.
+  if (!/^[A-Z](?:[ \t]+[A-Z]){2,7}[ \t]*[0-9]+$/u.test(source)) return null;
+  const compact = source.replace(/[ \t]/gu, "");
+  if (index.phraseCanonical.has(compact.toLowerCase())) return null;
+  const match = numberedAcronymMatch(compact, index);
+  return match ? { entry: match.word, sim: match.sim, path: "numbered-acronym" } : null;
+}
 
 const VOICED_INITIAL: Readonly<Record<string, string>> = {
   d: "t", t: "d", b: "p", p: "b", g: "k", k: "g", f: "v", v: "f",
@@ -539,7 +549,7 @@ export function correctTranscript(
       | undefined;
 
     const maxCount = index.phraseKeys.length
-      ? Math.min(MAX_PHRASE_TOKENS, tokens.length - tokenIndex)
+      ? Math.min(/^[A-Z]$/u.test(first[0]) ? 9 : MAX_PHRASE_TOKENS, tokens.length - tokenIndex)
       : 1;
     for (let count = maxCount; count >= 2; count--) {
       const span = tokens.slice(tokenIndex, tokenIndex + count);
@@ -567,7 +577,7 @@ export function correctTranscript(
       const digitMatch = /\d/u.test(identifierKey) && identifierKey !== key
         ? unambiguousPhrase(scorePhraseCandidates(index.phraseCanonical.get(identifierKey) ?? [], identifierKey, 1), "exact-phrase")
         : null;
-      const match = digitMatch ?? findPhraseMatch(key, index) ?? findSpokenInitialMatch(source, identifierKey, index);
+      const match = digitMatch ?? findPhraseMatch(key, index) ?? findSpokenInitialMatch(source, identifierKey, index) ?? findSpelledAcronymMatch(source, index);
       if (trace) record({ kind: "phrase", source, key, outcome: match ? "matched" : "no-match-or-ambiguous", ...(match ? { target: match.entry, path: match.path, score: match.sim } : {}) });
       if (!match) continue;
       phrase = {
