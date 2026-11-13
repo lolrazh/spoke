@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 export function useVocabulary() {
   const [dictionary, setDictionary] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [learnedWords, setLearnedWords] = useState<string[]>([]);
   const apply = useCallback((next: string[]) => {
     setDictionary(next);
   }, []);
@@ -15,21 +16,25 @@ export function useVocabulary() {
   useEffect(() => {
     let isMounted = true;
 
-    (async () => {
+    const refresh = async () => {
       try {
         const result = await window.electron?.getVocabularyDictionary?.();
         if (isMounted && Array.isArray(result?.dictionary)) {
           apply(result.dictionary);
+          setLearnedWords((result.learnedWords ?? []).map(word => word.to));
         }
       } catch {
         if (isMounted) apply([]);
       } finally {
         if (isMounted) setLoaded(true);
       }
-    })();
+    };
+    void refresh();
+    const unsubscribe = window.electron?.onVocabularyChanged?.(() => { void refresh(); });
 
     return () => {
       isMounted = false;
+      unsubscribe?.();
     };
   }, [apply]);
 
@@ -44,7 +49,7 @@ export function useVocabulary() {
   const removeWord = useCallback(
     async (word: string) => {
       const result = await window.electron?.removeVocabularyEntry?.(word);
-      if (result?.ok) apply(result.dictionary);
+      if (result?.ok) { apply(result.dictionary); setLearnedWords(words => words.filter(value => value !== word)); }
     },
     [apply],
   );
@@ -55,10 +60,10 @@ export function useVocabulary() {
         oldWord,
         newWord,
       );
-      if (result?.ok) apply(result.dictionary);
+      if (result?.ok) { apply(result.dictionary); setLearnedWords(words => words.filter(value => value !== oldWord)); }
     },
     [apply],
   );
 
-  return { dictionary, addWord, removeWord, editWord, loaded };
+  return { dictionary, addWord, removeWord, editWord, loaded, learnedWords };
 }

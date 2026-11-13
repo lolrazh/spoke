@@ -77,6 +77,102 @@ model does not.
 The app keeps transcript history on your Mac. Website analytics are separate from
 the app's local speech recognition.
 
+### Local screen context and edit learning
+
+The Dictionary view has two independent controls, enabled by default:
+
+- **Use names from the active window** starts a separate local helper when
+  dictation starts. It reads Accessibility text first. If it finds no useful
+  names, it can use Apple Vision OCR on a crop of that window. OCR needs the
+  optional screen recording permission; the app requests it only from the
+  **Allow local screen reading** button. The crop is at most 960 × 360 points,
+  rendered at 1–1.5 pixels per point. It does not shrink the whole screen.
+- **Learn verified name corrections** first checks that the exact pasted text
+  appears in the same Accessibility field. It watches that field for up to
+  30 seconds, then accepts only a small name correction after 1.5 seconds
+  without further changes. The same correction must occur in two separate
+  dictations within 10 minutes before it enters the dictionary. Remove a
+  learned name to undo and prevent automatic learning of that name.
+
+Screen context uses local name tagging. It keeps at most 24 temporary terms;
+it does not save images or raw screen text. Whisper receives the terms as
+vocabulary hints. Other models use the existing local dictionary correction
+step because they do not accept this prompt. No context or edit text is sent
+to a server. Only accepted word pairs and removal preferences are saved.
+
+Context never waits on the paste path. Results that are not ready when speech
+stops are skipped. A context worker that stalls is stopped after two seconds.
+Focus changes discard context; starting another dictation stops edit watching.
+Learning skips protected fields, unsupported AX fields, and documents whose
+initial text exceeds 4096 characters. Paste still works without learning.
+OCR uses Vision's fast path; name coverage depends on the language and app.
+Name extraction combines Apple's person/place/organization tags with rules
+for product identifiers, including `DFlash2`. Numbered identifiers can match
+their complete spoken spelling (`D flash two`); fuzzy matching cannot insert,
+remove, or change digits. Verified edit learning uses the same full-spelling
+check for names with digits. It does not learn version changes.
+
+To check the native components without reading a real screen:
+
+```sh
+bash native/build-helper.sh
+'native/bin/Spoke Helper.app/Contents/MacOS/Spoke Helper' --context-benchmark
+clang -x objective-c -fobjc-arc -framework AppKit -framework ApplicationServices native/tests/edit-learning-test.m -o /tmp/spoke-learning-test
+/tmp/spoke-learning-test
+```
+
+The benchmark uses a synthetic image. Its time includes OCR and name tagging,
+but excludes screen capture and IPC. It is not an end-to-end latency guarantee.
+
+### Save and inspect context tests
+
+Open **Dictionary → Context debugging**, name a test set, and select **Start
+test set**. Switch to another app and dictate normally. Return to the Dictionary
+view, choose a run, and add the expected text and notes.
+
+The viewer shows Accessibility text, the exact OCR crop and its position in the
+window, OCR confidence, Apple's name tags, identifier-rule matches, selected
+terms, model input, raw speech output, and local correction decisions. A saved
+image exists only when the production path used OCR. The final-text field is
+the text sent toward insertion, not proof that another app displayed it.
+
+Test sets stay in `context-debug` under Electron's user-data directory. Use
+**Open set folder** to find the JSON records and PNG files. Optional audio is
+saved as 16 kHz mono PCM WAV clips, using the audio sent to speech recognition.
+Audio must be enabled when starting the set. Saving is off by default, stops
+after 50 runs, and does not resume after an app restart. **Stop saving** prevents
+new runs; an existing run can still finish. **Delete this run** removes its
+record, image, and audio files. Nothing is uploaded.
+
+Debug mode does extra work, so use it to diagnose accuracy, not to measure
+normal-mode performance. File writes do not block on the dictation path. PNG
+encoding happens after the native worker sends the normal context result.
+
+Replay saved text with the current name extractor and correction code:
+
+```sh
+node scripts/replay-context-debug.mjs "/path/from/Open set folder"
+```
+
+This creates a `replay-*.json` comparison report in the same set. It does not
+re-decode audio, change the dictionary, or change the original test records.
+It reports new extracted terms separately; correction replay uses each run's
+saved dictionary to isolate changes in the correction algorithm.
+
+Run the offline image-to-text integration probe:
+
+```sh
+node scripts/test-context-pipeline.mjs /tmp/spoke-context-checks
+```
+
+This checks native name extraction, 12 light/dark OCR fixtures, session freeze,
+local text correction, edit-candidate filtering, and saved-set reload. It saves
+the failing cases too. Small dark text at 1 pixel per point can still be read
+incorrectly by Vision fast mode; the tested 1.5x fixtures pass. These fixtures
+do not verify live Accessibility capture, microphone input, or paste into an
+external app. Optional second and third arguments accept a local ASR report
+(`results[0].raw`) and its 16 kHz mono PCM16 WAV file.
+
 ## Build and contribute
 
 The app uses Electron, TypeScript, React, native macOS helpers, and a local Python

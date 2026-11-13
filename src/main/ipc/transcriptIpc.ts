@@ -19,6 +19,7 @@ import { saveAppPreferences } from "../preferences";
 import {
   addVocabularyEntry,
   getVocabularyDictionary,
+  getLearnedWords,
   removeVocabularyEntry,
   updateVocabularyEntry,
 } from "../vocabularyService";
@@ -71,7 +72,7 @@ export function registerTranscriptIpc(): void {
 
   // Vocabulary dictionary (words/phrases used to correct transcripts)
   ipcMain.handle("vocabulary:get-dictionary", () => {
-    return { dictionary: getVocabularyDictionary() };
+    return { dictionary: getVocabularyDictionary(), learnedWords: getLearnedWords() };
   });
 
   ipcMain.handle(
