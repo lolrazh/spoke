@@ -37,6 +37,7 @@ const localStreams = new LocalStreamIpcController(
 
 export function registerSttIpc(): void {
   registerContextIpc();
+  if (state.appPreferences.screenContextEnabled !== false) prewarmScreenContext();
   // ============ Local Whisper IPC handlers ============
 
   ipcMain.handle("stt:get-model-status", () => {

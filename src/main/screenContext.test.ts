@@ -30,6 +30,22 @@ describe.runIf(process.platform === "darwin")("context helper deadlines", () => 
     expect(session.read("a")).toEqual([]);
     service.stopScreenContext();
   });
+  it("does not put synthetic OCR ahead of a cold on-demand capture", async () => {
+    const { worker, service } = await setup();
+    service.beginScreenContext("a");
+    const requests = String(worker.stdin.read()).trim().split("\n").map(line => JSON.parse(line));
+    expect(requests).toEqual([{ command: "capture", id: "a", debug: false }]);
+    service.stopScreenContext();
+  });
+  it("warms during idle preparation and reuses that worker for capture", async () => {
+    const { worker, service } = await setup();
+    service.prewarmScreenContext();
+    expect(JSON.parse(worker.stdin.read().toString())).toEqual({ command: "warm" });
+    service.beginScreenContext("a");
+    expect(mocks.spawn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(worker.stdin.read().toString()).command).toBe("capture");
+    service.stopScreenContext();
+  });
   it("cannot add a late OCR result after speech ends", async () => {
     const { worker, service, session } = await setup();
     service.beginScreenContext("a");

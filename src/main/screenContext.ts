@@ -24,6 +24,10 @@ export function stopScreenContext(): void {
 }
 
 export function prewarmScreenContext(): void {
+  startWorker(true);
+}
+
+function startWorker(warmVision: boolean): void {
   if (child || process.platform !== "darwin") return;
   // A broken helper must not enter a restart loop on each key event.
   if (Date.now() < retryAfter) return;
@@ -76,8 +80,9 @@ export function prewarmScreenContext(): void {
   worker.stdin.on("error", failed);
   worker.on("error", failed);
   worker.on("exit", failed);
-  // A tiny synthetic image warms Vision; this reads no screen content.
-  worker.stdin.write('{"command":"warm"}\n');
+  // Idle preparation reads no screen. An on-demand capture must not queue
+  // behind a synthetic OCR job, especially when Accessibility is sufficient.
+  if (warmVision) worker.stdin.write('{"command":"warm"}\n');
   idle = setTimeout(stopScreenContext, 60_000);
   idle.unref?.();
 }
@@ -89,7 +94,7 @@ export function beginScreenContext(id: string): void {
   if (pendingId) stopScreenContext();
   clearContextVocabulary();
   screenContextSession.begin(id);
-  prewarmScreenContext();
+  startWorker(false);
   clearTimeout(idle);
   if (!child) { recordContextDebug(id, "capture-unavailable", {}); return; }
   pendingId = id;
