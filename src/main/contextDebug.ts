@@ -17,7 +17,20 @@ export function recordNativeContextDebug(id: string, value: Record<string, unkno
   store.image(id, png);
 }
 
+/** A development launch can explicitly opt into the same bounded local test set. */
+export async function startDevelopmentContextDebug(): Promise<void> {
+  const label = process.env.SPOKE_CONTEXT_TEST_SET;
+  if (!label?.trim() || app.isPackaged) return;
+  try {
+    await getStore().start(label, process.env.SPOKE_CONTEXT_TEST_AUDIO === "1");
+    console.info("[ContextDebug] Local development test recording started");
+  } catch (error) {
+    console.warn("[ContextDebug] Could not start local test recording", error);
+  }
+}
+
 export function registerContextDebugIpc(): void {
+  void startDevelopmentContextDebug();
   ipcMain.handle("context-debug:start", async (_event, label: unknown, audio: unknown) => {
     await getStore().start(typeof label === "string" ? label : "Context test", audio === true);
     return getStore().overview();

@@ -153,6 +153,15 @@ after 50 runs, and does not resume after an app restart. **Stop saving** prevent
 new runs; an existing run can still finish. **Delete this run** removes its
 record, image, and audio files. Nothing is uploaded.
 
+For a development-only live test, a launch flag can start the same local set:
+
+```sh
+SPOKE_CONTEXT_TEST_SET="Virtual display live tests" SPOKE_CONTEXT_TEST_AUDIO=1 npm start
+```
+
+Omit the audio flag to save text and images only. Packaged apps ignore both
+flags. Restart without these flags when the test is complete.
+
 Debug mode does extra work, so use it to diagnose accuracy, not to measure
 normal-mode performance. File writes do not block on the dictation path. PNG
 encoding happens after the native worker sends the normal context result.
