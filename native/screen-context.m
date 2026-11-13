@@ -296,16 +296,26 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
         for (SCWindow *candidate in content.windows) if (candidate.windowID == target) { selected = candidate; break; }
         if (atomic_load(&captureGeneration) != generation) return;
         if (!selected || error) { Reply(identifier, names, @"accessibility", @"capture-unavailable", start); DebugReply(identifier, trace, NULL); return; }
-        SCContentFilter *filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:selected];
         CGRect frame = selected.frame;
+        // Desktop-independent capture can fail with SCStreamError -3811 on a
+        // virtual display. A display filter restricted to this window works
+        // there, while still excluding every other window and the desktop.
+        SCDisplay *targetDisplay = nil;
+        CGFloat largestArea = 0;
+        for (SCDisplay *display in content.displays) {
+            CGRect visible = CGRectIntersection(frame, display.frame);
+            CGFloat area = CGRectIsNull(visible) ? 0 : visible.size.width * visible.size.height;
+            if (area > largestArea) { targetDisplay = display; largestArea = area; }
+        }
+        if (!targetDisplay) { Reply(identifier, names, @"accessibility", @"no-visible-window", start); DebugReply(identifier, trace, NULL); return; }
+        SCContentFilter *filter = [[SCContentFilter alloc] initWithDisplay:targetDisplay includingWindows:@[selected]];
         CGFloat scale = MAX(1, MIN(1.5, filter.pointPixelScale));
-        CGRect displayBounds = CGRectNull;
-        for (SCDisplay *display in content.displays) displayBounds = CGRectUnion(displayBounds, display.frame);
+        CGRect displayBounds = targetDisplay.frame;
         CGRect crop = WindowCrop(frame, displayBounds, scale);
         if (CGRectIsEmpty(crop)) { Reply(identifier, names, @"accessibility", @"no-visible-window", start); DebugReply(identifier, trace, NULL); return; }
         CGSize size = crop.size;
         SCStreamConfiguration *config = [SCStreamConfiguration new];
-        config.sourceRect = crop;
+        config.sourceRect = CGRectOffset(crop, frame.origin.x - displayBounds.origin.x, frame.origin.y - displayBounds.origin.y);
         config.width = (size_t)floor(size.width * scale);
         config.height = (size_t)floor(size.height * scale);
         config.showsCursor = NO;
@@ -315,12 +325,19 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
             trace[@"windowFrame"] = @[@(frame.origin.x), @(frame.origin.y), @(frame.size.width), @(frame.size.height)];
             trace[@"cropInWindowPoints"] = @[@(crop.origin.x), @(crop.origin.y), @(crop.size.width), @(crop.size.height)];
             trace[@"pixels"] = @[@(config.width), @(config.height)];
+            trace[@"displayID"] = @(targetDisplay.displayID);
+            trace[@"captureMethod"] = @"display-window-filter";
             CGRect visible = CGRectIntersection(frame, displayBounds);
             trace[@"pixelBudgetClipped"] = @(crop.size.width < floor(visible.size.width) || crop.size.height < floor(visible.size.height));
         }
         [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:^(CGImageRef image, NSError *captureError) {
             if (atomic_load(&captureGeneration) != generation) return;
-            if (!image || captureError) { Reply(identifier, names, @"accessibility", @"capture-failed", start); DebugReply(identifier, trace, NULL); return; }
+            if (!image || captureError) {
+                if (trace && captureError) trace[@"captureError"] = @{@"domain": captureError.domain, @"code": @(captureError.code), @"description": captureError.localizedDescription};
+                Reply(identifier, names, @"accessibility", @"capture-failed", start);
+                DebugReply(identifier, trace, NULL);
+                return;
+            }
             CGImageRetain(image);
             dispatch_async(queue, ^{
                 @autoreleasepool {

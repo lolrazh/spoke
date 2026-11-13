@@ -13,6 +13,13 @@ int main(void) {
         NSCAssert(CGRectEqualToRect(clipped, CGRectMake(100, 0, 900, 700)), @"Exclude offscreen pixels");
         CGRect large = WindowCrop(CGRectMake(0, 0, 6000, 4000), CGRectMake(0, 0, 6000, 4000), 1.5);
         NSCAssert(large.size.width * large.size.height * 2.25 <= 8000000, @"Bound the image allocation");
+        CGRect externalDisplay = CGRectMake(1710, 0, 2560, 1440);
+        CGRect externalWindow = CGRectMake(2171, 257, 1694, 1058);
+        CGRect externalCrop = WindowCrop(externalWindow, externalDisplay, 1.5);
+        CGRect displayCrop = CGRectOffset(externalCrop, externalWindow.origin.x - externalDisplay.origin.x, externalWindow.origin.y - externalDisplay.origin.y);
+        NSCAssert(CGRectEqualToRect(displayCrop, CGRectMake(461, 257, 1694, 1058)), @"Capture coordinates must be relative to the target display");
+        CGRect spanning = WindowCrop(CGRectMake(1600, 100, 1000, 700), externalDisplay, 1.5);
+        NSCAssert(CGRectEqualToRect(spanning, CGRectMake(110, 0, 890, 700)), @"Do not capture another display through a union bounding box");
         NSArray *names = @[@"DFlash2", @"DFlash", @"GPT4o", @"Llama3", @"H2O", @"TypeScript", @"OpenAI"];
         for (NSString *name in names) {
             NSCAssert([SpokeContextNames([NSString stringWithFormat:@"Use %@ for this project.", name]) containsObject:name], @"Missing identifier: %@", name);
@@ -47,7 +54,7 @@ int main(void) {
             NSData *png = [bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
             [cases addObject:@{@"fontPoints": font, @"scale": scaleValue, @"dark": dark, @"ms": @(elapsedMs), @"detected": @([terms containsObject:@"DFlash2"]), @"ocr": trace, @"png": [png base64EncodedStringWithOptions:0]}];
         }
-        NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"nameAssertions": @12, @"coverageAssertions": @6, @"cases": cases} options:NSJSONWritingPrettyPrinted error:nil];
+        NSData *json = [NSJSONSerialization dataWithJSONObject:@{@"nameAssertions": @12, @"coverageAssertions": @8, @"cases": cases} options:NSJSONWritingPrettyPrinted error:nil];
         puts([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding].UTF8String);
     }
     return 0;
