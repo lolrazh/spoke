@@ -82,11 +82,15 @@ the app's local speech recognition.
 The Dictionary view has two independent controls, enabled by default:
 
 - **Use names from the active window** starts a separate local helper when
-  dictation starts. It reads Accessibility text first. If it finds no useful
-  names, it can use Apple Vision OCR on a crop of that window. OCR needs the
+  dictation starts. It reads Accessibility text first. A few names from an input
+  or sidebar do not prove that the main text was read. Unless a complete text
+  area covers at least 80% of the window, it supplements those terms with local
+  Apple Vision OCR. OCR needs the
   optional screen recording permission; the app requests it only from the
-  **Allow local screen reading** button. The crop is at most 960 × 360 points,
-  rendered at 1–1.5 pixels per point. It does not shrink the whole screen.
+  **Allow local screen reading** button. It reads the visible window at
+  1–1.5 pixels per point, with an 8-million-pixel limit. An oversized window is
+  cropped around its centre; debug records show when that limit clipped it.
+  It does not reduce a full window to a small, unreadable image.
 - **Learn verified name corrections** first checks that the exact pasted text
   appears in the same Accessibility field. It watches that field for up to
   30 seconds, then accepts only a small name correction after 1.5 seconds
@@ -102,14 +106,19 @@ to a server. Only accepted word pairs and removal preferences are saved.
 
 Context never waits on the paste path. Results that are not ready when speech
 stops are skipped. A context worker that stalls is stopped after two seconds.
-Focus changes discard context; starting another dictation stops edit watching.
+App/window changes and protected fields discard context. Moving focus within
+the same window keeps its context. Starting another dictation stops edit watching.
 Learning skips protected fields, unsupported AX fields, and documents whose
 initial text exceeds 4096 characters. Paste still works without learning.
 OCR uses Vision's fast path; name coverage depends on the language and app.
 Name extraction combines Apple's person/place/organization tags with rules
-for product identifiers, including `DFlash2`. Numbered identifiers can match
-their complete spoken spelling (`D flash two`); fuzzy matching cannot insert,
-remove, or change digits. Verified edit learning uses the same full-spelling
+for product identifiers, including `DFlash2`. Identifiers take priority over
+generic name tags and plain acronyms when the 24-term limit is reached.
+Numbered identifiers match their complete spoken spelling (`D flash two`).
+One letter in an uppercase numbered acronym can be corrected (`NBFP4` to
+`NVFP4`) only if there is one matching candidate. Exact entries win; ambiguous
+matches stay unchanged. Matching cannot insert, remove, or change digits.
+Verified edit learning uses the same full-spelling
 check for names with digits. It does not learn version changes.
 
 To check the native components without reading a real screen:
@@ -172,6 +181,17 @@ incorrectly by Vision fast mode; the tested 1.5x fixtures pass. These fixtures
 do not verify live Accessibility capture, microphone input, or paste into an
 external app. Optional second and third arguments accept a local ASR report
 (`results[0].raw`) and its 16 kHz mono PCM16 WAV file.
+
+To test a screenshot with the production crop policy, save the raw transcript
+and expected result in two text files, then run:
+
+```sh
+node scripts/test-context-image.mjs image.png raw.txt expected.txt /tmp/context-result.json
+```
+
+This runs ten repeats at each of two display scales. The local report includes
+selected terms, correction decisions, and timing. It does not capture a live
+screen, decode audio, or paste text.
 
 ## Build and contribute
 
