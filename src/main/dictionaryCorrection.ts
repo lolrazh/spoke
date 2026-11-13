@@ -261,7 +261,36 @@ function matchCasing(entry: string, stem: string): string {
   return entry;
 }
 
-type Match = { word: string; sim: number; path: "phonetic" | "fuzzy" };
+type Match = { word: string; sim: number; path: "phonetic" | "fuzzy" | "numbered-acronym" };
+
+function numberedAcronymMatch(stem: string, index: Index): Match | null | undefined {
+  // ASR often confuses spoken letter names (B/V, P/T). Permit one letter
+  // substitution in a clearly spelled acronym, never a changed number,
+  // insertion/deletion, ordinary title-cased word, or ambiguous identifier.
+  if (!/^[A-Z]{3,}[0-9]+[A-Z0-9]*$/u.test(stem) || stem.length < 5 || stem.length > 16) return undefined;
+  const candidates: string[] = [];
+  const keys = new Set<string>();
+  for (let i = 0; i < stem.length; i++) {
+    const deletion = (stem.slice(0, i) + stem.slice(i + 1)).toLowerCase();
+    for (const key of index.oneEditKeys.get(deletion) ?? []) keys.add(key);
+  }
+  // Longer entries do not have deletion keys in the index.
+  if (stem.length > 12) for (const key of index.canonicalByLength.get(stem.length) ?? []) keys.add(key);
+  for (const key of keys) {
+    const word = index.canonical.get(key);
+    if (!word || word.length !== stem.length || !/^[A-Z]{3,}[0-9]+[A-Z0-9]*$/u.test(word)) continue;
+    let changedLetters = 0;
+    let changedNumber = false;
+    for (let i = 0; i < stem.length; i++) {
+      if (stem[i] === word[i]) continue;
+      if (/[0-9]/u.test(stem[i] + word[i])) changedNumber = true;
+      changedLetters++;
+    }
+    if (!changedNumber && changedLetters === 1) candidates.push(word);
+  }
+  if (!candidates.length) return undefined;
+  return candidates.length === 1 ? { word: candidates[0], sim: 1 - 1 / stem.length, path: "numbered-acronym" } : null;
+}
 
 type PhraseMatch = {
   entry: string;
@@ -338,6 +367,9 @@ function findPhraseMatchUncached(
   );
   if (exactMatch) return exactMatch;
   if (exact.length > 1) return null;
+  // Numbered names need exact spelling after spacing/digit normalization.
+  // Phonetic similarity alone must not turn Class4 into GLASS4.
+  if (/\d/u.test(key)) return null;
 
   const phoneticCandidates: PhraseKey[] = [];
   const [primary, secondary] = doubleMetaphone(key);
@@ -373,6 +405,9 @@ function findPhraseMatchUncached(
 }
 
 function findMatch(stem: string, lower: string, index: Index): Match | null {
+  const acronym = numberedAcronymMatch(stem, index);
+  if (acronym !== undefined) return acronym;
+  if (/\d/u.test(stem)) return null;
   const cached = index.tokenMatches.get(lower);
   if (cached !== undefined) return cached;
   const result = findMatchUncached(stem, lower, index);

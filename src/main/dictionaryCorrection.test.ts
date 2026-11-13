@@ -33,6 +33,14 @@ describe("main/dictionaryCorrection", () => {
     expect(correctTranscript("D flash two", ["DFlash2", "D Flash 2"])).toBe("D flash two");
     expect(correctTranscript("DFlash2", ["DFlash"])).toBe("DFlash2");
   });
+  it("repairs one spoken letter in a numbered acronym without changing its version", () => {
+    expect(correctTranscript("Try NBFP4 as well.", ["NVFP4"])).toBe("Try NVFP4 as well.");
+    expect(correctTranscript("Try NBFP5 as well.", ["NVFP4"])).toBe("Try NBFP5 as well.");
+    expect(correctTranscript("Try NBFP4 as well.", ["NVFP4", "NAFP4"])).toBe("Try NBFP4 as well.");
+    expect(correctTranscript("NBFP4", ["NVFP4", "NPFP4"])).toBe("NBFP4");
+    expect(correctTranscript("Try NBFP4 as well.", ["NBFP4", "NVFP4"])).toBe("Try NBFP4 as well.");
+    expect(correctTranscript("Class4", ["GLASS4"])).toBe("Class4");
+  });
   it("handles numbered entries without internal capitals", () => {
     expect(correctTranscript("Use Llama three", ["Llama3"])).toBe("Use Llama3");
     expect(correctTranscript("Use H two O", ["H2O"])).toBe("Use H2O");
