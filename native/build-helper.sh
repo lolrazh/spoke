@@ -27,8 +27,9 @@ echo "Compiling $EXECUTABLE_NAME (Objective-C with AX support)..."
 clang -x objective-c -fobjc-arc -mmacosx-version-min=14.0 \
       -framework Foundation -framework AppKit \
       -framework ApplicationServices -framework IOKit -framework CoreGraphics \
+      -framework Vision -framework NaturalLanguage -framework ScreenCaptureKit \
       -o "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME" \
-      "$SOURCE_DIR/spoke-helper.c"
+      "$SOURCE_DIR/spoke-helper.c" "$SOURCE_DIR/screen-context.m" "$SOURCE_DIR/edit-learning.m"
 
 # Ensure the binary is executable
 chmod +x "$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME"

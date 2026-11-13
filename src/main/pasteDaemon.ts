@@ -3,6 +3,7 @@ import * as fs from "fs";
 import { performance } from "node:perf_hooks";
 import { spawn, type ChildProcess } from "child_process";
 import { getHelperPath } from "./helperPaths";
+import { editLearningEnabled, invalidateEditLearning, receiveVerifiedEdit } from "./editLearning";
 
 type PendingCommand = {
   lines: string[];
@@ -81,6 +82,12 @@ export function preSpawnPasteHelper(): void {
     while ((end = current.buffer.indexOf("\n")) !== -1) {
       const line = current.buffer.slice(0, end).replace(/\r$/u, "");
       current.buffer = current.buffer.slice(end + 1);
+      if (line.startsWith("learning:")) {
+        if (current === session && !current.closed) {
+          try { receiveVerifiedEdit(JSON.parse(line.slice(9))); } catch { /* Ignore invalid helper output. */ }
+        }
+        continue;
+      }
       if (line === "paste-daemon-ready") {
         console.info("[Latency] Paste helper ready", {
           setup_ms: Math.round((performance.now() - started) * 1000) / 1000,
@@ -252,7 +259,7 @@ export async function insertViaPasteDaemon(
   preSpawnPasteHelper();
   const owner = session;
   const output = await request(
-    `paste-text:${targetPid}:${Buffer.from(text, "utf8").toString("base64")}`,
+    `${editLearningEnabled() ? "paste-learn" : "paste-text"}:${targetPid}:${Buffer.from(text, "utf8").toString("base64")}`,
     "paste-done",
   );
   const phase = (name: string) => {
@@ -293,6 +300,7 @@ export async function pasteViaDaemon(targetPid?: number): Promise<boolean> {
 }
 
 export function killPasteDaemon(): void {
+  invalidateEditLearning();
   const current = session;
   if (!current) return;
   closeSession(current, new Error("Paste helper stopped."));
@@ -306,6 +314,13 @@ export function killPasteDaemon(): void {
   }, 500);
   timer.unref?.();
   current.child.once("exit", () => clearTimeout(timer));
+}
+
+export function stopEditLearning(): void {
+  invalidateEditLearning();
+  if (session && !session.closed && !session.child.stdin?.destroyed) {
+    session.child.stdin?.write("stop-learning\n", () => undefined);
+  }
 }
 
 export function respawnPasteDaemon(): void {
