@@ -55,7 +55,9 @@ export function normalizeTranscript(
     );
   }
   if (trace) trace.push({ kind: "input", source: normalized, outcome: "before-dictionary" });
-  if (!Array.isArray(dictionary) || dictionary.length === 0) return normalized;
+  // Whisper already consumes vocabulary during decoding. Do not apply a
+  // second, fuzzy vocabulary decision to its output.
+  if (family === "whisper" || !Array.isArray(dictionary) || dictionary.length === 0) return normalized;
   try {
     return correctTranscript(normalized, dictionary, trace);
   } catch (error) {

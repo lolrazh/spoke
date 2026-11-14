@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { normalizeTranscript } from "./transcriptPostprocessing";
 
 describe("live numbered acronym correction", () => {
+  it("never applies dictionary replacement after Whisper decoding", () => {
+    expect(normalizeTranscript("Use D flash two with github.", "whisper", ["DFlash2", "GitHub"]))
+      .toBe("Use D flash two with github.");
+  });
   it("corrects letters after the normalizer joins them and leaves the number separate", () => {
     expect(normalizeTranscript(
       "Use D flash 2 for this project. Test N P F P 4 as well.",
