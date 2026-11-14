@@ -81,8 +81,8 @@ the app's local speech recognition.
 
 The Dictionary view has two independent controls, enabled by default:
 
-- **Use names from the active window** starts a separate local helper when
-  dictation starts. It reads Accessibility text first. A few names from an input
+- **Use names from the active window** uses a separate local helper to read
+  screen context when dictation starts. It reads Accessibility text first. A few names from an input
   or sidebar do not prove that the main text was read. Unless a complete text
   area covers at least 80% of the window, it supplements those terms with local
   Apple Vision OCR. OCR needs the
@@ -101,8 +101,12 @@ The Dictionary view has two independent controls, enabled by default:
 
 Screen context uses local name tagging. It keeps at most 24 temporary terms;
 it does not save images or raw screen text. Whisper receives the terms as
-vocabulary hints. Other models use the existing local dictionary correction
-step because they do not accept this prompt. No context or edit text is sent
+vocabulary hints. The current Parakeet MLX adapter uses post-transcription
+correction, not a dictionary prompt or decoder word boosting. Its correction
+uses sound-based matching (Double Metaphone), spelling distance, and guarded
+identifier/acronym rules. NVIDIA NeMo's decoder phrase boosting is a separate
+feature and is not integrated into this adapter. Other current local adapters
+also use the correction step. No context or edit text is sent
 to a server. Only accepted word pairs and removal preferences are saved.
 
 Context never waits on the decode or paste path. Whisper takes the available
@@ -110,7 +114,10 @@ terms when its prompt is submitted. Other local models take them when final
 dictionary correction starts, so in-flight OCR can finish during decode. Later
 results are skipped. A stalled capture is stopped after eight seconds; this
 background budget does not extend recording or delay paste. Idle preparation
-initializes AppKit and Vision without reading screen content.
+initializes AppKit, Vision, and name tagging with fixed synthetic input, without
+reading screen content. Window metadata lookup overlaps the bounded AX scan;
+screenshots are still taken only when AX coverage is incomplete. macOS 26 uses
+the screenshot-specific API; older systems retain the image-capture API.
 One prepared worker stays idle while this feature is enabled; it stops when the
 feature is disabled or the app quits. Each dictation still starts with no terms.
 An unexpected cold capture does not queue behind an extra synthetic OCR request.

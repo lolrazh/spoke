@@ -62,3 +62,55 @@ The TextEdit name failure contained `N, E, F, P, 4`. Correction kept the commas.
 - `consume-safari-short-1`: `dbe1f701-9a33-4ace-a3bb-e26bdb779cd7`
 - `consume-textedit-full`: `e7b6f7ae-45c1-4acd-8fcd-1edbb2bf7fa6`
 - `consume-safari-short-after-idle`: `07035951-0c10-46be-acbe-bd18d88370be`
+
+
+## Follow-up: capture latency and zero added speech delay
+
+This follow-up keeps the audio/first-word investigation on hold at the user's request. It changes screen context, not microphone startup, VAD, or Parakeet decoding.
+
+### Dictionary behavior
+
+The two post-transcription matching methods are Double Metaphone (sound-based) and spelling distance, with additional bounded identifier/acronym rules. The current Parakeet MLX adapter explicitly ignores the shared prompt argument. Whisper alone receives the vocabulary hint before decoding. NVIDIA NeMo supports decoder phrase boosting for TDT models, but that is not integrated into Spoke's adapter: https://docs.nvidia.com/nemo/speech/nightly/asr/asr_customization/word_boosting.html.
+
+### Changes
+
+- Stop AX traversal after a complete document is read. When screen permission is available, use a 40 ms traversal budget before OCR fallback; retain the 120 ms budget when AX is the only available source. These are traversal budgets, not hard end-to-end timing guarantees for OS calls.
+- Start window metadata lookup alongside AX traversal. Take a screenshot only if AX coverage is incomplete. Capture still includes only the target window, with the same pixel budget and scale.
+- Prepare name tagging with fixed synthetic text as well as AppKit and Vision. A blank warmup image does not exercise name tagging. Warmup emits a readiness event, which cannot change a dictation's vocabulary. Queued synthetic work is skipped if capture has already started.
+- Use the screenshot-specific API on macOS 26 or newer, with a compile-time SDK guard and the existing API as fallback. No continuously running screen stream or cached screen text was added.
+- Guard shortcut cleanup with `app.isReady()`. Cancelling an app launch before readiness had opened an Electron error dialog. The test harness's process cleanup was also corrected; aborted launches are excluded from capture measurements.
+
+### Matched helper measurements
+
+Safari displayed the same pixel-only reference page on the virtual display. Each sample used a new native worker. Prepared workers received the warm command two seconds before capture; that is idle preparation, not a speech delay. The timer starts when the capture command is sent. Both names were found in every sample below.
+
+| Worker state | Previous build, ms | New screenshot path, ms | Median change |
+| --- | --- | --- | --- |
+| Fresh process | 619, 319, 306 | 258, 268, 276 | 319 to 268 ms (16% lower) |
+| Prepared process | 246, 248, 252 | 198, 188, 193 | 248 to 193 ms (22% lower) |
+
+These are three trials per condition on one window, with OS caches already in use. They are not reboot-cold measurements or a guarantee under load. The earlier multi-second runs are not a matched baseline. Earlier exploratory trials with focus changes or the wrong foreground app are excluded. The old screenshot API fallback was exercised before the API change; this host cannot certify older macOS releases.
+
+### Real dictation, zero added delay
+
+The native driver loads and prepares local audio before Right Option down, then requests playback with no sleep. The measured playback call completed 39–60 ms after the key event in the final four runs; this is not a measurement of physical sound onset. Audio still travels through the Mac speakers and microphone. Each cold run starts a fresh development app; normal idle prewarming remains enabled. The final cold tests began about 186–218 ms after the app's ready signal, plus test-driver setup.
+
+| Case | Context ready | Names found | Recognition/output | Paste |
+| --- | --- | --- | --- | --- |
+| Fresh app, full phrase | 655 ms | DFlash2, NVFP4 | Opening phrase absent; remaining acronym corrected | Matched non-empty final text |
+| Fresh app, short phrase | 781 ms | DFlash2, NVFP4 | No transcript | No paste; not a success |
+| Prepared app, full phrase | 154 ms | DFlash2, NVFP4 | EFLASH 2 remained; NVFP4 corrected | Matched non-empty final text |
+| Prepared app, short phrase | 150 ms | DFlash2, NVFP4 | Yeah. | Matched non-empty final text |
+
+Context arrived before speech stopped in all four runs. These are 4/4 context-coverage checks and 3/3 non-empty paste-readback checks, but **zero full recognition successes** for the requested phrases. They do not establish human-speech accuracy. No broader correction rule was added to force these results to match. The user asked to hold the opening-word investigation, so capture/VAD/recognition behavior remains unchanged.
+
+The driver now cancels the owned development app if focus leaves the named test window, including while awaiting paste. Earlier focus-interrupted attempts are not successful tests. Test windows and the loopback server were closed after verification. Raw audio, screenshots and screen terms stay local.
+
+### Verification and evidence
+
+- 676 tests in 76 files passed; TypeScript and targeted ESLint checks passed.
+- Native geometry/name assertions and the 12 OCR fixtures passed their expected assertions (10/12 detect DFlash2, including all six at 1.5x).
+- Standalone synthetic startup returned only `warm-ready` in 73 ms in one probe; it did not capture screen content.
+- Local comparison files: `/tmp/spoke-context-speed/baseline-matched.json` and `/tmp/spoke-context-speed/new-api.json`.
+- Final live sets: `2026-11-14T04-00-30-949Z-8ac5feb1` and `2026-11-14T04-01-08-047Z-1d83e5c2`.
+- Final run IDs: `a07b52f9-734e-42e8-92b4-d27c5b840d89`, `2bcc81ac-6773-4ad7-bf78-f04e93e48174`, `18ecc531-4523-4f66-9e84-eea26e958fbc`, `fe85c65b-e14c-44ad-ad64-4bf37066fbb0`.
