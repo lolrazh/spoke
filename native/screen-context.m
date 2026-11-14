@@ -380,7 +380,7 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
             CGRect visible = CGRectIntersection(frame, displayBounds);
             trace[@"pixelBudgetClipped"] = @(crop.size.width < floor(visible.size.width) || crop.size.height < floor(visible.size.height));
         }
-        [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:^(CGImageRef image, NSError *captureError) {
+        void (^receiveImage)(CGImageRef, NSError *) = ^(CGImageRef image, NSError *captureError) {
             DebugStage(debug, identifier, @"screenshot-ready", start);
             if (atomic_load(&captureGeneration) != generation) return;
             if (!image || captureError) {
@@ -408,7 +408,28 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
                     // The window watcher started before asynchronous OCR.
                 }
             });
-        }];
+        };
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 260000
+        // The screenshot-specific API avoids the stream configuration path
+        // on newer macOS. Keep the same window filter and readable pixels.
+        if (@available(macOS 26.0, *)) {
+            SCScreenshotConfiguration *screenshot = [SCScreenshotConfiguration new];
+            screenshot.sourceRect = config.sourceRect;
+            screenshot.width = config.width;
+            screenshot.height = config.height;
+            screenshot.showsCursor = NO;
+            screenshot.ignoreShadows = YES;
+            screenshot.includeChildWindows = NO;
+            screenshot.dynamicRange = SCScreenshotDynamicRangeSDR;
+            if (trace) trace[@"screenshotAPI"] = @"screenshot";
+            [SCScreenshotManager captureScreenshotWithFilter:filter configuration:screenshot completionHandler:^(SCScreenshotOutput *output, NSError *error) {
+                receiveImage(output.sdrImage, error);
+            }];
+            return;
+        }
+#endif
+        if (trace) trace[@"screenshotAPI"] = @"image";
+        [SCScreenshotManager captureImageWithFilter:filter configuration:config completionHandler:receiveImage];
     });
 }
 
