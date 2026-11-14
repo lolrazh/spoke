@@ -129,3 +129,7 @@ Recorded 14 November 2026. Work is on `codex/context-consistency`, in draft PR #
 7. Committed the work in small steps and pushed draft PR #42. At this checkpoint, 676 tests, TypeScript, targeted ESLint, and native expected assertions passed. The normal development app was restarted with diagnostic recording off.
 
 Next scope: verify dependency versions and upstream changes; inspect existing local Parakeet word-boosting implementations; assess a decoder integration without cloud processing or extra encoder work. UI cleanup and user-facing controls will be revisited later. No upstream contribution has been submitted.
+
+### Decoder research outcome
+
+The [word-boosting report](parakeet-word-boosting-2026-11-14.md) records the installed stack, current upstream releases, alternative frameworks, and local prototype results. Upstream `parakeet-mlx` 0.7.0 has a reusable beam-search booster. Two terms corrected the synthetic name clips, but a 24-term list produced false names and raised word error rate on 32 independent speech controls. The benchmark is checked in; inference data remains local. Normal dictation and dependency pins are unchanged because the broader term list failed the accuracy checks. No UI change or upstream contribution was made.
