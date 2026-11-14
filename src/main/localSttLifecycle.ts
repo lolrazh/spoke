@@ -28,6 +28,7 @@ import type { CorrectionTrace } from "../../shared/contextDebug";
 import { state } from "./windowState";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { getModelFamily } from "./localModelContract";
+import { buildParakeetBoost, parakeetBoostEnabled } from "./parakeetBoost";
 import {
   normalizeTranscript,
   prepareTranscriptPostprocessing,
@@ -383,20 +384,35 @@ export async function transcribeWithLocalSidecar(
   // guard blocks the stop.
   armIdleTimer();
   try {
-    if (contextId && getModelStatus(modelId).family === "whisper") freezeScreenContext(contextId);
+    const family = getModelFamily(modelId);
+    const useBoost = family === "parakeet" && parakeetBoostEnabled();
+    if (contextId && (getModelStatus(modelId).family === "whisper" || useBoost)) {
+      freezeScreenContext(contextId);
+    }
     const usedPrompt = buildWhisperPrompt(modelId, prompt, contextId);
+    const boost = useBoost
+      ? buildParakeetBoost(screenContextSession.read(contextId), getVocabularyDictionary())
+      : undefined;
     if (contextDebugEnabled(contextId)) {
       recordContextAudio(contextId, pcmBuffer);
       finishContextAudio(contextId);
-      recordContextDebug(contextId, "decode-request", { modelId, family: getModelFamily(modelId), prompt: usedPrompt ?? null, screenTerms: screenContextSession.read(contextId), audioBytes: pcmBuffer.length });
+      recordContextDebug(contextId, "decode-request", {
+        modelId, family, prompt: usedPrompt ?? null, boost: boost ?? null,
+        vocabularyMode: family === "whisper" || useBoost ? "decoder" : "replacement",
+        screenTerms: screenContextSession.read(contextId), audioBytes: pcmBuffer.length,
+      });
     }
-    const result = await transcribeLocal(
-      pcmBuffer,
-      usedPrompt,
-    );
+    const result = boost
+      ? await transcribeLocal(pcmBuffer, usedPrompt, boost)
+      : await transcribeLocal(pcmBuffer, usedPrompt);
     recordContextDebug(contextId, "decode-result", { raw: result.text, metrics: result.metrics });
+    if (boost && result.metrics?.parakeet_word_boost !== 1) {
+      throw new Error("The local runtime does not support Parakeet word boosting. Run npm run setup:stt and restart Spoke.");
+    }
     if (contextId) freezeScreenContext(contextId);
-    const dictionary = contextDictionary(contextId);
+    // The decoder-only trial never runs fuzzy vocabulary replacement, even
+    // when no terms were ready. This keeps A/B tests free of hidden fallback.
+    const dictionary = useBoost || family === "whisper" ? [] : contextDictionary(contextId);
     return {
       ...result,
       text: await normalizeTranscriptForModel(result.text, modelId, dictionary, contextId),
