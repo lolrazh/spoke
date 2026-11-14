@@ -20,9 +20,15 @@ import {
 } from "./sidecarEngine";
 import { bootTimeline } from "./bootTimeline";
 import { getVocabularyDictionary } from "./vocabularyService";
+import { screenContextSession } from "./screenContextSession";
+import { contextDictionary } from "./contextVocabulary";
+import { freezeScreenContext } from "./screenContext";
+import { contextDebugEnabled, recordContextDebug, recordContextAudio, finishContextAudio } from "./contextDebug";
+import type { CorrectionTrace } from "../../shared/contextDebug";
 import { state } from "./windowState";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { getModelFamily } from "./localModelContract";
+import { buildParakeetBoost, parakeetBoostEnabled } from "./parakeetBoost";
 import {
   normalizeTranscript,
   prepareTranscriptPostprocessing,
@@ -52,8 +58,12 @@ async function normalizeTranscriptForModel(
   text: string,
   modelId: string,
   dictionary: readonly string[],
+  contextId?: string,
 ): Promise<string> {
-  return normalizeTranscript(text, getModelFamily(modelId), dictionary);
+  const trace: CorrectionTrace[] | undefined = contextDebugEnabled(contextId) ? [] : undefined;
+  const corrected = await normalizeTranscript(text, getModelFamily(modelId), dictionary, trace);
+  if (trace) recordContextDebug(contextId, "correction", { modelId, raw: text, corrected, dictionary: dictionary.slice(0, 2000), trace });
+  return corrected;
 }
 
 function logSidecarShutdownFailure(context: string, error: unknown): void {
@@ -70,12 +80,17 @@ function logPrewarmFailure(reason: string, error: unknown): void {
 function buildWhisperPrompt(
   modelId: string,
   prompt?: string,
+  contextId?: string,
 ): string | undefined {
   if (getModelStatus(modelId).family !== "whisper") {
     return undefined;
   }
 
-  const dictionary = getVocabularyDictionary();
+  const saved = getVocabularyDictionary();
+  const canonical = new Map(saved.map(word => [word.toLocaleLowerCase(), word]));
+  // Put current-window names first so a large saved dictionary cannot consume
+  // the entire prompt budget. Saved spelling still wins for a matching term.
+  const dictionary = [...screenContextSession.read(contextId).map(word => canonical.get(word.toLocaleLowerCase()) ?? word), ...saved];
   // Preserve the old no-metadata request when neither the caller nor the
   // dictionary has anything to add.
   if (!prompt && dictionary.length === 0) {
@@ -356,9 +371,10 @@ export async function transcribeWithLocalSidecar(
   modelId: string,
   pcmBuffer: Buffer,
   prompt?: string,
+  contextId?: string,
 ): Promise<LocalTranscribeResult> {
   prepareTranscriptPostprocessing(
-    state.appPreferences.vocabularyDictionary ?? [],
+    contextDictionary(contextId),
   );
   await enqueueLifecycle(async () => {
     await ensureLocalSidecarRunningOnce(modelId);
@@ -368,14 +384,38 @@ export async function transcribeWithLocalSidecar(
   // guard blocks the stop.
   armIdleTimer();
   try {
-    const result = await transcribeLocal(
-      pcmBuffer,
-      buildWhisperPrompt(modelId, prompt),
-    );
-    const dictionary = state.appPreferences.vocabularyDictionary ?? [];
+    const family = getModelFamily(modelId);
+    const useBoost = family === "parakeet" && parakeetBoostEnabled();
+    if (contextId && (getModelStatus(modelId).family === "whisper" || useBoost)) {
+      freezeScreenContext(contextId);
+    }
+    const usedPrompt = buildWhisperPrompt(modelId, prompt, contextId);
+    const boost = useBoost
+      ? buildParakeetBoost(screenContextSession.read(contextId), getVocabularyDictionary())
+      : undefined;
+    if (contextDebugEnabled(contextId)) {
+      recordContextAudio(contextId, pcmBuffer);
+      finishContextAudio(contextId);
+      recordContextDebug(contextId, "decode-request", {
+        modelId, family, prompt: usedPrompt ?? null, boost: boost ?? null,
+        vocabularyMode: family === "whisper" || useBoost ? "decoder" : "replacement",
+        screenTerms: screenContextSession.read(contextId), audioBytes: pcmBuffer.length,
+      });
+    }
+    const result = boost
+      ? await transcribeLocal(pcmBuffer, usedPrompt, boost)
+      : await transcribeLocal(pcmBuffer, usedPrompt);
+    recordContextDebug(contextId, "decode-result", { raw: result.text, metrics: result.metrics });
+    if (boost && result.metrics?.parakeet_word_boost !== 1) {
+      throw new Error("The local runtime does not support Parakeet word boosting. Run npm run setup:stt and restart Spoke.");
+    }
+    if (contextId) freezeScreenContext(contextId);
+    // The decoder-only trial never runs fuzzy vocabulary replacement, even
+    // when no terms were ready. This keeps A/B tests free of hidden fallback.
+    const dictionary = useBoost || family === "whisper" ? [] : contextDictionary(contextId);
     return {
       ...result,
-      text: await normalizeTranscriptForModel(result.text, modelId, dictionary),
+      text: await normalizeTranscriptForModel(result.text, modelId, dictionary, contextId),
     };
   } finally {
     releaseTranscriptionLease();
@@ -395,9 +435,10 @@ export async function beginLocalStreamingSession(
   modelId: string,
   onPartial: (text: string) => void,
   signal?: AbortSignal,
+  contextId?: string,
 ): Promise<ManagedLocalStreamingSession> {
   prepareTranscriptPostprocessing(
-    state.appPreferences.vocabularyDictionary ?? [],
+    contextDictionary(contextId),
   );
   const throwIfAborted = () => {
     if (signal?.aborted) {
@@ -423,6 +464,7 @@ export async function beginLocalStreamingSession(
   let sidecarSession: LocalStreamingSession;
   try {
     throwIfAborted();
+    recordContextDebug(contextId, "decode-request", { modelId, family: "nemotron", prompt: null, streaming: true });
     sidecarSession = await startLocalStream(onPartial);
     if (signal?.aborted) {
       sidecarSession.cancel();
@@ -443,17 +485,21 @@ export async function beginLocalStreamingSession(
   };
 
   return {
-    push: (pcmBuffer) => sidecarSession.push(pcmBuffer),
+    push: (pcmBuffer) => { recordContextAudio(contextId, pcmBuffer); return sidecarSession.push(pcmBuffer); },
     async finish() {
       try {
         const result = await sidecarSession.finish();
-        const dictionary = state.appPreferences.vocabularyDictionary ?? [];
+        finishContextAudio(contextId);
+        recordContextDebug(contextId, "decode-result", { raw: result.text, metrics: result.metrics });
+        if (contextId) freezeScreenContext(contextId);
+        const dictionary = contextDictionary(contextId);
         return {
           ...result,
           text: await normalizeTranscriptForModel(
             result.text,
             modelId,
             dictionary,
+            contextId,
           ),
         };
       } finally {

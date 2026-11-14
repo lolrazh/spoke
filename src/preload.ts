@@ -167,11 +167,12 @@ contextBridge.exposeInMainWorld("stt", {
     modelId: string,
     pcmBuffer: ArrayBuffer | Uint8Array,
     prompt?: string,
-  ) => ipcRenderer.invoke("stt:transcribe-local", modelId, pcmBuffer, prompt),
+    contextId?: string,
+  ) => ipcRenderer.invoke("stt:transcribe-local", modelId, pcmBuffer, prompt, contextId),
   cancelLocalTranscription: () =>
     ipcRenderer.invoke("stt:cancel-local-transcription"),
-  startLocalStream: (modelId: string): Promise<{ sessionId: string }> =>
-    ipcRenderer.invoke("stt:start-local-stream", modelId),
+  startLocalStream: (modelId: string, contextId?: string): Promise<{ sessionId: string }> =>
+    ipcRenderer.invoke("stt:start-local-stream", modelId, contextId),
   pushLocalStream: (sessionId: string, pcmBuffer: ArrayBuffer) =>
     ipcRenderer.invoke("stt:push-local-stream", sessionId, pcmBuffer),
   finishLocalStream: (sessionId: string) =>
@@ -292,6 +293,11 @@ contextBridge.exposeInMainWorld("electron", {
   // Vocabulary dictionary (words/phrases used to correct transcripts)
   getVocabularyDictionary: (): Promise<{ dictionary: string[] }> =>
     ipcRenderer.invoke("vocabulary:get-dictionary"),
+  onVocabularyChanged: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on("vocabulary:changed", listener);
+    return () => ipcRenderer.removeListener("vocabulary:changed", listener);
+  },
   addVocabularyEntry: (value: string) =>
     ipcRenderer.invoke("vocabulary:add-entry", { value }),
   updateVocabularyEntry: (currentValue: string, nextValue: string) =>
@@ -362,4 +368,25 @@ ipcRenderer.on("collapse-request", () => {
   } catch {
     // ignore
   }
+});
+
+// Context messages never wait on capture or OCR.
+contextBridge.exposeInMainWorld("localContext", {
+  outcome: (id: string, text: string) => ipcRenderer.send("context:outcome", id, text),
+  begin: (id: string) => ipcRenderer.send("context:begin", id),
+  freeze: (id: string) => ipcRenderer.send("context:freeze", id),
+  end: (id: string) => ipcRenderer.send("context:end", id),
+  getSettings: () => ipcRenderer.invoke("context:settings"),
+  setSettings: (value: { screenContext?: boolean; learnFromEdits?: boolean }) => ipcRenderer.invoke("context:set-settings", value),
+  requestScreenPermission: () => ipcRenderer.invoke("context:request-screen"),
+});
+
+contextBridge.exposeInMainWorld("contextDebug", {
+  start: (label: string, audio: boolean) => ipcRenderer.invoke("context-debug:start", label, audio),
+  stop: () => ipcRenderer.invoke("context-debug:stop"),
+  overview: (setId?: string) => ipcRenderer.invoke("context-debug:overview", setId),
+  read: (setId: string, id: string) => ipcRenderer.invoke("context-debug:read", setId, id),
+  annotate: (setId: string, id: string, expected: string, notes: string) => ipcRenderer.invoke("context-debug:annotate", setId, id, expected, notes),
+  remove: (setId: string, id: string) => ipcRenderer.invoke("context-debug:remove", setId, id),
+  openFolder: (setId?: string) => ipcRenderer.invoke("context-debug:open", setId),
 });

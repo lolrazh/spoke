@@ -1,4 +1,5 @@
 import type { LocalModelFamily } from "../types/shared";
+import type { CorrectionTrace } from "../../shared/contextDebug";
 import {
   correctTranscript,
   prepareDictionaryCorrection,
@@ -36,6 +37,7 @@ export function normalizeTranscript(
   text: string,
   family: LocalModelFamily | undefined,
   dictionary: readonly string[],
+  trace?: CorrectionTrace[],
 ): string {
   let normalized = text;
   try {
@@ -52,9 +54,12 @@ export function normalizeTranscript(
       error,
     );
   }
-  if (!Array.isArray(dictionary) || dictionary.length === 0) return normalized;
+  if (trace) trace.push({ kind: "input", source: normalized, outcome: "before-dictionary" });
+  // Whisper already consumes vocabulary during decoding. Do not apply a
+  // second, fuzzy vocabulary decision to its output.
+  if (family === "whisper" || !Array.isArray(dictionary) || dictionary.length === 0) return normalized;
   try {
-    return correctTranscript(normalized, dictionary);
+    return correctTranscript(normalized, dictionary, trace);
   } catch (error) {
     console.warn("[STT] Dictionary correction failed:", error);
     return normalized;

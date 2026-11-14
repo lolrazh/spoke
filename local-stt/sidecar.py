@@ -5,14 +5,14 @@ Spoke MLX STT sidecar supporting Whisper, Cohere, Parakeet, and Nemotron ASR.
 The engine family is selected with --family {whisper,cohere,parakeet,nemotron} (default
 whisper for back-compat). Whisper uses mlx_whisper (large-v3 turbo 4-bit);
 Cohere uses mlx-speech (CohereAsrModel); Parakeet uses parakeet-mlx (TDT 0.6b
-v2, 8-bit). Heavy per-family imports are loaded lazily so that selecting one
+v2, 6-bit). Heavy per-family imports are loaded lazily so that selecting one
 family never imports the others.
 
 Daemon mode loads the model once, emits {"type":"ready"}, then reads requests
 as two length-prefixed frames on stdin:
   1. A JSON metadata frame: 4-byte little-endian length + UTF-8 JSON object
-     (currently supports an optional "prompt" string used as a vocabulary/
-     decoding hint). An empty object ("{}") means no options.
+     (optional Whisper "prompt", or Parakeet "boost_terms" and
+     "boost_strength" decoder hints). An empty object ("{}") means no options.
   2. A raw audio frame: 4-byte little-endian length + raw PCM16 mono 16 kHz
      audio.
 A zero-length metadata frame (i.e. the 4-byte length alone, with no JSON or
@@ -1581,20 +1581,30 @@ class ParakeetEngine(Engine):
         except Exception as exc:
             log(f"sidecar: warmup failed; continuing cold: {exc}")
 
-    def _generate(self, audio: np.ndarray) -> str:
+    def _generate(
+        self, audio: np.ndarray, boost_terms=(), boost_strength: float = 4.0,
+    ) -> str:
+        from parakeet_boost import decoding_config
+
+        config = decoding_config(boost_terms, boost_strength, self.model.vocabulary)
         mel = _p["get_logmel"](
             mx.array(np.asarray(audio, dtype=np.float32)),
             self.model.preprocessor_config,
         )
-        result = self.model.generate(mel)[0]
+        result = self.model.generate(
+            mel, **({"decoding_config": config} if config else {}),
+        )[0]
         return "".join(token.text for token in result.tokens).strip()
 
-    def transcribe(self, audio: np.ndarray, prompt: str | None = None) -> None:
-        # Parakeet's TDT transducer decodes audio frames directly; there is no
-        # text-conditioning input (no initial_prompt equivalent) to seed with a
-        # vocabulary hint. The request-level prompt is accepted for API
-        # symmetry with WhisperEngine but intentionally ignored here.
+    def transcribe(
+        self, audio: np.ndarray, prompt: str | None = None, *,
+        boost_terms=(), boost_strength: float = 4.0,
+    ) -> None:
+        # Parakeet uses structured decoder hints, never a Whisper prompt.
         del prompt
+        from parakeet_boost import validate_boost
+
+        boost_terms, boost_strength = validate_boost(boost_terms, boost_strength)
 
         request_start = time.perf_counter()
         stats = audio_stats(audio)
@@ -1614,6 +1624,7 @@ class ParakeetEngine(Engine):
                 memory=memory_snapshot(),
                 timings={"audio_analysis_ms": audio_analysis_ms},
             )
+            metrics.update(parakeet_word_boost=1, decoder_mode="skipped", boost_term_count=len(boost_terms))
             emit({"type": "done", "transcript": "", "metrics": metrics})
             log("sidecar: skipped non-speech audio")
             return
@@ -1624,7 +1635,7 @@ class ParakeetEngine(Engine):
         if self.model is None:
             raise RuntimeError("Parakeet model has not been loaded.")
 
-        transcript = self._generate(audio)
+        transcript = self._generate(audio, boost_terms, boost_strength)
         inference_ms = round((time.perf_counter() - start) * 1000)
         memory = memory_snapshot()
         clear_cache_if_enabled()
@@ -1639,6 +1650,12 @@ class ParakeetEngine(Engine):
             timings={"audio_analysis_ms": audio_analysis_ms},
         )
 
+        metrics.update(
+            parakeet_word_boost=1,
+            decoder_mode="beam" if boost_terms else "greedy",
+            boost_term_count=len(boost_terms),
+            boost_policy="length-scaled",
+        )
         emit({"type": "done", "transcript": transcript, "metrics": metrics})
         log(
             "sidecar: done - "
@@ -1973,7 +1990,16 @@ def daemon_mode(engine: Engine) -> int:
                 continue
             raw = read_exact(sys.stdin.buffer, audio_length)
 
-            engine.transcribe(pcm16_to_float32(raw), prompt=prompt)
+            if "boost_terms" in request:
+                if not isinstance(engine, ParakeetEngine):
+                    raise ValueError("Decoder word boosting requires Parakeet")
+                engine.transcribe(
+                    pcm16_to_float32(raw), prompt=prompt,
+                    boost_terms=request["boost_terms"],
+                    boost_strength=request.get("boost_strength", 4.0),
+                )
+            else:
+                engine.transcribe(pcm16_to_float32(raw), prompt=prompt)
         except EOFError:
             log("sidecar: stdin closed mid-request, exiting")
             return 0

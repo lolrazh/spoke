@@ -26,6 +26,7 @@ import {
   loadAppPreferences,
 } from "./main/preferences";
 import { initMicManager } from "./main/micManager";
+import { stopScreenContext } from "./main/screenContext";
 import { killPasteDaemon } from "./main/pasteDaemon";
 import { fnHelpers, pasteHelpers } from "./main/helperProcess";
 import {
@@ -465,9 +466,11 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  // Unregister all global shortcuts
-  globalShortcut.unregisterAll();
-  console.log("[GlobalShortcut] All shortcuts unregistered");
+  // A cancelled launch can quit before Electron permits shortcut access.
+  if (app.isReady()) {
+    globalShortcut.unregisterAll();
+    console.log("[GlobalShortcut] All shortcuts unregistered");
+  }
 
   state.isQuitting = true;
   // Stop follow-cursor polling to avoid timers running during shutdown
@@ -485,6 +488,7 @@ app.on("before-quit", () => {
 
   // Clean up pre-spawned paste helper
   killPasteDaemon();
+  stopScreenContext();
 
   // brutally nuke anything we forgot
   for (const p of [...fnHelpers, ...pasteHelpers]) {
@@ -525,6 +529,7 @@ app.on("will-quit", () => {
 
   // Clean up pre-spawned paste helper
   killPasteDaemon();
+  stopScreenContext();
 
   for (const p of [...fnHelpers, ...pasteHelpers]) {
     try {

@@ -3,6 +3,8 @@ import { m } from "framer-motion";
 import DateGroup from "./DateGroup";
 import IconButton from "./ui/IconButton";
 import { useVocabulary } from "../hooks/useVocabulary";
+import LocalContextSettings from "./LocalContextSettings";
+import ContextDebugPanel from "./ContextDebugPanel";
 import { panelCascadeContainer, panelCascadeItem } from "./shared/panelMotion";
 
 // Shared with the add-row so an in-progress edit reads as the same typed text
@@ -14,12 +16,14 @@ interface DictionaryRowProps {
   word: string;
   onEdit: (oldWord: string, newWord: string) => void;
   onRemove: (word: string) => void;
+  learned?: boolean;
 }
 
 const DictionaryRowInner: React.FC<DictionaryRowProps> = ({
   word,
   onEdit,
   onRemove,
+  learned,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(word);
@@ -75,6 +79,7 @@ const DictionaryRowInner: React.FC<DictionaryRowProps> = ({
         ) : (
           <p className="text-xs text-foreground/80 leading-relaxed font-normal">
             {word}
+            {learned && <span className="ml-2 text-muted-foreground">Learned locally</span>}
           </p>
         )}
       </div>
@@ -106,7 +111,7 @@ const DictionaryRowInner: React.FC<DictionaryRowProps> = ({
 const DictionaryRow = React.memo(DictionaryRowInner);
 
 const DictionaryView: React.FC = () => {
-  const { dictionary, addWord, removeWord, editWord } = useVocabulary();
+  const { dictionary, addWord, removeWord, editWord, learnedWords } = useVocabulary();
   const [draft, setDraft] = useState("");
 
   const submit = () => {
@@ -122,6 +127,8 @@ const DictionaryView: React.FC = () => {
       animate="visible"
       variants={panelCascadeContainer}
     >
+      <DateGroup label="Local context"><LocalContextSettings /></DateGroup>
+      <DateGroup label="Context debugging"><ContextDebugPanel /></DateGroup>
       <DateGroup label="Vocabulary">
         {/* First slot in the list: the add-word input, same height/padding as
             the word rows so it reads as part of the list, not a header. */}
@@ -154,6 +161,7 @@ const DictionaryView: React.FC = () => {
           <DictionaryRow
             key={word}
             word={word}
+            learned={learnedWords?.includes(word)}
             onEdit={editWord}
             onRemove={removeWord}
           />

@@ -1,6 +1,8 @@
 import { doubleMetaphone } from "double-metaphone";
 import { distance } from "fastest-levenshtein";
 import subtlexWords from "subtlex-word-frequencies";
+import type { CorrectionTrace } from "../../shared/contextDebug";
+import { identifierSpellingKey, sameDigits } from "./identifierSpelling";
 
 const MIN_TOKEN_LENGTH = 4;
 const COMMON_WORD_LIMIT = 30000;
@@ -68,6 +70,7 @@ function isPhraseAwareEntry(entry: string): boolean {
   return (
     /\s/u.test(entry) ||
     /[^\p{L}\p{N}']/u.test(entry) ||
+    /\p{N}/u.test(entry) ||
     /\p{Lu}/u.test(entry.slice(1))
   );
 }
@@ -188,17 +191,15 @@ function* possibleLengths<T>(
 
 // The vocabulary service replaces the dictionary array on every mutation and
 // the prefs loader parses a fresh one. Neither mutates it in place, so reference
-// identity is a correct invalidation signal: one slot, rebuilt only when the
-// dictionary actually changes.
-let cachedDictionary: readonly string[] | null = null;
-let cachedIndex: Index | null = null;
+// identity is a correct invalidation signal. Keep saved and session indexes
+// independently, so a context result cannot cause a rebuild at finalization.
+// Weak keys release temporary screen names when their session ends.
+const cachedIndexes = new WeakMap<readonly string[], Index>();
 
 function getIndex(dictionary: readonly string[]): Index {
-  if (dictionary !== cachedDictionary || cachedIndex === null) {
-    cachedIndex = buildIndex(dictionary);
-    cachedDictionary = dictionary;
-  }
-  return cachedIndex;
+  let index = cachedIndexes.get(dictionary);
+  if (!index) { index = buildIndex(dictionary); cachedIndexes.set(dictionary, index); }
+  return index;
 }
 
 /** Build the vocabulary index while capture/ASR runs, before final text arrives. */
@@ -229,6 +230,7 @@ function bestFrom(
 
   const scan = (keys: Iterable<string>) => {
     for (const key of keys) {
+      if (!sameDigits(lower, key)) continue;
       if (key.length < minLength || key.length > maxLength) continue;
       const sim = similarity(lower, key);
       if (sim < threshold) continue;
@@ -259,13 +261,69 @@ function matchCasing(entry: string, stem: string): string {
   return entry;
 }
 
-type Match = { word: string; sim: number; path: "phonetic" | "fuzzy" };
+type Match = { word: string; sim: number; path: "phonetic" | "fuzzy" | "numbered-acronym" };
+
+function numberedAcronymMatch(stem: string, index: Index): Match | null | undefined {
+  // ASR often confuses spoken letter names (B/V, P/T). Permit one letter
+  // substitution in a clearly spelled acronym, never a changed number,
+  // insertion/deletion, ordinary title-cased word, or ambiguous identifier.
+  if (!/^[A-Z]{3,}[0-9]+[A-Z0-9]*$/u.test(stem) || stem.length < 5 || stem.length > 16) return undefined;
+  const candidates: string[] = [];
+  const keys = new Set<string>();
+  for (let i = 0; i < stem.length; i++) {
+    const deletion = (stem.slice(0, i) + stem.slice(i + 1)).toLowerCase();
+    for (const key of index.oneEditKeys.get(deletion) ?? []) keys.add(key);
+  }
+  // Longer entries do not have deletion keys in the index.
+  if (stem.length > 12) for (const key of index.canonicalByLength.get(stem.length) ?? []) keys.add(key);
+  for (const key of keys) {
+    const word = index.canonical.get(key);
+    if (!word || word.length !== stem.length || !/^[A-Z]{3,}[0-9]+[A-Z0-9]*$/u.test(word)) continue;
+    let changedLetters = 0;
+    let changedNumber = false;
+    for (let i = 0; i < stem.length; i++) {
+      if (stem[i] === word[i]) continue;
+      if (/[0-9]/u.test(stem[i] + word[i])) changedNumber = true;
+      changedLetters++;
+    }
+    if (!changedNumber && changedLetters === 1) candidates.push(word);
+  }
+  if (!candidates.length) return undefined;
+  return candidates.length === 1 ? { word: candidates[0], sim: 1 - 1 / stem.length, path: "numbered-acronym" } : null;
+}
 
 type PhraseMatch = {
   entry: string;
   sim: number;
-  path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase";
+  path: "exact-phrase" | "phonetic-phrase" | "fuzzy-phrase" | "spoken-initial" | "numbered-acronym";
 };
+
+function findSpelledAcronymMatch(source: string, index: Index): PhraseMatch | null {
+  // Preserve the same uniqueness and digit guards when ASR separates letters.
+  // Ordinary words and conjunctions such as "and VFP4" are not eligible.
+  if (!/^(?:[A-Z]{3,8}[ \t]+|[A-Z](?:[ \t]+[A-Z]){2,7}[ \t]*)[0-9]+$/u.test(source)) return null;
+  const compact = source.replace(/[ \t]/gu, "");
+  if (index.phraseCanonical.has(compact.toLowerCase())) return null;
+  const match = numberedAcronymMatch(compact, index);
+  return match ? { entry: match.word, sim: match.sim, path: "numbered-acronym" } : null;
+}
+
+const VOICED_INITIAL: Readonly<Record<string, string>> = {
+  d: "t", t: "d", b: "p", p: "b", g: "k", k: "g", f: "v", v: "f",
+};
+
+function findSpokenInitialMatch(source: string, key: string, index: Index): PhraseMatch | null {
+  // A separately spoken initial can lose voicing through a microphone: the
+  // live test produced "T flash 2". Require the rest of the full identifier
+  // (including every digit) to match exactly. Compact words are not eligible.
+  if (!/^[A-Z][ \t]+/u.test(source) || !/\d/u.test(key) || index.phraseCanonical.has(key)) return null;
+  const alternate = VOICED_INITIAL[key[0]];
+  if (!alternate) return null;
+  return unambiguousPhrase(
+    scorePhraseCandidates(index.phraseCanonical.get(alternate + key.slice(1)) ?? [], key, FUZZY_THRESHOLD),
+    "spoken-initial",
+  );
+}
 
 type ScoredPhrase = { candidate: PhraseKey; sim: number };
 
@@ -276,6 +334,7 @@ function scorePhraseCandidates(
 ): ScoredPhrase[] {
   const bestByEntry = new Map<string, ScoredPhrase>();
   for (const candidate of candidates) {
+    if (!sameDigits(key, candidate.key)) continue;
     const sim = similarity(key, candidate.key);
     if (sim < threshold) continue;
     const entryKey = candidate.entry.toLowerCase();
@@ -335,6 +394,9 @@ function findPhraseMatchUncached(
   );
   if (exactMatch) return exactMatch;
   if (exact.length > 1) return null;
+  // Numbered names need exact spelling after spacing/digit normalization.
+  // Phonetic similarity alone must not turn Class4 into GLASS4.
+  if (/\d/u.test(key)) return null;
 
   const phoneticCandidates: PhraseKey[] = [];
   const [primary, secondary] = doubleMetaphone(key);
@@ -370,6 +432,9 @@ function findPhraseMatchUncached(
 }
 
 function findMatch(stem: string, lower: string, index: Index): Match | null {
+  const acronym = numberedAcronymMatch(stem, index);
+  if (acronym !== undefined) return acronym;
+  if (/\d/u.test(stem)) return null;
   const cached = index.tokenMatches.get(lower);
   if (cached !== undefined) return cached;
   const result = findMatchUncached(stem, lower, index);
@@ -434,8 +499,10 @@ function findMatchUncached(
 export function correctTranscript(
   text: string,
   dictionary: readonly string[],
+  trace?: CorrectionTrace[],
 ): string {
-  if (dictionary.length === 0) return text;
+  const record = (event: CorrectionTrace) => { if (trace && trace.length < 128) trace.push(event); };
+  if (!Array.isArray(dictionary) || dictionary.length === 0) return text;
   const index = getIndex(dictionary);
   const tokens = [...text.matchAll(WORD_SPAN)];
   if (tokens.length === 0) return text;
@@ -453,19 +520,21 @@ export function correctTranscript(
       stem = stem.slice(0, -1);
     }
 
-    if (stem.length < MIN_TOKEN_LENGTH) return token;
+    if (stem.length < MIN_TOKEN_LENGTH) { if (trace) record({ kind: "word", source: token, outcome: "too-short" }); return token; }
     const lower = stem.toLowerCase();
-    if (COMMON_WORDS.has(lower)) return token;
+    if (COMMON_WORDS.has(lower)) { if (trace) record({ kind: "word", source: token, outcome: "common-word" }); return token; }
 
     const exact = index.canonical.get(lower);
     if (exact !== undefined) {
       const cased = matchCasing(exact, stem);
+      if (trace) record({ kind: "word", source: token, outcome: "matched", target: cased, path: "exact" });
       return `${cased}${possessive}`;
     }
 
     const match = findMatch(stem, lower, index);
-    if (!match) return token;
+    if (!match) { if (trace) record({ kind: "word", source: token, outcome: "no-match-or-ambiguous" }); return token; }
     const cased = matchCasing(match.word, stem);
+    if (trace) record({ kind: "word", source: token, outcome: "matched", target: cased, path: match.path, score: match.sim });
     return `${cased}${possessive}`;
   };
 
@@ -480,7 +549,7 @@ export function correctTranscript(
       | undefined;
 
     const maxCount = index.phraseKeys.length
-      ? Math.min(MAX_PHRASE_TOKENS, tokens.length - tokenIndex)
+      ? Math.min(/^[A-Z]$/u.test(first[0]) ? 9 : MAX_PHRASE_TOKENS, tokens.length - tokenIndex)
       : 1;
     for (let count = maxCount; count >= 2; count--) {
       const span = tokens.slice(tokenIndex, tokenIndex + count);
@@ -502,7 +571,14 @@ export function correctTranscript(
       );
       const key = normalizePhrase(source);
       if (key.length < MIN_TOKEN_LENGTH) continue;
-      const match = findPhraseMatch(key, index);
+      // Spoken digits are allowed only for a complete, exact vocabulary entry.
+      // Do not feed this key into phonetic matching: that can swallow neighbors.
+      const identifierKey = identifierSpellingKey(source);
+      const digitMatch = /\d/u.test(identifierKey) && identifierKey !== key
+        ? unambiguousPhrase(scorePhraseCandidates(index.phraseCanonical.get(identifierKey) ?? [], identifierKey, 1), "exact-phrase")
+        : null;
+      const match = digitMatch ?? findPhraseMatch(key, index) ?? findSpokenInitialMatch(source, identifierKey, index) ?? findSpelledAcronymMatch(source, index);
+      if (trace) record({ kind: "phrase", source, key, outcome: match ? "matched" : "no-match-or-ambiguous", ...(match ? { target: match.entry, path: match.path, score: match.sim } : {}) });
       if (!match) continue;
       phrase = {
         count,

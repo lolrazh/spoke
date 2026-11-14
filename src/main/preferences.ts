@@ -101,7 +101,7 @@ export function loadAppPreferences(): AppPreferences {
     if (fs.existsSync(appPrefsPath)) {
       const data = fs.readFileSync(appPrefsPath, "utf8");
       const prefs = JSON.parse(data);
-      logger.main.info("[AppPrefs] Loaded preferences:", prefs);
+      logger.main.info("[AppPrefs] Loaded preferences");
       return prefs;
     }
   } catch (error) {
@@ -116,7 +116,7 @@ export function saveAppPreferences(prefs: AppPreferences): boolean {
   try {
     ensureDir(appPrefsPath);
     fs.writeFileSync(appPrefsPath, JSON.stringify(prefs, null, 2));
-    logger.main.info("[AppPrefs] Saved preferences:", prefs);
+    logger.main.info("[AppPrefs] Saved preferences");
     return true;
   } catch (error) {
     logger.main.error("[AppPrefs] Failed to save preferences:", error);

@@ -25,6 +25,9 @@ import {
 import { listModelInfos } from "../localModelContract";
 import { scheduleLocalSidecarPrewarm } from "../windows";
 import { LocalStreamIpcController } from "./localStreamIpcController";
+import { registerContextIpc, ownsScreenContext } from "./contextIpc";
+import { prewarmScreenContext } from "../screenContext";
+import { state } from "../windowState";
 
 const localStreams = new LocalStreamIpcController(
   beginLocalStreamingSession,
@@ -33,6 +36,8 @@ const localStreams = new LocalStreamIpcController(
 );
 
 export function registerSttIpc(): void {
+  registerContextIpc();
+  if (state.appPreferences.screenContextEnabled !== false) prewarmScreenContext();
   // ============ Local Whisper IPC handlers ============
 
   ipcMain.handle("stt:get-model-status", () => {
@@ -56,6 +61,7 @@ export function registerSttIpc(): void {
   });
 
   ipcMain.handle("stt:prewarm-local", () => {
+    if (state.appPreferences.screenContextEnabled !== false) prewarmScreenContext();
     prewarmLocalSidecar("renderer");
     return { ok: true };
   });
@@ -77,8 +83,8 @@ export function registerSttIpc(): void {
     localStreams.cancel();
   });
 
-  ipcMain.handle("stt:start-local-stream", (event, modelId: string) =>
-    localStreams.start(event.sender, modelId),
+  ipcMain.handle("stt:start-local-stream", (event, modelId: string, contextId?: string) =>
+    localStreams.start(event.sender, modelId, ownsScreenContext(event.sender, contextId)),
   );
 
   ipcMain.handle(
@@ -99,10 +105,11 @@ export function registerSttIpc(): void {
   ipcMain.handle(
     "stt:transcribe-local",
     async (
-      _event,
+      event,
       modelId: string,
       pcmBuffer: Uint8Array | ArrayBuffer,
       prompt?: string,
+      contextId?: string,
     ) => {
       try {
         // Wrap the IPC payload in place instead of copying it: the sidecar
@@ -120,6 +127,7 @@ export function registerSttIpc(): void {
             bytes.byteLength,
           ),
           prompt,
+          ownsScreenContext(event.sender, contextId),
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

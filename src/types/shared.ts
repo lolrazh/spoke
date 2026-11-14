@@ -8,6 +8,10 @@ export type AppPreferences = {
   showInDock?: boolean;
   autoSpace?: boolean;
   vocabularyDictionary?: string[];
+  screenContextEnabled?: boolean;
+  learnFromEdits?: boolean;
+  learnedWords?: { from: string; to: string; learnedAt: number }[];
+  ignoredLearnedWords?: string[];
 };
 
 export type PttTarget = "auto" | "onboarding" | "main";

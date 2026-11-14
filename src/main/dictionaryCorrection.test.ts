@@ -1,8 +1,70 @@
 import { describe, expect, it } from "vitest";
 import { correctTranscript } from "./dictionaryCorrection";
 import { isDictionaryWord } from "./dictionaryMembership";
+import type { CorrectionTrace } from "../../shared/contextDebug";
 
 describe("main/dictionaryCorrection", () => {
+  it("records phrase decisions without changing the normal correction result", () => {
+    const trace: CorrectionTrace[] = [];
+    const input = "D flash two";
+    expect(correctTranscript(input, ["DFlash2"], trace)).toBe(correctTranscript(input, ["DFlash2"]));
+    expect(correctTranscript(input, ["DFlash2"])).toBe("DFlash2");
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "phrase", source: "D flash two", target: "DFlash2", path: "exact-phrase" }));
+  });
+  it.each([
+    ["Use D flash two today.", "Use DFlash2 today."],
+    ["Use D flash 2 today.", "Use DFlash2 today."],
+    ["Use Dflash two today.", "Use DFlash2 today."],
+    ["DFlash2", "DFlash2"],
+    ["Use D flash today.", "Use D flash today."],
+    ["Use Dflash today.", "Use Dflash today."],
+    ["Use D flash three today.", "Use D flash three today."],
+    ["Use DFlash3 today.", "Use DFlash3 today."],
+    ["D flash to the left.", "D flash to the left."],
+    ["D flash too.", "D flash too."],
+    ["D flash. Two files.", "D flash. Two files."],
+    ["D flash\ntwo files.", "D flash\ntwo files."],
+  ])("matches the full numbered identifier, preserving other words: %s", (input, expected) => {
+    expect(correctTranscript(input, ["DFlash2"])).toBe(expected);
+  });
+  it("keeps digits intact across competing entries", () => {
+    expect(correctTranscript("D flash two", ["DFlash2", "DFlash3"])).toBe("DFlash2");
+    expect(correctTranscript("D flash four", ["DFlash2", "DFlash3"])).toBe("D flash four");
+    expect(correctTranscript("D flash two", ["DFlash2", "D Flash 2"])).toBe("D flash two");
+    expect(correctTranscript("DFlash2", ["DFlash"])).toBe("DFlash2");
+  });
+  it("repairs one spoken letter in a numbered acronym without changing its version", () => {
+    expect(correctTranscript("Try NBFP4 as well.", ["NVFP4"])).toBe("Try NVFP4 as well.");
+    expect(correctTranscript("Try NBFP5 as well.", ["NVFP4"])).toBe("Try NBFP5 as well.");
+    expect(correctTranscript("Try NBFP4 as well.", ["NVFP4", "NAFP4"])).toBe("Try NBFP4 as well.");
+    expect(correctTranscript("NBFP4", ["NVFP4", "NPFP4"])).toBe("NBFP4");
+    expect(correctTranscript("Try NBFP4 as well.", ["NBFP4", "NVFP4"])).toBe("Try NBFP4 as well.");
+    expect(correctTranscript("Class4", ["GLASS4"])).toBe("Class4");
+  });
+  it("repairs separated acronym letters with the same ambiguity and digit guards", () => {
+    expect(correctTranscript("Test N P F P 4 as well.", ["NVFP4"])).toBe("Test NVFP4 as well.");
+    expect(correctTranscript("N P F P4", ["NVFP4"])).toBe("NVFP4");
+    expect(correctTranscript("NPFP 4", ["NVFP4"])).toBe("NVFP4");
+    expect(correctTranscript("N P F P 5", ["NVFP4"])).toBe("N P F P 5");
+    expect(correctTranscript("N P F P 4", ["NVFP4", "NBFP4"])).toBe("N P F P 4");
+    expect(correctTranscript("N P F P 4", ["NVFP4", "NPFP4"])).toBe("NPFP4");
+    expect(correctTranscript("and VFP4", ["NVFP4"])).toBe("and VFP4");
+    expect(correctTranscript("N P F. P 4", ["NVFP4"])).toBe("N P F. P 4");
+  });
+  it("handles numbered entries without internal capitals", () => {
+    expect(correctTranscript("Use Llama three", ["Llama3"])).toBe("Use Llama3");
+    expect(correctTranscript("Use H two O", ["H2O"])).toBe("Use H2O");
+  });
+  it("repairs a voiced initial only when the rest of a spoken identifier is exact", () => {
+    expect(correctTranscript("Use T flash 2.", ["DFlash2"])).toBe("Use DFlash2.");
+    expect(correctTranscript("Use T flash two.", ["DFlash2"])).toBe("Use DFlash2.");
+    expect(correctTranscript("Use T flash three.", ["DFlash2"])).toBe("Use T flash three.");
+    expect(correctTranscript("Tflash2", ["DFlash2"])).toBe("Tflash2");
+    expect(correctTranscript("G lass 4", ["Class4"])).toBe("G lass 4");
+    expect(correctTranscript("T flash 2", ["DFlash2", "TFlash2"])).toBe("TFlash2");
+    expect(correctTranscript("T flash 2", ["DFlash2", "D Flash 2"])).toBe("T flash 2");
+    expect(correctTranscript("T flash two", ["DFlash2", "TFlash2", "T Flash 2"])).toBe("T flash two");
+  });
   it("corrects a phonetically garbled name against the dictionary", () => {
     expect(
       correctTranscript("I met with Sandheap yesterday", ["Sandheep"]),

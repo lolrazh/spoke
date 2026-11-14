@@ -15,6 +15,7 @@ import { getSidecarBinaryPath, getSidecarArgs } from "./sidecarPaths";
 import { getActiveModelId } from "./modelManager";
 import { getModelFamily } from "./localModelContract";
 import { bootTimeline } from "./bootTimeline";
+import type { ParakeetBoost } from "./parakeetBoost";
 
 // 16 kHz, mono, signed PCM16. Keep this below Parakeet's problematic
 // full-attention region; renderer chunking normally sends 25-second requests.
@@ -337,6 +338,7 @@ export function abortLocalTranscription(): void {
 export function transcribeLocal(
   pcmBuffer: Buffer,
   prompt?: string,
+  boost?: ParakeetBoost,
 ): Promise<LocalTranscribeResult> {
   if (pcmBuffer.length > LOCAL_STT_MAX_REQUEST_BYTES) {
     return Promise.reject(
@@ -349,7 +351,11 @@ export function transcribeLocal(
   // cannot be consumed by the wrong in-flight caller.
   const requestGeneration = sidecarGeneration;
   const requestProcess = sidecarProcess;
-  const request = { pcmBuffer, prompt };
+  const request = {
+    pcmBuffer,
+    prompt,
+    boost: boost ? { ...boost, terms: [...boost.terms] } : undefined,
+  };
   const run = () => {
     const bufferedPcm = request.pcmBuffer;
     // The active request and the child stdin own the bytes now. Do not keep
@@ -360,6 +366,7 @@ export function transcribeLocal(
       requestProcess,
       requestGeneration,
       request.prompt,
+      request.boost,
     );
   };
   const queued = sidecarTranscribeQueue.then(run, run);
@@ -375,6 +382,7 @@ function transcribeLocalOnce(
   expectedProcess: ReturnType<typeof spawn> | null,
   expectedGeneration: number,
   prompt?: string,
+  boost?: ParakeetBoost,
 ): Promise<LocalTranscribeResult> {
   return new Promise((resolve, reject) => {
     if (
@@ -453,13 +461,14 @@ function transcribeLocalOnce(
     proc.once("exit", onExit);
 
     // Each request is two length-prefixed frames written to stdin: a small
-    // JSON metadata frame (currently just an optional vocabulary/decoding
-    // hint "prompt"), followed by the raw PCM frame. An empty metadata frame
-    // ("{}") means no options were provided, which is the same as omitting
-    // them, so behavior is unchanged when `prompt` is absent.
+    // JSON metadata then PCM. Vocabulary hints are structured terms for
+    // Parakeet; Whisper retains its separate prompt string.
     try {
       const requestJson = Buffer.from(
-        JSON.stringify(prompt ? { prompt } : {}),
+        JSON.stringify({
+          ...(prompt ? { prompt } : {}),
+          ...(boost ? { boost_terms: boost.terms, boost_strength: boost.strength } : {}),
+        }),
         "utf8",
       );
       const requestLenBuf = Buffer.alloc(4);
