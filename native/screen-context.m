@@ -119,14 +119,17 @@ static NSString *BoundedText(AXUIElementRef element, BOOL *complete) {
     return [value substringToIndex:MIN([value length], 4000)];
 }
 
-static NSString *AXContext(AXUIElementRef focus, AXUIElementRef window, BOOL *coversContent, NSMutableDictionary *trace) {
+static NSString *AXContext(AXUIElementRef focus, AXUIElementRef window, BOOL canCapture, BOOL *coversContent, NSMutableDictionary *trace) {
     NSMutableString *text = [NSMutableString string];
     NSMutableArray *queue = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];
     CGRect windowFrame = ElementFrame(window);
     if (focus) [queue addObject:(__bridge id)focus];
     if (window) [queue addObject:(__bridge id)window];
-    CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + 0.12;
+    // With local OCR available, a short AX pass finds focused document text
+    // without spending the capture budget walking browser chrome. Without
+    // screen permission, retain the larger budget for the only usable source.
+    CFAbsoluteTime deadline = CFAbsoluteTimeGetCurrent() + (canCapture ? 0.04 : 0.12);
     *coversContent = NO;
     NSUInteger visited = 0;
     for (NSUInteger index = 0; index < queue.count && text.length < 4000; index++) {
@@ -145,6 +148,7 @@ static NSString *AXContext(AXUIElementRef focus, AXUIElementRef window, BOOL *co
                 CoversWindow(frame, windowFrame, complete) && text.length + part.length <= 4000) *coversContent = YES;
             [text appendString:[part substringToIndex:MIN(part.length, 4000 - text.length)]];
             if (text.length < 4000) [text appendString:@"\n"];
+            if (*coversContent) break;
         }
         if (queue.count < 256) {
             id children = Attribute(element, kAXVisibleChildrenAttribute);
@@ -300,7 +304,23 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
     NSMutableDictionary *trace = debug ? [NSMutableDictionary dictionaryWithDictionary:@{@"pid": @(pid), @"app": [NSRunningApplication runningApplicationWithProcessIdentifier:pid].localizedName ?: @"unknown"}] : nil;
     NSMutableDictionary *axTrace = debug ? [NSMutableDictionary dictionary] : nil;
     BOOL coversContent = NO;
-    NSString *axText = AXContext(focus, (__bridge AXUIElementRef)window, &coversContent, axTrace);
+    BOOL canCapture = CGPreflightScreenCaptureAccess();
+    // Window metadata and AX traversal are independent. Start metadata lookup
+    // now, but take no screenshot unless AX later proves incomplete. The
+    // dispatch group publishes the callback values without blocking capture.
+    dispatch_group_t inventory = dispatch_group_create();
+    __block SCShareableContent *content = nil;
+    __block NSError *inventoryError = nil;
+    if (canCapture) {
+        dispatch_group_enter(inventory);
+        [SCShareableContent getShareableContentExcludingDesktopWindows:YES onScreenWindowsOnly:YES completionHandler:^(SCShareableContent *result, NSError *error) {
+            content = result;
+            inventoryError = error;
+            DebugStage(debug, identifier, @"windows-ready", start);
+            dispatch_group_leave(inventory);
+        }];
+    }
+    NSString *axText = AXContext(focus, (__bridge AXUIElementRef)window, canCapture, &coversContent, axTrace);
     NSArray *names = ExtractNames(axText, axTrace);
     DebugStage(debug, identifier, @"accessibility-ready", start);
     CGWindowID target = TopWindow(pid);
@@ -314,19 +334,18 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
         WatchTarget(identifier, pid, window, target, generation, queue, start, debug);
         return;
     }
-    if (!CGPreflightScreenCaptureAccess()) { Reply(identifier, names, @"accessibility", @"screen-permission", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start, debug); return; }
+    if (!canCapture) { Reply(identifier, names, @"accessibility", @"screen-permission", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start, debug); return; }
 
     // Pin the frontmost on-screen window of this process. Never fall back to
     // another app or the whole display when a window cannot be identified.
     if (!target) { Reply(identifier, names, @"accessibility", @"no-window", start); DebugReply(identifier, trace, NULL); WatchTarget(identifier, pid, window, target, generation, queue, start, debug); return; }
     if (names.count) Reply(identifier, names, @"accessibility", @"partial", start);
     WatchTarget(identifier, pid, window, target, generation, queue, start, debug);
-    [SCShareableContent getShareableContentExcludingDesktopWindows:YES onScreenWindowsOnly:YES completionHandler:^(SCShareableContent *content, NSError *error) {
-        DebugStage(debug, identifier, @"windows-ready", start);
+    dispatch_group_notify(inventory, queue, ^{
         SCWindow *selected = nil;
         for (SCWindow *candidate in content.windows) if (candidate.windowID == target) { selected = candidate; break; }
         if (atomic_load(&captureGeneration) != generation) return;
-        if (!selected || error) { Reply(identifier, names, @"accessibility", @"capture-unavailable", start); DebugReply(identifier, trace, NULL); return; }
+        if (!selected || inventoryError) { Reply(identifier, names, @"accessibility", @"capture-unavailable", start); DebugReply(identifier, trace, NULL); return; }
         CGRect frame = selected.frame;
         // Desktop-independent capture can fail with SCStreamError -3811 on a
         // virtual display. A display filter restricted to this window works
@@ -390,7 +409,7 @@ static void Capture(NSString *identifier, pid_t pid, unsigned int generation, BO
                 }
             });
         }];
-    }];
+    });
 }
 
 int SpokeContextDaemon(void) {
