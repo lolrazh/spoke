@@ -50,6 +50,7 @@ function startWorker(warmVision: boolean): void {
       buffer = buffer.slice(end + 1);
       try {
         const result = JSON.parse(line);
+        if (result.event === "warm-ready") continue;
         if (result.event === "debug-stage") { recordContextDebug(result.id, "capture-stage", { stage: result.stage, nativeMs: result.ms }); continue; }
         if (result.event === "debug") { recordNativeContextDebug(result.id, result); continue; }
         recordContextDebug(result.id, "capture-result", { source: result.source, status: result.status, nativeMs: result.ms, terms: result.terms });

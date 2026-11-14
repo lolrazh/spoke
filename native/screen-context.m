@@ -425,9 +425,14 @@ int SpokeContextDaemon(void) {
                     // ScreenCaptureKit lazily initializes AppKit and display
                     // metadata. Prepare that runtime without reading screen
                     // text, enumerating windows, or capturing any pixels.
-                    dispatch_async(dispatch_get_main_queue(), ^{ [NSApplication sharedApplication]; });
-                    dispatch_async(queue, ^{
+                    unsigned int generation = atomic_load(&captureGeneration);
+                    dispatch_group_t preparation = dispatch_group_create();
+                    dispatch_group_async(preparation, dispatch_get_main_queue(), ^{ [NSApplication sharedApplication]; });
+                    dispatch_group_async(preparation, queue, ^{
                         @autoreleasepool {
+                            // A capture that arrived before this work started
+                            // takes priority over optional synthetic warmup.
+                            if (atomic_load(&captureGeneration) != generation) return;
                             CGColorSpaceRef color = CGColorSpaceCreateDeviceRGB();
                             CGContextRef context = CGBitmapContextCreate(NULL, 64, 32, 8, 256, color, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
                             if (context) {
@@ -436,7 +441,14 @@ int SpokeContextDaemon(void) {
                                 CGContextRelease(context);
                             }
                             CGColorSpaceRelease(color);
+                            // A blank image does not exercise NLTagger's name
+                            // model. Load it with fixed, non-user text too.
+                            ExtractNames(@"Meet Priyanka Sharma at OpenAI in Bengaluru.", nil);
                         }
+                    });
+                    dispatch_group_notify(preparation, queue, ^{
+                        if (atomic_load(&captureGeneration) != generation) return;
+                        puts("{\"event\":\"warm-ready\"}"); fflush(stdout);
                     });
                 } else if ([request[@"command"] isEqual:@"cancel"]) {
                     atomic_fetch_add(&captureGeneration, 1);

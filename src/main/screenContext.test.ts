@@ -56,6 +56,17 @@ describe.runIf(process.platform === "darwin")("context helper deadlines", () => 
     expect(JSON.parse(worker.stdin.read().toString()).command).toBe("capture");
     service.stopScreenContext();
   });
+  it("does not treat an idle warmup acknowledgement as captured vocabulary", async () => {
+    const { worker, service, session } = await setup();
+    service.prewarmScreenContext();
+    service.beginScreenContext("a");
+    worker.stdout.emit("data", '{"event":"warm-ready"}\n');
+    expect(session.read("a")).toEqual([]);
+    expect(mocks.prepare).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(8000);
+    expect(worker.kill).toHaveBeenCalledWith("SIGKILL");
+    service.stopScreenContext();
+  });
   it("keeps the prepared process through idle time without reusing old terms", async () => {
     const { worker, service, session } = await setup();
     service.prewarmScreenContext();
