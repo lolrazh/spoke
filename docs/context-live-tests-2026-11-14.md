@@ -114,3 +114,18 @@ The driver now cancels the owned development app if focus leaves the named test 
 - Local comparison files: `/tmp/spoke-context-speed/baseline-matched.json` and `/tmp/spoke-context-speed/new-api.json`.
 - Final live sets: `2026-11-14T04-00-30-949Z-8ac5feb1` and `2026-11-14T04-01-08-047Z-1d83e5c2`.
 - Final run IDs: `a07b52f9-734e-42e8-92b4-d27c5b840d89`, `2bcc81ac-6773-4ad7-bf78-f04e93e48174`, `18ecc531-4523-4f66-9e84-eea26e958fbc`, `fe85c65b-e14c-44ad-ad64-4bf37066fbb0`.
+
+
+## Work log checkpoint before decoder-boosting research
+
+Recorded 14 November 2026. Work is on `codex/context-consistency`, in draft PR #42, not on main. The original checkout contains unrelated work and was left unchanged.
+
+1. Investigated Wispr Flow and Willow Voice to identify local context and edit-learning approaches. Static vendor artifacts are evidence of available paths, not proof of their runtime behavior or an entirely local service.
+2. Added a separate local screen-context helper: Accessibility first, Vision OCR fallback, Apple name tags plus identifier rules, bounded temporary vocabulary, and target/session invalidation. Added verified small-edit learning with same-field readback and repeated evidence.
+3. Added opt-in local diagnostics for capture stages, text coverage, Apple tags, selected terms, decoder output, correction, and optional audio/images. These records are not uploaded.
+4. Fixed the DFlash2 coverage and numbered-acronym paths, virtual-display screenshot failure, active-app validation, and late context consumption. Whisper uses vocabulary hints at decode time; the current Parakeet MLX adapter uses local correction after decoding.
+5. Tested real hotkey, microphone, correction, and paste flows in TextEdit, Safari, and Dia. The matrices above distinguish context detection, recognition accuracy, and actual field readback. Verified-edit learning was not live-tested in that matrix.
+6. Reduced capture work and added synthetic name-tagging preparation. The newer macOS screenshot API reduced the matched fresh-worker median from 319 to 268 ms and the prepared-worker median from 248 to 193 ms. Zero-added-delay playback tests captured the screen terms but did not establish recognition accuracy. Audio/VAD changes are on hold at the user's request.
+7. Committed the work in small steps and pushed draft PR #42. At this checkpoint, 676 tests, TypeScript, targeted ESLint, and native expected assertions passed. The normal development app was restarted with diagnostic recording off.
+
+Next scope: verify dependency versions and upstream changes; inspect existing local Parakeet word-boosting implementations; assess a decoder integration without cloud processing or extra encoder work. UI cleanup and user-facing controls will be revisited later. No upstream contribution has been submitted.
