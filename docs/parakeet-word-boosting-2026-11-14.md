@@ -4,11 +4,43 @@
 
 An upstream implementation now exists. `parakeet-mlx` 0.7.0 added phrase boosting on 4 November. It runs locally with our existing 6-bit weights. A benchmark using Spoke's actual model loader and encoder patches produced `DFlash2` and `NVFP4` before dictionary correction.
 
-Do not enable it for all screen terms yet. A two-term list passed the small positive test, but a 24-term list damaged unrelated speech and the short-name test. The beam decoder also adds measurable latency. This report and the repeatable benchmark are the completed research/prototype; normal app requests, dependency pins, and decoding defaults have not changed. UI controls remain a later task.
+Do not enable it by default yet. A two-term list passed the small positive test, but a 24-term list damaged unrelated speech and the short-name test. The beam decoder also adds measurable latency. The initial research kept the app unchanged. The follow-up below adds an explicit development trial; UI controls remain a later task.
 
-## Current stack and available updates
+## Integration follow-up
 
-Verified both `local-stt/requirements.txt` and installed package metadata. The app calls a Python sidecar from Electron/TypeScript. Parakeet uses **senstella/parakeet-mlx on Apple MLX/Metal**, not mlx-audio's Parakeet implementation.
+The branch now pins `parakeet-mlx` 0.7.0 and supports `npm run dev:parakeet-boost`. This sets `SPOKE_PARAKEET_WORD_BOOST=1` for the app. The isolated checkout has a private Python environment; the original checkout's shared environment remains on 0.5.1. Dependency checks pass. This is not a packaged-release certification.
+
+The trial sends structured `boost_terms` and `boost_strength` metadata through the existing framed PCM protocol. It freezes available context before decode without waiting for capture. It uses two beam candidates when terms exist and the fast greedy path when they do not. It disables downstream vocabulary replacement in both cases, so a failed boost cannot be hidden by a second replacement system. Normal non-dictionary formatting remains. With the trial off, Parakeet retains its current replacement path. Whisper previously had both prompt hints and dictionary replacement; it now uses prompt hints alone for vocabulary decisions.
+
+Screen extraction is unchanged: Apple Natural Language `NLTagger` names plus identifier/acronym rules. The 24-term limit, validation and deduplication remain. Current-window terms take priority over a large saved dictionary, with saved spelling winning a duplicate. Debug model input records the exact terms and vocabulary mode. Output metrics acknowledge support, decoder mode, term count and scoring policy. Unsupported runtimes fail explicitly; they cannot silently ignore the new metadata and appear to pass.
+
+### Actual screenshot and short-term scoring
+
+The supplied screenshot was replayed through the native image probe at backing scale 2. Three OCR passes selected the same 14 terms. Uniform phrase weight 4 produced the correct full phrase but changed the short DFlash2 clip into repeated `M4` in all three decoder repeats. This was raw decoder output, with no downstream word replacement.
+
+Upstream spreads each phrase's potential reward across its characters. An equal phrase weight gives a short term more reward per character. The trial now uses `weight = 4 * min(1, character_count / 7)`: DFlash2 gets 4, NVFP4 about 2.86, and M4 about 1.14. This is a scoring adjustment, not a new name detector or removal of short names. With the same 14 terms, both full and short clips passed two repeated raw-decoder runs. The seven-character reference is a fixture-calibrated trial setting, not a general accuracy guarantee. Canonical case is still not forced after decoding.
+
+A fresh, disjoint 32-clip control set (seed 43 after excluding the first 32 clips) still failed with the 24-term stress list: unboosted beam WER 11.69%, length-scaled boosting 18.53%. This differs from the original control set and must not be presented as an improvement or regression against its percentages. Short-term scaling fixes the observed M4 case; it does not solve all false insertions or truncation. Large-list boosting remains unsuitable as a default.
+
+### Verification and remaining work
+
+- 684 application tests passed across 77 files; TypeScript and targeted ESLint checks passed.
+- Real local model/protocol checks cover boosted output, a following unboosted request, rejection of oversized vocabulary without losing frame alignment, an empty vocabulary, silence, and a repeat boosted request. A separate short-clip check covers competition with M4.
+- The new runtime passes `pip check`. Original checkout dependencies were not changed.
+- The real-model tests use local synthetic audio and installed weights. They do not certify new live microphone/paste behavior. No audio/VAD or paste code changed.
+- Decoder cost remains. A beam keeps competing candidates and performs more GPU-to-host synchronization than our custom greedy decoder. No new encoder or OCR wait was added. Performance work should profile those synchronizations and prepare reusable term tables before speech ends; neither optimization is claimed as completed here.
+
+Run the real model checks with `SPOKE_PARAKEET_TEST_WAV` pointing to the full synthetic phrase and optional `SPOKE_PARAKEET_SHORT_TEST_WAV` pointing to the short DFlash2 clip:
+
+```sh
+local-stt/.venv/bin/python -m unittest discover -s local-stt -p 'parakeet_boost*test.py' -v
+```
+
+For matched benchmarks of the app's scoring policy, add `--boost-policy length-scaled` to the runner below. The default `uniform` policy preserves the original research comparison. New local evidence is retained in the ignored benchmark folder: `actual-image-ocr.json`, `actual-image-terms.json`, `actual-image-decode.json`, `scaled-image.json`, `control-2.json`, and `scaled-control-2.json`.
+
+## Stack and available updates at the research baseline
+
+Before the integration, verified both `local-stt/requirements.txt` and installed package metadata. The app calls a Python sidecar from Electron/TypeScript. Parakeet uses **senstella/parakeet-mlx on Apple MLX/Metal**, not mlx-audio's Parakeet implementation.
 
 | Component | Spoke installed/pinned | Latest registry version checked | Role |
 | --- | --- | --- | --- |
@@ -21,7 +53,7 @@ Registry sources: [parakeet-mlx](https://pypi.org/project/parakeet-mlx/0.7.0/), 
 
 Weights: `spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit`, English, 6-bit affine quantization, group size 64. They are already installed locally. Spoke applies encoder evaluation boundaries, fused QKV projections, and a custom greedy decoder that combines token/duration synchronization and omits unused confidence work.
 
-The current Parakeet `transcribe` method discards `prompt`. Saved dictionary and screen terms affect local text correction after decoding. Only Whisper receives the prompt hint. Boosting is a score change inside speech decoding; it is not an LLM system prompt.
+The baseline Parakeet `transcribe` method discards `prompt`. Saved dictionary and screen terms affect local text correction after decoding. Only Whisper receives the prompt hint. Boosting is a score change inside speech decoding; it is not an LLM system prompt.
 
 ## Existing implementations
 
@@ -83,7 +115,7 @@ The median paired latency addition over fast greedy was 75.6 ms with two terms a
 
 These are small diagnostic samples, not a release gate or proof across accents, microphones, silence, long dictations, and arbitrary dictionaries. Only the MLX route was benchmarked. Other framework speed claims above remain unmeasured on this app.
 
-## Integration work required
+## Integration plan recorded before the follow-up
 
 1. Upgrade only `parakeet-mlx` in an isolated runtime first. Test packaged imports, model loading, cold/warm inference and existing patches. The local prototype demonstrates weight compatibility, not packaging compatibility.
 2. Add a structured per-request `boost_terms` field across `localSttLifecycle` → `sidecarEngine` → Python. Do not overload the Whisper prompt or treat a prose prompt as terms. Read only context already available when decoding starts. Do not wait for OCR; late context can still help the existing post-correction path.
@@ -112,4 +144,4 @@ PYTHONPATH=/tmp/spoke-word-boost/latest-parakeet local-stt/.venv/bin/python \
 
 Local evidence is preserved in the ignored `local-stt/benchmarks/word-boost-2026-11-14/` directory: `grid.json`, `positive-two.json`, `positive-24.json`, `negative-two.json`, `negative-24.json`, `baseline-051-positive.json`, `baseline-051-negative.json`, manifests and the synthetic WAV fixtures. Reports include package versions, per-file SHA-256, output text and request timings. The original work directory, registry snapshots and extracted wheels are in `/tmp/spoke-word-boost/`. The temporary files can be removed by the OS; the conclusions and method are recorded here. Audio, full transcript sets and screen data are not committed or uploaded.
 
-Prior implementation and live-testing history is in [the context test log](context-live-tests-2026-11-14.md). Both documents belong to draft PR #42; normal dictation remains on its existing path.
+Prior implementation and live-testing history is in [the context test log](context-live-tests-2026-11-14.md). Both documents belong to draft PR #42. The opt-in integration and current vocabulary modes are described in the follow-up above.

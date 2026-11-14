@@ -133,3 +133,9 @@ Next scope: verify dependency versions and upstream changes; inspect existing lo
 ### Decoder research outcome
 
 The [word-boosting report](parakeet-word-boosting-2026-11-14.md) records the installed stack, current upstream releases, alternative frameworks, and local prototype results. Upstream `parakeet-mlx` 0.7.0 has a reusable beam-search booster. Two terms corrected the synthetic name clips, but a 24-term list produced false names and raised word error rate on 32 independent speech controls. The benchmark is checked in; inference data remains local. Normal dictation and dependency pins are unchanged because the broader term list failed the accuracy checks. No UI change or upstream contribution was made.
+
+### Opt-in decoder integration follow-up
+
+At the user's request, added a development-only launch command for local Parakeet decoder boosting and pinned the adapter to 0.7.0. Boosted Parakeet requests now use structured terms and skip dictionary replacement. Whisper also skips dictionary replacement after its vocabulary prompt. The default Parakeet mode keeps replacement; no audio/VAD, paste, or screen-extraction code changed.
+
+Replayed the actual screenshot: 14 terms were stable across three OCR passes. Uniform boosting caused the short phrase to repeat M4. Scaling short-term rewards fixed that case with the same term list. A new independent control set still showed false words with a 24-term list, so boosting remains opt-in. The decoder report records both successful and failed checks. Validation: 684 app tests, TypeScript, targeted lint, and local real-model protocol checks. This follow-up did not repeat live microphone/paste automation.

@@ -101,16 +101,16 @@ The Dictionary view has two independent controls, enabled by default:
 
 Screen context uses local name tagging. It keeps at most 24 temporary terms;
 it does not save images or raw screen text. Whisper receives the terms as
-vocabulary hints. The current Parakeet MLX adapter uses post-transcription
-correction, not a dictionary prompt or decoder word boosting. Its correction
-uses sound-based matching (Double Metaphone), spelling distance, and guarded
-identifier/acronym rules. NVIDIA NeMo's decoder phrase boosting is a separate
-feature and is not integrated into this adapter. Other current local adapters
-also use the correction step. No context or edit text is sent
+vocabulary hints, with no dictionary replacement after decoding. Parakeet uses
+post-transcription correction by default: sound-based matching (Double Metaphone),
+spelling distance, and guarded identifier/acronym rules. The opt-in Parakeet
+decoder trial below replaces that vocabulary path with upstream word boosting.
+Other current local adapters use the correction step. No context or edit text is sent
 to a server. Only accepted word pairs and removal preferences are saved.
 
 Context never waits on the decode or paste path. Whisper takes the available
-terms when its prompt is submitted. Other local models take them when final
+terms when its prompt is submitted. The Parakeet decoder trial also freezes the
+available terms before decoding. Other local modes take them when final
 dictionary correction starts, so in-flight OCR can finish during decode. Later
 results are skipped. A stalled capture is stopped after eight seconds; this
 background budget does not extend recording or delay paste. Idle preparation
@@ -123,6 +123,35 @@ feature is disabled or the app quits. Each dictation still starts with no terms.
 An unexpected cold capture does not queue behind an extra synthetic OCR request.
 App/window changes and protected fields discard context. Moving focus within
 the same window keeps its context. Starting another dictation stops edit watching.
+
+### Test Parakeet decoder word boosting
+
+In a development checkout, select Parakeet and run:
+
+```sh
+npm run dev:parakeet-boost
+```
+
+This uses `parakeet-mlx` 0.7.0 locally with the existing model weights. It sends
+up to 24 deduplicated terms, current-window names first, to a two-candidate beam
+decoder. The phrase weight is `4 × min(1, character count / 7)`, so short terms
+such as M4 cannot receive the full long-name reward. Screen extraction is
+unchanged. No OCR wait or
+second encoder pass is added. Empty term lists use the fast greedy decoder.
+
+The trial disables all downstream dictionary replacement, including when no
+terms are ready. Existing non-dictionary text formatting remains. It does not
+force canonical case after decoding. Whisper now also uses its prompt without
+a second dictionary-replacement pass. Restart with `npm run dev` to return
+Parakeet to its existing post-transcription vocabulary mode.
+
+This is an opt-in accuracy/latency trial, not a default release setting. Larger
+term lists can cause false names; the earlier synthetic full-phrase comparison
+added about 104 ms. In **Dictionary → Context debugging**, model input shows the
+exact boost terms and vocabulary mode. Model output metrics confirm the decoder
+mode and term count. An old runtime that cannot acknowledge boosting causes an
+error instead of silently behaving as if boosting worked. Details and measured
+limits are in [the decoder report](docs/parakeet-word-boosting-2026-11-14.md).
 Learning skips protected fields, unsupported AX fields, and documents whose
 initial text exceeds 4096 characters. Paste still works without learning.
 OCR uses Vision's fast path; name coverage depends on the language and app.
