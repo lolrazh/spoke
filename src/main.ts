@@ -466,9 +466,11 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", () => {
-  // Unregister all global shortcuts
-  globalShortcut.unregisterAll();
-  console.log("[GlobalShortcut] All shortcuts unregistered");
+  // A cancelled launch can quit before Electron permits shortcut access.
+  if (app.isReady()) {
+    globalShortcut.unregisterAll();
+    console.log("[GlobalShortcut] All shortcuts unregistered");
+  }
 
   state.isQuitting = true;
   // Stop follow-cursor polling to avoid timers running during shutdown
