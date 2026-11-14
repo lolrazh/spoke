@@ -56,6 +56,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--beam", type=int, default=2)
     parser.add_argument("--strength", type=float, default=4.0)
+    parser.add_argument("--boost-policy", choices=("uniform", "length-scaled"), default="uniform")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -88,8 +89,12 @@ def main() -> None:
         from parakeet_mlx import Beam, DecodingConfig, boost
         machine = boost.EMPTY
         if mode == "boosted":
+            weights = dict.fromkeys(terms, args.strength)
+            if args.boost_policy == "length-scaled":
+                from parakeet_boost import phrase_weights
+                weights = phrase_weights(terms, args.strength)
             machine = boost.lift(
-                boost.prebind(str.lower, boost.words(dict.fromkeys(terms, args.strength))),
+                boost.prebind(str.lower, boost.words(weights)),
                 engine.model.vocabulary,
             )
         return DecodingConfig(decoding=Beam(
@@ -140,6 +145,7 @@ def main() -> None:
         "platform": platform.platform(), "processor": platform.processor(),
         "terms": terms, "beam": args.beam, "strength": args.strength,
         "duration_reward": 0.7,
+        "boost_policy": args.boost_policy,
         "seed": args.seed, "repeats": args.repeats, "model_load_ms": engine.load_ms,
         "summary": summary, "results": rows,
     }
