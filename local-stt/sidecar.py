@@ -63,8 +63,8 @@ COHERE_REQUIRED_MODEL_FILES = (
 )
 
 # Parakeet model identity / files.
-PARAKEET_MODEL_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit"
-PARAKEET_MODEL_DISPLAY_NAME = "Parakeet TDT 0.6B v2 6-bit"
+PARAKEET_MODEL_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-8bit"
+PARAKEET_MODEL_DISPLAY_NAME = "Parakeet TDT 0.6B v2"
 # Keep in sync with the `requiredFilePaths` for Parakeet in
 # src/main/localModelContract.ts (the install-completeness gate).
 PARAKEET_REQUIRED_MODEL_FILES = (
@@ -72,11 +72,13 @@ PARAKEET_REQUIRED_MODEL_FILES = (
     "model.safetensors",
     "mel_filters.npy",
 )
-# The checkpoint is quantized with mlx.nn.quantize using these settings; the
-# module tree must be quantized identically before load_weights() can accept
-# the packed weights (parakeet-mlx's from_pretrained has no quantized path).
-PARAKEET_QUANT_BITS = 6
+# The checkpoint is quantized with mlx.nn.quantize; the module tree must be
+# quantized identically before load_weights() can accept the packed weights
+# (parakeet-mlx's from_pretrained has no quantized path). The bit width is read
+# from the checkpoint, so an install that still holds the earlier 6-bit weights
+# keeps working until the app replaces them with the current 8-bit ones.
 PARAKEET_QUANT_GROUP_SIZE = 64
+PARAKEET_SUPPORTED_QUANT_BITS = (6, 8)
 
 # Nemotron model identity / files. The model is already quantized by the MLX
 # conversion, and mlx-audio restores that layout from config.json.
@@ -1509,6 +1511,26 @@ def install_parakeet_fast_decode_patch(model) -> None:
     log("sidecar: reduced Parakeet greedy decoder synchronization")
 
 
+def parakeet_quant_bits(weights: dict[str, Any]) -> int:
+    """Read the quantization bit width from a packed Parakeet checkpoint.
+
+    mlx.nn.quantize packs each row of a linear layer into 32-bit words and
+    stores one scale per group of inputs, so the two shapes give the width.
+    """
+    widths = set()
+    for key, scales in weights.items():
+        if not key.endswith(".scales"):
+            continue
+        packed = weights[key[: -len("scales")] + "weight"]
+        inputs = scales.shape[-1] * PARAKEET_QUANT_GROUP_SIZE
+        widths.add(packed.shape[-1] * 32 / inputs)
+    if len(widths) != 1 or widths.isdisjoint(PARAKEET_SUPPORTED_QUANT_BITS):
+        raise RuntimeError(
+            f"Unsupported Parakeet checkpoint quantization: {sorted(widths)}"
+        )
+    return int(widths.pop())
+
+
 class ParakeetEngine(Engine):
     def __init__(self, weights_dir: Path, language: str | None) -> None:
         self.weights_dir = weights_dir
@@ -1531,12 +1553,15 @@ class ParakeetEngine(Engine):
         with open(self.weights_dir / "config.json", encoding="utf-8") as f:
             config = json.load(f)
         model = _p["from_config"](config)
+        weights = mx.load(str(self.weights_dir / "model.safetensors"))
+        bits = parakeet_quant_bits(weights)
+        log(f"sidecar: Parakeet checkpoint is {bits}-bit")
         _p["nn"].quantize(
             model,
             group_size=PARAKEET_QUANT_GROUP_SIZE,
-            bits=PARAKEET_QUANT_BITS,
+            bits=bits,
         )
-        model.load_weights(str(self.weights_dir / "model.safetensors"))
+        model.load_weights(list(weights.items()))
         # Cast the layers nn.quantize skips (Conv1d, BatchNorm, the TDT
         # prediction LSTM) from fp32 init to bf16, mirroring from_pretrained's
         # post-load dtype cast. Packed quantized weights load as-is.
