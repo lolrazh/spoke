@@ -48,6 +48,15 @@ vi.mock("fs", async () => {
   };
 });
 
+// ── Mock crypto ──────────────────────────────────────────────────────
+
+// Real hashing by default. Tests that need a download to verify stub
+// createHash so mocked file contents can match the manifest hashes.
+vi.mock("crypto", async () => {
+  const actual = await vi.importActual<typeof import("crypto")>("crypto");
+  return { ...actual, createHash: vi.fn(actual.createHash) };
+});
+
 // ── Mock node:https ──────────────────────────────────────────────────
 
 vi.mock("node:https", () => ({
@@ -55,6 +64,7 @@ vi.mock("node:https", () => ({
 }));
 
 import https from "node:https";
+import * as crypto from "crypto";
 
 // ── Import after mocks ───────────────────────────────────────────────
 
@@ -69,6 +79,9 @@ import {
   installModel,
   cancelInstall,
   resolveDownloadRedirectUrl,
+  getOutdatedModelIds,
+  isModelUpdateInFlight,
+  updateOutdatedModel,
 } from "./modelManager";
 import type { ModelManagerCallbacks } from "./modelManager";
 import {
@@ -93,6 +106,19 @@ const INSTALLED_FILES = ENTRY.manifest.files.map((f) => ({
   size: f.size,
 }));
 const TOTAL_BYTES = INSTALLED_FILES.reduce((s, f) => s + f.size, 0);
+
+// The 6-bit Parakeet build that the 8-bit default replaces.
+const LEGACY_PARAKEET_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit";
+const LEGACY_PARAKEET_FILES = INSTALLED_FILES.map((f) =>
+  f.role === "weights"
+    ? {
+        ...f,
+        sha256:
+          "e2437f570fd539c244ec954f26db140199492454c7a97dcab7c7885f0acdd14d",
+        size: 600491607,
+      }
+    : f,
+);
 
 // The "other" (non-default) model, for active-selection tests.
 const OTHER_MODEL_ID = LOCAL_MODEL_IDS.find((id) => id !== DEFAULT_MODEL_ID)!;
@@ -757,6 +783,244 @@ describe("modelManager", () => {
         "Cannot remove model while install is in progress",
       );
       void firstInstall.catch(() => {});
+    });
+  });
+
+  describe("updateOutdatedModel", () => {
+    /** An install made by a release that shipped the 6-bit Parakeet weights. */
+    function mockLegacyParakeetInstall(): void {
+      mockStateWithWeights({
+        activeModelId: LEGACY_PARAKEET_ID,
+        models: {
+          [LEGACY_PARAKEET_ID]: readyEntry({
+            modelId: LEGACY_PARAKEET_ID,
+            files: LEGACY_PARAKEET_FILES,
+          }),
+        },
+      });
+    }
+
+    /** Every file downloads, and its contents hash to the manifest value. */
+    function mockVerifiedDownloads(): void {
+      vi.mocked(https.get).mockImplementation((...args: any[]) => {
+        const callback = args[args.length - 1];
+        const res = {
+          statusCode: 200,
+          headers: { "content-length": "10" },
+          resume: vi.fn(),
+          on: vi.fn((event: string, cb: (chunk?: Buffer) => void) => {
+            if (event === "data") cb(Buffer.alloc(10));
+            return res;
+          }),
+          pipe: vi.fn(),
+        };
+        callback(res);
+        return { on: vi.fn().mockReturnThis() } as any;
+      });
+      (fs.createWriteStream as any).mockImplementation(() => {
+        const stream = {
+          on: (event: string, handler: () => void) => {
+            if (event === "finish") queueMicrotask(handler);
+            return stream;
+          },
+          close: vi.fn(),
+        };
+        return stream;
+      });
+      (fs.createReadStream as any).mockImplementation(() => {
+        const stream = {
+          on: (event: string, handler: () => void) => {
+            if (event === "end") queueMicrotask(handler);
+            return stream;
+          },
+        };
+        return stream;
+      });
+      const hashes = INSTALLED_FILES.map((f) => f.sha256);
+      vi.mocked(crypto.createHash).mockImplementation(
+        () => ({ update: vi.fn(), digest: () => hashes.shift() }) as any,
+      );
+    }
+
+    function lastPersistedState(): any {
+      return JSON.parse(
+        (fs.writeFileSync as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1],
+      );
+    }
+
+    it("keeps a 6-bit Parakeet install ready and reports it as outdated", () => {
+      mockLegacyParakeetInstall();
+
+      initModelManager(makeCallbacks());
+
+      expect(getActiveModelId()).toBe(DEFAULT_MODEL_ID);
+      expect(getModelInstallState()).toBe("ready");
+      expect(getOutdatedModelIds()).toEqual([DEFAULT_MODEL_ID]);
+      expect(lastPersistedState().models[LEGACY_PARAKEET_ID]).toBeUndefined();
+    });
+
+    it("does not report an install that matches the manifest", () => {
+      mockBothModelsReady();
+
+      initModelManager(makeCallbacks());
+
+      expect(getOutdatedModelIds()).toEqual([]);
+    });
+
+    it("does not report a file whose hash was never recorded", () => {
+      mockStateWithWeights(
+        persisted(
+          readyEntry({
+            files: INSTALLED_FILES.map(({ sha256: _sha256, ...file }) => file),
+          }),
+        ),
+      );
+
+      initModelManager(makeCallbacks());
+
+      expect(getModelInstallState()).toBe("ready");
+      expect(getOutdatedModelIds()).toEqual([]);
+    });
+
+    it("replaces the old weights while the model stays ready", async () => {
+      mockLegacyParakeetInstall();
+      const cbs = makeCallbacks();
+      initModelManager(cbs);
+      mockVerifiedDownloads();
+      const exists = vi.mocked(fs.existsSync).getMockImplementation()!;
+      vi.mocked(fs.existsSync).mockImplementation(
+        (p) => p === weightsDirFor(DEFAULT_MODEL_ID) || exists(p),
+      );
+      vi.mocked(cbs.onStatusChange).mockClear();
+      const statesSeen: string[] = [];
+
+      const update = updateOutdatedModel(DEFAULT_MODEL_ID, async (replace) => {
+        statesSeen.push(getModelInstallState());
+        expect(fs.rmSync).not.toHaveBeenCalledWith(
+          weightsDirFor(DEFAULT_MODEL_ID),
+          expect.anything(),
+        );
+        replace();
+        statesSeen.push(getModelInstallState());
+      });
+      expect(isModelUpdateInFlight()).toBe(true);
+
+      await expect(update).resolves.toBe(true);
+
+      expect(statesSeen).toEqual(["ready", "ready"]);
+      expect(fs.rmSync).toHaveBeenCalledWith(weightsDirFor(DEFAULT_MODEL_ID), {
+        recursive: true,
+        force: true,
+      });
+      expect(fs.renameSync).toHaveBeenCalledTimes(INSTALLED_FILES.length);
+      expect(lastPersistedState().models[DEFAULT_MODEL_ID]).toMatchObject({
+        state: "ready",
+        files: INSTALLED_FILES,
+      });
+      expect(getOutdatedModelIds()).toEqual([]);
+      expect(isModelUpdateInFlight()).toBe(false);
+      expect(getModelStatus().totalBytes).toBe(TOTAL_BYTES);
+      expect(cbs.onStatusChange).toHaveBeenCalledWith(
+        expect.objectContaining({ state: "ready", totalBytes: TOTAL_BYTES }),
+      );
+      // Progress and transitions of a silent update never reach the renderer.
+      expect(cbs.onDownloadProgress).not.toHaveBeenCalled();
+      expect(cbs.onStatusChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the installed weights when the download fails", async () => {
+      mockLegacyParakeetInstall();
+      initModelManager(makeCallbacks());
+      vi.mocked(https.get).mockImplementation((...args: any[]) => {
+        const callback = args[args.length - 1];
+        callback({ statusCode: 500, headers: {}, resume: vi.fn() });
+        return { on: vi.fn().mockReturnThis() } as any;
+      });
+      const swap = vi.fn();
+
+      await expect(updateOutdatedModel(DEFAULT_MODEL_ID, swap)).resolves.toBe(
+        false,
+      );
+
+      expect(swap).not.toHaveBeenCalled();
+      expect(getModelInstallState()).toBe("ready");
+      expect(getOutdatedModelIds()).toEqual([DEFAULT_MODEL_ID]);
+      expect(fs.rmSync).not.toHaveBeenCalledWith(
+        weightsDirFor(DEFAULT_MODEL_ID),
+        expect.anything(),
+      );
+      expect(isModelUpdateInFlight()).toBe(false);
+    });
+
+    it("keeps the installed weights when a download fails verification", async () => {
+      mockLegacyParakeetInstall();
+      initModelManager(makeCallbacks());
+      mockVerifiedDownloads();
+      vi.mocked(crypto.createHash).mockImplementation(
+        () => ({ update: vi.fn(), digest: () => "not-the-manifest-hash" }) as any,
+      );
+      const swap = vi.fn();
+
+      await expect(updateOutdatedModel(DEFAULT_MODEL_ID, swap)).resolves.toBe(
+        false,
+      );
+
+      expect(swap).not.toHaveBeenCalled();
+      expect(getModelInstallState()).toBe("ready");
+      expect(fs.renameSync).not.toHaveBeenCalled();
+    });
+
+    it("does not put weights back when the model is removed mid-update", async () => {
+      mockLegacyParakeetInstall();
+      initModelManager(makeCallbacks());
+      mockVerifiedDownloads();
+      let swapEntered!: () => void;
+      const entered = new Promise<void>((resolve) => (swapEntered = resolve));
+      let releaseSwap!: () => void;
+      const released = new Promise<void>((resolve) => (releaseSwap = resolve));
+
+      const update = updateOutdatedModel(DEFAULT_MODEL_ID, async (replace) => {
+        swapEntered();
+        await released;
+        replace();
+      });
+      await entered;
+      const removal = removeModel();
+      releaseSwap();
+      await removal;
+
+      await expect(update).resolves.toBe(false);
+      expect(getModelInstallState()).toBe("not_installed");
+      expect(fs.renameSync).not.toHaveBeenCalled();
+    });
+
+    it("refuses an install while an update is in flight", async () => {
+      mockLegacyParakeetInstall();
+      initModelManager(makeCallbacks());
+      mockVerifiedDownloads();
+      let releaseSwap!: () => void;
+      const released = new Promise<void>((resolve) => (releaseSwap = resolve));
+
+      const update = updateOutdatedModel(DEFAULT_MODEL_ID, async (replace) => {
+        await released;
+        replace();
+      });
+
+      await expect(installModel()).rejects.toThrow("Install already in progress");
+      releaseSwap();
+      await expect(update).resolves.toBe(true);
+    });
+
+    it("resolves false for a model that is already current", async () => {
+      mockBothModelsReady();
+      initModelManager(makeCallbacks());
+      const swap = vi.fn();
+
+      await expect(updateOutdatedModel(DEFAULT_MODEL_ID, swap)).resolves.toBe(
+        false,
+      );
+      expect(swap).not.toHaveBeenCalled();
+      expect(https.get).not.toHaveBeenCalled();
     });
   });
 
