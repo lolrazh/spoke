@@ -8,7 +8,12 @@ export interface ParakeetBoost {
 // first few current-window terms. The native extractor lists mixed-case and
 // numbered identifiers first, then tagged names, then plain acronyms. Saved
 // dictionary words and later screen terms use text replacement instead.
-export const MAX_BOOST_TERMS = 8;
+// Both limits come from the control sweep in
+// docs/parakeet-word-boosting-2026-11-14.md. The short term M4 alone replaced
+// an unrelated sentence. Without short terms, four terms changed at most one
+// control word, and one six-term list replaced that sentence again.
+export const MAX_BOOST_TERMS = 4;
+export const MIN_BOOST_CHARACTERS = 5;
 
 export function parakeetBoostEnabled(): boolean {
   return process.env.SPOKE_PARAKEET_WORD_BOOST === "1";
@@ -26,7 +31,7 @@ export function buildParakeetBoost(
     // A saved spelling wins for a term that is also visible.
     const term = (canonical.get(raw.toLowerCase()) ?? raw).trim();
     const key = term.toLowerCase();
-    if (seen.has(key) || term.length < 2 || term.length > 80 ||
+    if (seen.has(key) || term.length < MIN_BOOST_CHARACTERS || term.length > 80 ||
         !/\p{L}/u.test(term) || !/^[\p{L}\p{M}\p{N} ._'’+-]+$/u.test(term)) continue;
     seen.add(key);
     terms.push(term);

@@ -19,11 +19,15 @@ describe("Parakeet decoder terms", () => {
   });
 
   it("rejects empty terms, control characters, bare numbers, and oversized terms", () => {
-    expect(buildParakeetBoost(["", "123", "one\ntwo", "a".repeat(81)], []).terms).toEqual([]);
+    expect(buildParakeetBoost(["", "12345", "one\ntwo", "a".repeat(81)], []).terms).toEqual([]);
+  });
+
+  it("leaves short names to replacement", () => {
+    expect(buildParakeetBoost(["M4", "MLX", "REAP", "NVFP4"], ["M4"]).terms).toEqual(["NVFP4"]);
   });
 
   it("does not let rejected terms use up the limit", () => {
-    const screen = ["123", "", ...Array.from({ length: MAX_BOOST_TERMS }, (_, i) => `Visible${i}`)];
+    const screen = ["12345", "M4", ...Array.from({ length: MAX_BOOST_TERMS }, (_, i) => `Visible${i}`)];
     expect(buildParakeetBoost(screen, []).terms).toHaveLength(MAX_BOOST_TERMS);
   });
 });

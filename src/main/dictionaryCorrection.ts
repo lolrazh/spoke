@@ -533,9 +533,8 @@ export function correctTranscript(
       stem = stem.slice(0, -1);
     }
 
+    if (stem.length < MIN_TOKEN_LENGTH) { if (trace) record({ kind: "word", source: token, outcome: "too-short" }); return token; }
     const lower = stem.toLowerCase();
-    // A short hinted name such as M4 still gets its casing back.
-    if (stem.length < MIN_TOKEN_LENGTH && !owned.has(lower)) { if (trace) record({ kind: "word", source: token, outcome: "too-short" }); return token; }
     if (COMMON_WORDS.has(lower)) { if (trace) record({ kind: "word", source: token, outcome: "common-word" }); return token; }
 
     const exact = index.canonical.get(lower);

@@ -247,9 +247,9 @@ describe("main/dictionaryCorrection", () => {
 
 describe("main/dictionaryCorrection decoder-owned entries", () => {
   it("restores exact casing for an entry the decoder already received", () => {
-    const dictionary = ["DFlash2", "M4", "MLX Audio"];
-    expect(correctTranscript("Use Dflash2 on the m4 with mlx audio.", dictionary, undefined, dictionary))
-      .toBe("Use DFlash2 on the M4 with MLX Audio.");
+    const dictionary = ["DFlash2", "MLX Audio"];
+    expect(correctTranscript("Use Dflash2 with mlx audio.", dictionary, undefined, dictionary))
+      .toBe("Use DFlash2 with MLX Audio.");
   });
 
   it("never rewrites other text into a decoder-owned entry", () => {
@@ -267,9 +267,9 @@ describe("main/dictionaryCorrection decoder-owned entries", () => {
       .toBe("Use DFlash2 and NVFP4.");
   });
 
-  it("does not recase a common word that matches a short owned entry", () => {
-    expect(correctTranscript("Is it ready to go?", ["IT", "Go"], undefined, ["IT", "Go"]))
-      .toBe("Is it ready to go?");
+  it("does not recase a common word that matches an owned entry", () => {
+    expect(correctTranscript("A swift reply after we spoke.", ["Swift", "Spoke"], undefined, ["Swift", "Spoke"]))
+      .toBe("A swift reply after we spoke.");
   });
 });
 
