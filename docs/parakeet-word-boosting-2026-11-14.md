@@ -10,9 +10,9 @@ Do not enable it by default yet. A two-term list passed the small positive test,
 
 The branch now pins `parakeet-mlx` 0.7.0 and supports `npm run dev:parakeet-boost`. This sets `SPOKE_PARAKEET_WORD_BOOST=1` for the app. The isolated checkout has a private Python environment; the original checkout's shared environment remains on 0.5.1. Dependency checks pass. This is not a packaged-release certification.
 
-The trial sends structured `boost_terms` and `boost_strength` metadata through the existing framed PCM protocol. It freezes available context before decode without waiting for capture. It uses two beam candidates when terms exist and the fast greedy path when they do not. It disables downstream vocabulary replacement in both cases, so a failed boost cannot be hidden by a second replacement system. Normal non-dictionary formatting remains. With the trial off, Parakeet retains its current replacement path. Whisper previously had both prompt hints and dictionary replacement; it now uses prompt hints alone for vocabulary decisions.
+The trial sends structured `boost_terms` and `boost_strength` metadata through the existing framed PCM protocol. It freezes available context before decode without waiting for capture. It uses two beam candidates when terms exist and the fast greedy path when they do not. It disables downstream vocabulary replacement in both cases, so a failed boost cannot be hidden by a second replacement system. (The freeze and the replacement rule changed on 17 November; see the section below.) Normal non-dictionary formatting remains. With the trial off, Parakeet retains its current replacement path. Whisper previously had both prompt hints and dictionary replacement; it now uses prompt hints alone for vocabulary decisions.
 
-Screen extraction is unchanged: Apple Natural Language `NLTagger` names plus identifier/acronym rules. The 24-term limit, validation and deduplication remain. Current-window terms take priority over a large saved dictionary, with saved spelling winning a duplicate. Debug model input records the exact terms and vocabulary mode. Output metrics acknowledge support, decoder mode, term count and scoring policy. Unsupported runtimes fail explicitly; they cannot silently ignore the new metadata and appear to pass.
+Screen extraction is unchanged: Apple Natural Language `NLTagger` names plus identifier/acronym rules. The 24-term limit, validation and deduplication remain. Current-window terms take priority over a large saved dictionary, with saved spelling winning a duplicate. (Since 17 November the saved dictionary no longer supplies decoder terms; see the section below.) Debug model input records the exact terms and vocabulary mode. Output metrics acknowledge support, decoder mode, term count and scoring policy. Unsupported runtimes fail explicitly; they cannot silently ignore the new metadata and appear to pass.
 
 ### Actual screenshot and short-term scoring
 
@@ -21,6 +21,58 @@ The supplied screenshot was replayed through the native image probe at backing s
 Upstream spreads each phrase's potential reward across its characters. An equal phrase weight gives a short term more reward per character. The trial now uses `weight = 4 * min(1, character_count / 7)`: DFlash2 gets 4, NVFP4 about 2.86, and M4 about 1.14. This is a scoring adjustment, not a new name detector or removal of short names. With the same 14 terms, both full and short clips passed two repeated raw-decoder runs. The seven-character reference is a fixture-calibrated trial setting, not a general accuracy guarantee. Canonical case is still not forced after decoding.
 
 A fresh, disjoint 32-clip control set (seed 43 after excluding the first 32 clips) still failed with the 24-term stress list: unboosted beam WER 11.69%, length-scaled boosting 18.53%. This differs from the original control set and must not be presented as an improvement or regression against its percentages. Short-term scaling fixes the observed M4 case; it does not solve all false insertions or truncation. Large-list boosting remains unsuitable as a default.
+
+### 17 November: fewer decoder terms and a replacement fallback
+
+The live trial was inconsistent. Three causes were in the trial code:
+
+- The decoder list was padded with the saved dictionary up to 24 terms, the size that failed the controls above.
+- Replacement was off for every boosted request. A dictation whose screen terms arrived after decode started got neither hints nor correction.
+- Nothing restored canonical casing, so a correct hint came out as `Dflash2`.
+
+The rule is now: **the decoder owns the terms it was given, and replacement covers the rest.**
+
+- The decoder gets at most four current-window terms of five or more characters, in the extractor's order. That order is a category order (mixed-case and numbered identifiers, then `NLTagger` names, then plain acronyms), with document order inside each category. It is not a per-term score. The saved dictionary supplies spelling only.
+- After decode, a boosted term only gets its exact casing restored on a case-insensitive match. No fuzzy, phonetic, or phrase match may rewrite other text into it, so a failed hint stays visible in the output.
+- Every other term uses the normal Parakeet replacement path: the saved dictionary, screen terms beyond the limit, short terms, and terms that arrive during decode. When no screen term is ready, that is all of them.
+- The context is read, not frozen, before a boosted decode. It is frozen after decode, as in normal Parakeet mode.
+- Debug records show the terms sent (`decode-request.boost`), mode `decoder+replacement`, and in `correction` the raw text, final text, `decoderOwned`, and `replacementTerms`.
+
+Whisper and normal Parakeet behaviour did not change.
+
+#### Term sweep behind the two limits
+
+Same runner, 6-bit weights, beam 2, strength 4, `--boost-policy length-scaled`. Controls are both 32-clip sets above (64 clips, 1,077 reference words), one pass each. The unboosted beam made 128 word errors. Lists are prefixes, with `DFlash2` and `NVFP4` first.
+
+| Terms sent | Boosted word errors | Clips with changed text |
+| --- | --- | --- |
+| 2: DFlash2, NVFP4 | 128 | 0 |
+| 4: + Parakeet, Nemotron | 128 | 0 |
+| 8: + MLX, REAP, Spoke, ChatGPT | 138 | 6 |
+| 12 of the stress list | 127 | 7 |
+| 16 of the stress list | 135 | 8 |
+| 24, the full stress list | 167 | 13 |
+| 4 from the screenshot: + ChatGPT, M4 | 138 | 4 |
+| 8 from the screenshot | 137 | 7 |
+| 14, the full screenshot list | 137 | 8 |
+| Only terms of five or more characters: | | |
+| 4 from the screenshot: + ChatGPT, AilmpactMeter | 129 | 4 |
+| 6 from the screenshot: + MLX Audio, Codex | 138 | 5 |
+| 8 from the screenshot: + Nemotron, Browser | 137 | 5 |
+| 6 of the stress list: + Parakeet, Nemotron, Spoke, ChatGPT | 129 | 3 |
+| 8 of the stress list: + Codex, Marble | 129 | 5 |
+
+Changed text includes case and punctuation changes that are not word errors. Both positive clips passed three of three repeats with every list, and the short clip no longer became repeated `M4`.
+
+Findings:
+
+- **Count alone is not a safe limit.** `M4` boosted alone turned "So what you are highlighting is an opportunity for Teletu." into "Mm-hmm." (nine extra word errors). `MLX` and `MLX Audio` in a list did the same. `ChatGPT` alone changed one word in one clip.
+- Errors did not rise steadily with the count. They depend on which terms are in the list. Only the 24-term list caused broad truncation.
+- With short terms removed, four terms cost at most one word error. Six terms from the screenshot brought the "Mm-hmm." failure back through `MLX Audio`.
+
+So four terms of five or more characters is the largest setting without a replaced sentence in this sweep. It is not proof of safety: 64 clips, one pass, and prefix lists that mix count with term identity. A term that starts like a common short utterance can still mislead the beam. Evidence is in the ignored `local-stt/benchmarks/word-boost-2026-11-14/sweep-2026-11-17/` folder.
+
+698 application tests passed across 77 files, with TypeScript and targeted ESLint checks. The five Python boost tests passed, including the two real-model checks.
 
 ### Verification and remaining work
 
