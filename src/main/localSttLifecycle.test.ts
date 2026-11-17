@@ -58,7 +58,7 @@ async function flushLifecycle(): Promise<void> {
 
 describe("localSttLifecycle", () => {
   afterEach(() => vi.unstubAllEnvs());
-  it("uses Parakeet decoder hints without subsequent fuzzy replacement", async () => {
+  it("boosts ready screen terms, restores their casing, and replaces the rest", async () => {
     vi.stubEnv("SPOKE_PARAKEET_WORD_BOOST", "1");
     mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
     mocks.getModelFamily.mockReturnValue("parakeet");
@@ -66,23 +66,87 @@ describe("localSttLifecycle", () => {
     const { transcribeWithLocalSidecar } = await importLifecycle();
     const { screenContextSession: session } = await import("./screenContextSession");
     session.begin("boost");
-    session.accept("boost", ["DFlash2", "NVFP4"]);
-    mocks.transcribeLocal.mockImplementation(async () => {
-      expect(session.accept("boost", ["TooLate"])).toBe(false);
-      return { text: "Use D flash two with github.", metrics: { parakeet_word_boost: 1 } };
+    session.accept("boost", ["dflash2", "NVFP4"]);
+    mocks.transcribeLocal.mockResolvedValue({
+      text: "Use Dflash2 with github, not D flash two or NBFP4.", metrics: { parakeet_word_boost: 1 },
     });
     const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "boost");
+    // The saved dictionary supplies spelling, never extra decoder terms.
     expect(mocks.transcribeLocal).toHaveBeenCalledWith(Buffer.from([1, 2]), undefined, {
-      terms: ["DFlash2", "NVFP4", "GitHub"], strength: 4,
+      terms: ["DFlash2", "NVFP4"], strength: 4,
     });
-    expect(result.text).not.toContain("DFlash2");
-    expect(result.text).toContain("github");
+    expect(result.text).toBe("Use DFlash2 with GitHub, not D flash two or NBFP4.");
   });
 
-  it("does not reuse a prior session's terms or silently use replacement when no terms are ready", async () => {
+  it("replaces a screen term beyond the boost limit", async () => {
     vi.stubEnv("SPOKE_PARAKEET_WORD_BOOST", "1");
     mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
     mocks.getModelFamily.mockReturnValue("parakeet");
+    mocks.state.appPreferences = {};
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const { MAX_BOOST_TERMS } = await import("./parakeetBoost");
+    const { screenContextSession: session } = await import("./screenContextSession");
+    const first = Array.from({ length: MAX_BOOST_TERMS }, (_, i) => `Visible${i}`);
+    session.begin("limit");
+    session.accept("limit", [...first, "DFlash2"]);
+    mocks.transcribeLocal.mockResolvedValue({ text: "D flash two.", metrics: { parakeet_word_boost: 1 } });
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "limit");
+    expect(mocks.transcribeLocal.mock.calls[0][2]).toEqual({ terms: first, strength: 4 });
+    expect(result.text).toBe("DFlash2.");
+  });
+
+  it("replaces a name that arrives during a boosted decode", async () => {
+    vi.stubEnv("SPOKE_PARAKEET_WORD_BOOST", "1");
+    mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    mocks.state.appPreferences = {};
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const { screenContextSession: session } = await import("./screenContextSession");
+    session.begin("late");
+    mocks.transcribeLocal.mockImplementation(async () => {
+      expect(session.accept("late", ["DFlash2"])).toBe(true);
+      return { text: "T flash two.", metrics: { parakeet_word_boost: 1 } };
+    });
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "late");
+    expect(mocks.transcribeLocal.mock.calls[0][2]).toEqual({ terms: [], strength: 4 });
+    expect(result.text).toBe("DFlash2.");
+    expect(session.accept("late", ["TooLate"])).toBe(false);
+  });
+
+  it("restores casing for a boosted term after a later capture drops it", async () => {
+    vi.stubEnv("SPOKE_PARAKEET_WORD_BOOST", "1");
+    mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    mocks.state.appPreferences = {};
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const { screenContextSession: session } = await import("./screenContextSession");
+    session.begin("dropped");
+    session.accept("dropped", ["DFlash2"]);
+    mocks.transcribeLocal.mockImplementation(async () => {
+      session.accept("dropped", ["NVFP4"]);
+      return { text: "Dflash2 and NBFP4.", metrics: { parakeet_word_boost: 1 } };
+    });
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]), undefined, "dropped");
+    expect(result.text).toBe("DFlash2 and NVFP4.");
+  });
+
+  it("uses saved dictionary replacement when no screen term is ready", async () => {
+    vi.stubEnv("SPOKE_PARAKEET_WORD_BOOST", "1");
+    mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    mocks.state.appPreferences = { vocabularyDictionary: ["DFlash2"] };
+    mocks.transcribeLocal.mockResolvedValue({ text: "D flash two.", metrics: { parakeet_word_boost: 1 } });
+    const { transcribeWithLocalSidecar } = await importLifecycle();
+    const result = await transcribeWithLocalSidecar("current-model", Buffer.from([1, 2]));
+    expect(mocks.transcribeLocal.mock.calls[0][2]).toEqual({ terms: [], strength: 4 });
+    expect(result.text).toBe("DFlash2.");
+  });
+
+  it("does not reuse a prior session's terms", async () => {
+    vi.stubEnv("SPOKE_PARAKEET_WORD_BOOST", "1");
+    mocks.getModelStatus.mockReturnValue({ family: "parakeet" });
+    mocks.getModelFamily.mockReturnValue("parakeet");
+    mocks.state.appPreferences = {};
     mocks.transcribeLocal.mockResolvedValue({ text: "D flash two.", metrics: { parakeet_word_boost: 1 } });
     const { transcribeWithLocalSidecar } = await importLifecycle();
     const { screenContextSession: session } = await import("./screenContextSession");

@@ -28,7 +28,7 @@ import type { CorrectionTrace } from "../../shared/contextDebug";
 import { state } from "./windowState";
 import { buildSTTPrompt } from "../../shared/sttPrompt";
 import { getModelFamily } from "./localModelContract";
-import { buildParakeetBoost, parakeetBoostEnabled } from "./parakeetBoost";
+import { buildParakeetBoost, parakeetBoostEnabled, withBoostedTerms } from "./parakeetBoost";
 import {
   normalizeTranscript,
   prepareTranscriptPostprocessing,
@@ -59,10 +59,17 @@ async function normalizeTranscriptForModel(
   modelId: string,
   dictionary: readonly string[],
   contextId?: string,
+  decoderOwned: readonly string[] = [],
 ): Promise<string> {
   const trace: CorrectionTrace[] | undefined = contextDebugEnabled(contextId) ? [] : undefined;
-  const corrected = await normalizeTranscript(text, getModelFamily(modelId), dictionary, trace);
-  if (trace) recordContextDebug(contextId, "correction", { modelId, raw: text, corrected, dictionary: dictionary.slice(0, 2000), trace });
+  const corrected = await normalizeTranscript(text, getModelFamily(modelId), dictionary, trace, decoderOwned);
+  if (trace) {
+    const owned = new Set(decoderOwned.map(term => term.toLowerCase()));
+    recordContextDebug(contextId, "correction", {
+      modelId, raw: text, corrected, dictionary: dictionary.slice(0, 2000), decoderOwned,
+      replacementTerms: dictionary.filter(term => !owned.has(term.toLowerCase())).slice(0, 2000), trace,
+    });
+  }
   return corrected;
 }
 
@@ -386,10 +393,12 @@ export async function transcribeWithLocalSidecar(
   try {
     const family = getModelFamily(modelId);
     const useBoost = family === "parakeet" && parakeetBoostEnabled();
-    if (contextId && (getModelStatus(modelId).family === "whisper" || useBoost)) {
+    if (contextId && getModelStatus(modelId).family === "whisper") {
       freezeScreenContext(contextId);
     }
     const usedPrompt = buildWhisperPrompt(modelId, prompt, contextId);
+    // The decoder gets the names that are ready now. The context stays open,
+    // so names that arrive during decode still reach text replacement.
     const boost = useBoost
       ? buildParakeetBoost(screenContextSession.read(contextId), getVocabularyDictionary())
       : undefined;
@@ -398,7 +407,7 @@ export async function transcribeWithLocalSidecar(
       finishContextAudio(contextId);
       recordContextDebug(contextId, "decode-request", {
         modelId, family, prompt: usedPrompt ?? null, boost: boost ?? null,
-        vocabularyMode: family === "whisper" || useBoost ? "decoder" : "replacement",
+        vocabularyMode: family === "whisper" ? "decoder" : useBoost ? "decoder+replacement" : "replacement",
         screenTerms: screenContextSession.read(contextId), audioBytes: pcmBuffer.length,
       });
     }
@@ -410,12 +419,15 @@ export async function transcribeWithLocalSidecar(
       throw new Error("The local runtime does not support Parakeet word boosting. Run npm run setup:stt and restart Spoke.");
     }
     if (contextId) freezeScreenContext(contextId);
-    // The decoder-only trial never runs fuzzy vocabulary replacement, even
-    // when no terms were ready. This keeps A/B tests free of hidden fallback.
-    const dictionary = useBoost || family === "whisper" ? [] : contextDictionary(contextId);
+    // The decoder owns the terms it was given: those only get their casing
+    // restored. Every other term uses the normal replacement path, which is
+    // all of them when no screen term was ready before decode.
+    const dictionary = family === "whisper" ? []
+      : boost ? withBoostedTerms(contextDictionary(contextId), boost.terms)
+      : contextDictionary(contextId);
     return {
       ...result,
-      text: await normalizeTranscriptForModel(result.text, modelId, dictionary, contextId),
+      text: await normalizeTranscriptForModel(result.text, modelId, dictionary, contextId, boost?.terms),
     };
   } finally {
     releaseTranscriptionLease();
