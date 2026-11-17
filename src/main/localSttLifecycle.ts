@@ -3,9 +3,11 @@ import {
   getActiveModelId,
   getModelStatus,
   getModelInstallState,
+  getOutdatedModelIds,
   installModel,
   removeModel,
   setActiveModelId,
+  updateOutdatedModel,
 } from "./modelManager";
 import {
   getSidecarModelId,
@@ -315,6 +317,31 @@ export async function installLocalModelAndSyncSidecar(
     selectActiveModel(modelId);
   }
   await syncLocalSidecarForCurrentProvider();
+}
+
+/**
+ * Bring installed models up to the weights the current release names. Each
+ * model keeps serving dictation on its existing weights until the new ones are
+ * downloaded and verified. The swap then runs between dictations with the
+ * sidecar stopped, and replaces the old weights on disk.
+ */
+export async function updateOutdatedLocalModels(): Promise<void> {
+  for (const modelId of getOutdatedModelIds()) {
+    let wasLoaded = false;
+    const updated = await updateOutdatedModel(modelId, (replace) =>
+      enqueueLifecycle(async () => {
+        await waitForTranscriptionsToDrain();
+        wasLoaded = isSidecarRunning() && getSidecarModelId() === modelId;
+        if (wasLoaded) {
+          setAutoRestart(false);
+          await killSidecar();
+        }
+        replace();
+      }),
+    );
+    // Reload only a model that was warm. An idle sidecar stays stopped.
+    if (updated && wasLoaded) prewarmLocalSidecar("model-update");
+  }
 }
 
 export async function removeLocalModelAndStopSidecar(
