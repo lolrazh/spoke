@@ -7,7 +7,8 @@ import {
   resolveLocalModelId,
 } from "./localModelContract";
 
-const PARAKEET_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit";
+const PARAKEET_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-8bit";
+const LEGACY_PARAKEET_ID = "spokedotso/parakeet-tdt-0.6b-v2-mlx-6bit";
 const NEMOTRON_ID = "spokedotso/nemotron-3.5-asr-streaming-0.6b-8bit";
 const LEGACY_NEMOTRON_ID =
   "mlx-community/nemotron-3.5-asr-streaming-0.6b-8bit";
@@ -20,7 +21,7 @@ describe("localModelContract", () => {
     expect(LOCAL_MODEL_IDS[0]).toBe(PARAKEET_ID);
     expect(infos[0]).toMatchObject({
       modelId: PARAKEET_ID,
-      quantization: "6-bit",
+      quantization: "8-bit",
       isDefault: true,
       streaming: false,
     });
@@ -34,5 +35,10 @@ describe("localModelContract", () => {
   it("resolves the previous Nemotron repository ID to the canonical model", () => {
     expect(resolveLocalModelId(LEGACY_NEMOTRON_ID)).toBe(NEMOTRON_ID);
     expect(resolveLocalModelId(NEMOTRON_ID)).toBe(NEMOTRON_ID);
+  });
+
+  it("resolves the earlier 6-bit Parakeet ID to the 8-bit model", () => {
+    expect(resolveLocalModelId(LEGACY_PARAKEET_ID)).toBe(PARAKEET_ID);
+    expect(resolveLocalModelId(PARAKEET_ID)).toBe(PARAKEET_ID);
   });
 });
