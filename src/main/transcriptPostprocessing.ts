@@ -38,6 +38,7 @@ export function normalizeTranscript(
   family: LocalModelFamily | undefined,
   dictionary: readonly string[],
   trace?: CorrectionTrace[],
+  decoderOwned?: readonly string[],
 ): string {
   let normalized = text;
   try {
@@ -59,7 +60,7 @@ export function normalizeTranscript(
   // second, fuzzy vocabulary decision to its output.
   if (family === "whisper" || !Array.isArray(dictionary) || dictionary.length === 0) return normalized;
   try {
-    return correctTranscript(normalized, dictionary, trace);
+    return correctTranscript(normalized, dictionary, trace, decoderOwned);
   } catch (error) {
     console.warn("[STT] Dictionary correction failed:", error);
     return normalized;

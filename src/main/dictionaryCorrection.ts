@@ -496,14 +496,27 @@ function findMatchUncached(
   return { word, sim: scored[0].sim, path };
 }
 
+/**
+ * `decoderOwned` lists dictionary entries the speech decoder already received
+ * as hints. Those entries only get their exact casing restored on a
+ * case-insensitive token match. No fuzzy, phonetic, or phrase match may
+ * rewrite other text into them, so a failed hint stays visible.
+ */
 export function correctTranscript(
   text: string,
   dictionary: readonly string[],
   trace?: CorrectionTrace[],
+  decoderOwned?: readonly string[],
 ): string {
   const record = (event: CorrectionTrace) => { if (trace && trace.length < 128) trace.push(event); };
   if (!Array.isArray(dictionary) || dictionary.length === 0) return text;
   const index = getIndex(dictionary);
+  // Tokens are matched per word, phrases per entry, so hold both forms.
+  const owned = new Set<string>();
+  for (const entry of decoderOwned ?? []) {
+    owned.add(entry.trim().toLowerCase());
+    for (const word of entry.toLowerCase().split(/\s+/)) if (word) owned.add(word);
+  }
   const tokens = [...text.matchAll(WORD_SPAN)];
   if (tokens.length === 0) return text;
 
@@ -520,8 +533,9 @@ export function correctTranscript(
       stem = stem.slice(0, -1);
     }
 
-    if (stem.length < MIN_TOKEN_LENGTH) { if (trace) record({ kind: "word", source: token, outcome: "too-short" }); return token; }
     const lower = stem.toLowerCase();
+    // A short hinted name such as M4 still gets its casing back.
+    if (stem.length < MIN_TOKEN_LENGTH && !owned.has(lower)) { if (trace) record({ kind: "word", source: token, outcome: "too-short" }); return token; }
     if (COMMON_WORDS.has(lower)) { if (trace) record({ kind: "word", source: token, outcome: "common-word" }); return token; }
 
     const exact = index.canonical.get(lower);
@@ -533,6 +547,7 @@ export function correctTranscript(
 
     const match = findMatch(stem, lower, index);
     if (!match) { if (trace) record({ kind: "word", source: token, outcome: "no-match-or-ambiguous" }); return token; }
+    if (owned.has(match.word.toLowerCase())) { if (trace) record({ kind: "word", source: token, outcome: "decoder-owned", target: match.word, path: match.path, score: match.sim }); return token; }
     const cased = matchCasing(match.word, stem);
     if (trace) record({ kind: "word", source: token, outcome: "matched", target: cased, path: match.path, score: match.sim });
     return `${cased}${possessive}`;
@@ -578,8 +593,11 @@ export function correctTranscript(
         ? unambiguousPhrase(scorePhraseCandidates(index.phraseCanonical.get(identifierKey) ?? [], identifierKey, 1), "exact-phrase")
         : null;
       const match = digitMatch ?? findPhraseMatch(key, index) ?? findSpokenInitialMatch(source, identifierKey, index) ?? findSpelledAcronymMatch(source, index);
-      if (trace) record({ kind: "phrase", source, key, outcome: match ? "matched" : "no-match-or-ambiguous", ...(match ? { target: match.entry, path: match.path, score: match.sim } : {}) });
-      if (!match) continue;
+      // A hinted entry may only replace its own spelling in another case.
+      const ownedMatch = !!match && owned.has(match.entry.toLowerCase()) &&
+        source.toLowerCase() !== match.entry.toLowerCase();
+      if (trace) record({ kind: "phrase", source, key, outcome: ownedMatch ? "decoder-owned" : match ? "matched" : "no-match-or-ambiguous", ...(match ? { target: match.entry, path: match.path, score: match.sim } : {}) });
+      if (!match || ownedMatch) continue;
       phrase = {
         count,
         end: span[span.length - 1].index + span[span.length - 1][0].length,

@@ -245,6 +245,34 @@ describe("main/dictionaryCorrection", () => {
   });
 });
 
+describe("main/dictionaryCorrection decoder-owned entries", () => {
+  it("restores exact casing for an entry the decoder already received", () => {
+    const dictionary = ["DFlash2", "M4", "MLX Audio"];
+    expect(correctTranscript("Use Dflash2 on the m4 with mlx audio.", dictionary, undefined, dictionary))
+      .toBe("Use DFlash2 on the M4 with MLX Audio.");
+  });
+
+  it("never rewrites other text into a decoder-owned entry", () => {
+    const trace: CorrectionTrace[] = [];
+    expect(correctTranscript("Use D flash 2 and NBFP4.", ["DFlash2", "NVFP4"], trace, ["DFlash2", "NVFP4"]))
+      .toBe("Use D flash 2 and NBFP4.");
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "phrase", outcome: "decoder-owned", target: "DFlash2" }));
+    expect(trace).toContainEqual(expect.objectContaining({ kind: "word", outcome: "decoder-owned", target: "NVFP4" }));
+  });
+
+  it("keeps normal replacement for entries the decoder did not receive", () => {
+    expect(correctTranscript("Use D flash 2 and NBFP4.", ["DFlash2", "NVFP4"], undefined, ["DFlash2"]))
+      .toBe("Use D flash 2 and NVFP4.");
+    expect(correctTranscript("Use D flash 2 and NBFP4.", ["DFlash2", "NVFP4"], undefined, []))
+      .toBe("Use DFlash2 and NVFP4.");
+  });
+
+  it("does not recase a common word that matches a short owned entry", () => {
+    expect(correctTranscript("Is it ready to go?", ["IT", "Go"], undefined, ["IT", "Go"]))
+      .toBe("Is it ready to go?");
+  });
+});
+
 describe("main/dictionaryCorrection isDictionaryWord", () => {
   it("matches a dictionary word case-insensitively", () => {
     expect(isDictionaryWord("sandheep", ["Sandheep"])).toBe(true);
