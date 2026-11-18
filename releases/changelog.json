@@ -1,5 +1,22 @@
 [
   {
+    "version": "0.1.36",
+    "headline": "Eight Is Enough",
+    "summary": "Parakeet now runs a more precise build of its speech model, so your dictation comes out a little more accurate and better formatted, and a little faster too.",
+    "items": [
+      {
+        "type": "improved",
+        "title": "A More Accurate Parakeet",
+        "description": "Spoke now uses an 8-bit build of the Parakeet model instead of the 6-bit one. In testing on real dictation it made fewer mistakes, mostly in punctuation and capitalization, and transcribed slightly faster."
+      },
+      {
+        "type": "improved",
+        "title": "Upgrades Itself Quietly",
+        "description": "If you already have Parakeet installed, Spoke downloads the new model in the background about 30 seconds after launch and switches over between dictations. You can keep dictating the whole time, and the old model is removed once the new one is ready."
+      }
+    ]
+  },
+  {
     "version": "0.1.35",
     "headline": "While You Were Away",
     "summary": "Spoke now installs a downloaded update on its own while you are away from your Mac, so you no longer have to remember to restart. Updates after this one will also be much smaller downloads.",
