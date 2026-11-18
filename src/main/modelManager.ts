@@ -77,6 +77,15 @@ const installAborts = new Map<string, AbortController>();
 // Keep high-frequency network chunks inside the main process. The renderer
 // only needs progress at a paint-friendly rate, not once per response chunk.
 const DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS = 30;
+// Background updates of ready models, keyed by modelId. Removing the model
+// aborts its update and waits for `settled`.
+const updates = new Map<
+  string,
+  { abort: AbortController; settled: Promise<boolean> }
+>();
+// A background update has no cancel button, so a download that stops making
+// progress must give up on its own instead of holding the tmp dir forever.
+const UPDATE_STALL_TIMEOUT_MS = 60 * 1000;
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
@@ -443,6 +452,62 @@ function downloadFile(
   });
 }
 
+// ── Manifest download and replacement ─────────────────────────────────
+
+/** Download every manifest file into the family's tmp dir. */
+async function downloadFiles(
+  manifest: ModelManifest,
+  signal: AbortSignal,
+  onProgress: (downloadedBytes: number) => void,
+): Promise<void> {
+  const tmpDir = getTmpDir(manifest.family);
+  let completedBytes = 0;
+  for (const file of manifest.files) {
+    const completedBeforeFile = completedBytes;
+    await downloadFile(
+      file.url,
+      safeJoin(tmpDir, file.path),
+      (downloadedBytes) => onProgress(completedBeforeFile + downloadedBytes),
+      signal,
+    );
+    completedBytes += file.size;
+  }
+}
+
+async function verifyFiles(manifest: ModelManifest): Promise<void> {
+  const tmpDir = getTmpDir(manifest.family);
+  for (const file of manifest.files) {
+    if (!(await verifySha256(safeJoin(tmpDir, file.path), file.sha256))) {
+      throw new Error(`Checksum mismatch for '${file.path}'`);
+    }
+  }
+}
+
+/**
+ * Replace the family's weights with the verified download. Weights are stored
+ * per family, so this also deletes whatever the family held before.
+ */
+function replaceWeights(manifest: ModelManifest): InstalledModelFile[] {
+  const tmpDir = getTmpDir(manifest.family);
+  const weightsDir = getWeightsDir(manifest.family);
+  if (fs.existsSync(weightsDir)) {
+    fs.rmSync(weightsDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(weightsDir, { recursive: true });
+  for (const file of manifest.files) {
+    const finalPath = safeJoin(weightsDir, file.path);
+    fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+    fs.renameSync(safeJoin(tmpDir, file.path), finalPath);
+  }
+  cleanupTmp(manifest.family);
+  return manifest.files.map(({ role, path: p, sha256, size }) => ({
+    role,
+    path: p,
+    sha256,
+    size,
+  }));
+}
+
 // ── Initialization ────────────────────────────────────────────────────
 
 export function initModelManager(cbs: ModelManagerCallbacks): void {
@@ -555,15 +620,17 @@ export function setActiveModelId(modelId: string): void {
 export async function installModel(modelId?: string): Promise<void> {
   const id = resolveModelId(modelId);
   const current = statuses.get(id) ?? defaultStatus(id);
-  if (current.state === "downloading" || current.state === "installing") {
+  if (
+    current.state === "downloading" ||
+    current.state === "installing" ||
+    updates.has(id)
+  ) {
     throw new Error("Install already in progress");
   }
 
   const entry = getModelEntry(id);
   if (!entry) throw new Error(`Unknown model '${id}'.`);
   const family = entry.manifest.family;
-  const tmpDir = getTmpDir(family);
-  const weightsDir = getWeightsDir(family);
   const manifest = manifestFor(id);
   const totalSize = totalFileSize(manifest.files);
 
@@ -582,82 +649,38 @@ export async function installModel(modelId?: string): Promise<void> {
     });
     persistState();
 
-    let totalDownloaded = 0;
     let lastProgressEmitAt = 0;
-    const completedFileBytes = new Map<string, number>();
+    await downloadFiles(manifest, signal, (totalDownloaded) => {
+      const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
+      setStatus(id, {
+        downloadProgress: Math.min(progress, 1),
+        downloadedBytes: totalDownloaded,
+        totalBytes: totalSize,
+      });
 
-    for (const file of manifest.files) {
-      const tmpPath = safeJoin(tmpDir, file.path);
-      const completedBeforeFile = [...completedFileBytes.values()].reduce(
-        (total, bytes) => total + bytes,
-        0,
-      );
-      await downloadFile(
-        file.url,
-        tmpPath,
-        (downloadedBytes) => {
-          totalDownloaded = completedBeforeFile + downloadedBytes;
-          const progress = totalSize > 0 ? totalDownloaded / totalSize : 0;
-          setStatus(id, {
-            downloadProgress: Math.min(progress, 1),
-            downloadedBytes: totalDownloaded,
-            totalBytes: totalSize,
-          });
-
-          const nextProgress = Math.min(progress, 1);
-          const now = Date.now();
-          const isEndpoint = nextProgress <= 0 || nextProgress >= 1;
-          if (
-            !isEndpoint &&
-            now - lastProgressEmitAt < DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS
-          ) {
-            return;
-          }
-          lastProgressEmitAt = now;
-          callbacks.onDownloadProgress({
-            modelId: id,
-            progress: nextProgress,
-            downloadedBytes: totalDownloaded,
-            totalBytes: totalSize,
-          });
-        },
-        signal,
-      );
-      completedFileBytes.set(file.path, file.size);
-    }
+      const nextProgress = Math.min(progress, 1);
+      const now = Date.now();
+      const isEndpoint = nextProgress <= 0 || nextProgress >= 1;
+      if (
+        !isEndpoint &&
+        now - lastProgressEmitAt < DOWNLOAD_PROGRESS_EMIT_INTERVAL_MS
+      ) {
+        return;
+      }
+      lastProgressEmitAt = now;
+      callbacks.onDownloadProgress({
+        modelId: id,
+        progress: nextProgress,
+        downloadedBytes: totalDownloaded,
+        totalBytes: totalSize,
+      });
+    });
 
     setStatus(id, { state: "installing", downloadProgress: 1 });
     persistState();
 
-    for (const file of manifest.files) {
-      const tmpPath = safeJoin(tmpDir, file.path);
-      if (!(await verifySha256(tmpPath, file.sha256))) {
-        throw new Error(`Checksum mismatch for '${file.path}'`);
-      }
-    }
-
-    if (fs.existsSync(weightsDir)) {
-      fs.rmSync(weightsDir, { recursive: true, force: true });
-    }
-    fs.mkdirSync(weightsDir, { recursive: true });
-    for (const file of manifest.files) {
-      const tmpPath = safeJoin(tmpDir, file.path);
-      const finalPath = safeJoin(weightsDir, file.path);
-      fs.mkdirSync(path.dirname(finalPath), { recursive: true });
-      fs.renameSync(tmpPath, finalPath);
-    }
-
-    cleanupTmp(family);
-
-    installedFiles.set(
-      id,
-      manifest.files.map(({ role, path: p, sha256, size }) => ({
-        role,
-        path: p,
-        sha256,
-        size,
-      })),
-    );
+    await verifyFiles(manifest);
+    installedFiles.set(id, replaceWeights(manifest));
 
     setStatus(id, {
       state: "ready",
@@ -704,6 +727,115 @@ export async function installModel(modelId?: string): Promise<void> {
   }
 }
 
+// ── Update ────────────────────────────────────────────────────────────
+
+/**
+ * True when a ready model's weights on disk are not the ones the current
+ * manifest names, e.g. after a release replaces a model's checkpoint.
+ */
+function isOutdated(modelId: string): boolean {
+  if (statuses.get(modelId)?.state !== "ready") return false;
+  const installed = new Map(
+    (installedFiles.get(modelId) ?? []).map((file) => [file.path, file.sha256]),
+  );
+  // Only a recorded, different hash counts. A file with no recorded hash is
+  // left alone rather than downloaded again on a guess.
+  return manifestFor(modelId).files.some((file) => {
+    const installedSha = installed.get(file.path);
+    return !!installedSha && installedSha !== file.sha256;
+  });
+}
+
+export function getOutdatedModelIds(): string[] {
+  return LOCAL_MODEL_IDS.filter(isOutdated);
+}
+
+export function isModelUpdateInFlight(): boolean {
+  return updates.size > 0;
+}
+
+/**
+ * Replace a ready model's weights with the ones the current manifest names.
+ *
+ * The model stays ready on its existing weights while the new ones download
+ * and verify, so dictation is never interrupted. `swap` is handed the on-disk
+ * replacement and must call it while nothing is reading the weights. Resolves
+ * false, with the existing weights untouched, if the update fails, stalls, or
+ * the model is removed meanwhile; the next launch tries again.
+ */
+export function updateOutdatedModel(
+  modelId: string,
+  swap: (replace: () => void) => Promise<void>,
+): Promise<boolean> {
+  if (!isOutdated(modelId) || updates.has(modelId)) {
+    return Promise.resolve(false);
+  }
+
+  const manifest = manifestFor(modelId);
+  const totalBytes = totalFileSize(manifest.files);
+  const abort = new AbortController();
+  let stallTimer: NodeJS.Timeout | undefined;
+  const armStallTimer = () => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => abort.abort(), UPDATE_STALL_TIMEOUT_MS);
+    stallTimer.unref?.();
+  };
+
+  const settled = (async () => {
+    try {
+      console.log(`[ModelManager] Updating ${modelId} in the background`);
+      armStallTimer();
+      await downloadFiles(manifest, abort.signal, armStallTimer);
+      clearTimeout(stallTimer);
+      await verifyFiles(manifest);
+
+      let replaced = false;
+      await swap(() => {
+        // The model may have been removed while the swap waited its turn.
+        if (abort.signal.aborted || !isOutdated(modelId)) return;
+        try {
+          installedFiles.set(modelId, replaceWeights(manifest));
+        } catch (error) {
+          // The old weights are already gone, so the model cannot stay ready.
+          installedFiles.set(modelId, []);
+          setStatus(modelId, {
+            state: "broken",
+            error: error instanceof Error ? error.message : String(error),
+            downloadProgress: 0,
+            downloadedBytes: 0,
+            totalBytes,
+          });
+          persistState();
+          throw error;
+        }
+        setStatus(modelId, { totalBytes, downloadedBytes: totalBytes });
+        persistState();
+        replaced = true;
+      });
+      if (!replaced) return false;
+
+      // The state is still "ready", so setStatus would not broadcast the new
+      // size. Re-emit so listeners refresh.
+      callbacks.onStatusChange(getModelStatus(modelId));
+      console.log(`[ModelManager] ${modelId} updated`);
+      return true;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[ModelManager] Update of ${modelId} did not finish: ${reason}`,
+      );
+      return false;
+    } finally {
+      clearTimeout(stallTimer);
+      cleanupTmp(manifest.family);
+      updates.delete(modelId);
+    }
+  })();
+
+  updates.set(modelId, { abort, settled });
+  return settled;
+}
+
 // ── Cancel ────────────────────────────────────────────────────────────
 
 /**
@@ -726,6 +858,13 @@ export async function removeModel(modelId?: string): Promise<void> {
   const current = statuses.get(id) ?? defaultStatus(id);
   if (current.state === "downloading" || current.state === "installing") {
     throw new Error("Cannot remove model while install is in progress");
+  }
+
+  // A background update must not put weights back after the removal.
+  const update = updates.get(id);
+  if (update) {
+    update.abort.abort();
+    await update.settled;
   }
 
   const entry = getModelEntry(id);

@@ -16,8 +16,13 @@ import {
   isLocalTranscriptionInFlight,
   stopLocalSidecar,
   syncLocalSidecarForCurrentProvider,
+  updateOutdatedLocalModels,
 } from "./main/localSttLifecycle";
-import { getAllModelStatuses, initModelManager } from "./main/modelManager";
+import {
+  getAllModelStatuses,
+  initModelManager,
+  isModelUpdateInFlight,
+} from "./main/modelManager";
 import { registerPermissionHandlers } from "./main/permissions";
 import {
   initPreferences,
@@ -114,6 +119,8 @@ const FORCE_ONBOARDING =
 registerWindowLifecycleIpc();
 registerInsertTextAtCursorIpc();
 
+const MODEL_UPDATE_START_DELAY_MS = 30 * 1000;
+
 // Install a downloaded update while the user is away (see idleInstall.ts).
 const idleInstaller = createIdleInstaller({
   idleSeconds: () => powerMonitor.getSystemIdleTime(),
@@ -121,6 +128,7 @@ const idleInstaller = createIdleInstaller({
   isBusy: () =>
     nativeAudioCapture.isCapturing() ||
     isLocalTranscriptionInFlight() ||
+    isModelUpdateInFlight() ||
     getAllModelStatuses().some(
       (s) => s.state === "downloading" || s.state === "installing",
     ),
@@ -158,6 +166,13 @@ app.whenReady().then(async () => {
       },
     });
   });
+  // A release can replace a model's weights. Fetch the new ones once startup
+  // has settled; the installed weights keep serving dictation until the swap.
+  setTimeout(() => {
+    void updateOutdatedLocalModels().catch((error) =>
+      console.error("[STT] Model update failed:", error),
+    );
+  }, MODEL_UPDATE_START_DELAY_MS).unref();
   // Initialize update controller with notification and tray callbacks
   bootTimeline.measureSync("startup:init-update-controller", () => {
     initUpdateController({

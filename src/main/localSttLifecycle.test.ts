@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   installModel: vi.fn(),
   removeModel: vi.fn(),
   setActiveModelId: vi.fn(),
+  getOutdatedModelIds: vi.fn(),
+  updateOutdatedModel: vi.fn(),
   getSidecarModelId: vi.fn(),
   isSidecarRunning: vi.fn(),
   killSidecar: vi.fn(),
@@ -28,6 +30,8 @@ vi.mock("./modelManager", () => ({
   installModel: mocks.installModel,
   removeModel: mocks.removeModel,
   setActiveModelId: mocks.setActiveModelId,
+  getOutdatedModelIds: mocks.getOutdatedModelIds,
+  updateOutdatedModel: mocks.updateOutdatedModel,
 }));
 
 vi.mock("./sidecarEngine", () => ({
@@ -65,6 +69,7 @@ describe("localSttLifecycle", () => {
     mocks.getModelInstallState.mockReturnValue("ready");
     mocks.installModel.mockResolvedValue(undefined);
     mocks.removeModel.mockResolvedValue(undefined);
+    mocks.getOutdatedModelIds.mockReturnValue([]);
     mocks.getSidecarModelId.mockReturnValue("current-model");
     mocks.isSidecarRunning.mockReturnValue(false);
     mocks.killSidecar.mockResolvedValue(undefined);
@@ -633,6 +638,100 @@ describe("localSttLifecycle", () => {
     expect(mocks.spawnSidecar).toHaveBeenNthCalledWith(2, "model-b");
 
     warn.mockRestore();
+  });
+
+  describe("outdated model update", () => {
+    // Stand in for the model manager: the download has finished and the swap
+    // is handed to the lifecycle, which decides when the weights may change.
+    function mockVerifiedUpdate(replace: () => void): void {
+      mocks.getOutdatedModelIds.mockReturnValue(["current-model"]);
+      mocks.updateOutdatedModel.mockImplementation(
+        async (_modelId: string, swap: (replace: () => void) => Promise<void>) => {
+          await swap(replace);
+          return true;
+        },
+      );
+    }
+
+    it("does nothing when every installed model is current", async () => {
+      const { updateOutdatedLocalModels } = await importLifecycle();
+
+      await updateOutdatedLocalModels();
+
+      expect(mocks.updateOutdatedModel).not.toHaveBeenCalled();
+      expect(mocks.killSidecar).not.toHaveBeenCalled();
+    });
+
+    it("stops a warm sidecar before the swap and reloads it afterwards", async () => {
+      mocks.isSidecarRunning.mockReturnValue(true);
+      const order: string[] = [];
+      mocks.killSidecar.mockImplementationOnce(async () => {
+        order.push("kill");
+        mocks.isSidecarRunning.mockReturnValue(false);
+      });
+      mockVerifiedUpdate(() => order.push("replace"));
+      const { updateOutdatedLocalModels } = await importLifecycle();
+
+      await updateOutdatedLocalModels();
+      await flushLifecycle();
+
+      expect(order).toEqual(["kill", "replace"]);
+      expect(mocks.spawnSidecar).toHaveBeenCalledWith("current-model");
+    });
+
+    it("leaves an idle sidecar stopped after the swap", async () => {
+      const replace = vi.fn();
+      mockVerifiedUpdate(replace);
+      const { updateOutdatedLocalModels } = await importLifecycle();
+
+      await updateOutdatedLocalModels();
+      await flushLifecycle();
+
+      expect(replace).toHaveBeenCalledTimes(1);
+      expect(mocks.killSidecar).not.toHaveBeenCalled();
+      expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    });
+
+    it("waits for a dictation in flight before replacing the weights", async () => {
+      let finishTranscription!: (result: { text: string; metrics: object }) => void;
+      mocks.transcribeLocal.mockReturnValue(
+        new Promise((resolve) => {
+          finishTranscription = resolve;
+        }),
+      );
+      const replace = vi.fn();
+      mockVerifiedUpdate(replace);
+      const { transcribeWithLocalSidecar, updateOutdatedLocalModels } =
+        await importLifecycle();
+
+      const transcription = transcribeWithLocalSidecar(
+        "current-model",
+        Buffer.from([1]),
+      );
+      await flushLifecycle();
+      const update = updateOutdatedLocalModels();
+      await flushLifecycle();
+      expect(replace).not.toHaveBeenCalled();
+
+      finishTranscription({ text: "hello", metrics: {} });
+      await transcription;
+      await update;
+
+      expect(replace).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not reload the sidecar when the update did not finish", async () => {
+      mocks.isSidecarRunning.mockReturnValue(true);
+      mocks.getOutdatedModelIds.mockReturnValue(["current-model"]);
+      mocks.updateOutdatedModel.mockResolvedValue(false);
+      const { updateOutdatedLocalModels } = await importLifecycle();
+
+      await updateOutdatedLocalModels();
+      await flushLifecycle();
+
+      expect(mocks.killSidecar).not.toHaveBeenCalled();
+      expect(mocks.spawnSidecar).not.toHaveBeenCalled();
+    });
   });
 
   describe("idle watchdog", () => {
