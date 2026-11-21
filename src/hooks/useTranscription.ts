@@ -131,6 +131,7 @@ export function useTranscription(
   const [error, setError] = useState<string | null>(null);
   const [errorId, setErrorId] = useState(0);
 
+  const screenContextIdRef = useRef<string | undefined>(undefined);
   const recorderRef = useRef<AudioCaptureSession | null>(null);
   const startingRecorderRef = useRef<AudioCaptureSession | null>(null);
   const recorderStartPromiseRef = useRef<Promise<AudioCaptureSession> | null>(
@@ -203,6 +204,8 @@ export function useTranscription(
     // No boot-time VAD prewarm: each dictation owns a short-lived worker, so
     // the ONNX/WASM heap never becomes permanent renderer state.
     return () => {
+      if (screenContextIdRef.current) window.localContext?.end(screenContextIdRef.current);
+      screenContextIdRef.current = undefined;
       startGenerationRef.current += 1;
       pendingStartGenerationRef.current = null;
       const stream = streamRef.current;
@@ -237,6 +240,7 @@ export function useTranscription(
       mode: DICTATION_MODE,
       language: "en",
       sttPrompt: DEFAULT_STT_PROMPT,
+      screenContextId: screenContextIdRef.current,
     }),
     [],
   );
@@ -251,6 +255,10 @@ export function useTranscription(
     ) {
       return;
     }
+
+    const screenContextId = crypto.randomUUID();
+    screenContextIdRef.current = screenContextId;
+    window.localContext?.begin(screenContextId);
 
     const startGeneration = startGenerationRef.current + 1;
     startGenerationRef.current = startGeneration;
@@ -280,6 +288,7 @@ export function useTranscription(
       if (prepareResult.localModel?.streaming) {
         localStreamingDictation = await createLocalStreamingDictation({
           modelId: prepareResult.localModel.modelId,
+          screenContextId,
           sampleRateHz: TARGET_SAMPLE_RATE_HZ,
           batchMs: prepareResult.localModel.streamingChunkMs ?? 560,
           maxDurationMs: LOCAL_DICTATION_MAX_DURATION_MS,
@@ -414,6 +423,8 @@ export function useTranscription(
       recorderStartPromiseRef.current = null;
     } catch (err) {
       if (!isCurrentStart()) return;
+      window.localContext?.end(screenContextId);
+      if (screenContextIdRef.current === screenContextId) screenContextIdRef.current = undefined;
       log.error("Start failed:", err);
       reportTranscriptionError(toUserFacingTranscriptionError(err));
       setRecording(false);
@@ -465,6 +476,7 @@ export function useTranscription(
       reconcileLiveTranscript: boolean;
     }) => {
       const finalText = result.text;
+      if (screenContextIdRef.current) window.localContext?.outcome?.(screenContextIdRef.current, finalText);
 
       // Only a provider that emitted live hypotheses can reconcile one with
       // the authoritative result. Batch models publish the final result to
@@ -522,6 +534,8 @@ export function useTranscription(
     )
       return;
     stopInFlightRef.current = true;
+    const screenContextId = screenContextIdRef.current;
+    if (screenContextId) window.localContext?.freeze(screenContextId);
     // cancel() bumps the generation; once it no longer matches, this pipeline
     // must not touch state, history, or the clipboard.
     const generation = stopGenerationRef.current;
@@ -815,6 +829,8 @@ export function useTranscription(
       setLiveTranscript("");
       reportTranscriptionError(toUserFacingTranscriptionError(err));
     } finally {
+      if (screenContextId) window.localContext?.end(screenContextId);
+      if (screenContextIdRef.current === screenContextId) screenContextIdRef.current = undefined;
       // stop() owns streamingVadSession once it captures it, regardless of
       // how the pipeline above exits. dispose() is a no-op if finish() already
       // completed it.
@@ -891,6 +907,8 @@ export function useTranscription(
 
   // Cancel recording
   const cancel = useCallback(() => {
+    if (screenContextIdRef.current) window.localContext?.end(screenContextIdRef.current);
+    screenContextIdRef.current = undefined;
     // Invalidate pending startup first. Any awaited continuation from the old
     // generation must observe this before it can publish recording state.
     startGenerationRef.current += 1;

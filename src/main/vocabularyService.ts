@@ -25,14 +25,31 @@ export function getVocabularyDictionary(): string[] {
   return sanitizeDictionary(state.appPreferences.vocabularyDictionary);
 }
 
-function commitDictionary(dictionary: string[]): VocabularyMutationResult {
-  const previous = state.appPreferences.vocabularyDictionary;
-  state.appPreferences.vocabularyDictionary = dictionary;
+export function getLearnedWords(): { from: string; to: string; learnedAt: number }[] {
+  const value = state.appPreferences.learnedWords;
+  return Array.isArray(value) ? value.filter(word => word && typeof word.from === "string" &&
+    typeof word.to === "string" && word.from.length <= 80 && word.to.length <= 80 &&
+    typeof word.learnedAt === "number" && Number.isFinite(word.learnedAt)).slice(-256) : [];
+}
+
+export function getIgnoredLearnedWords(): string[] {
+  const value = state.appPreferences.ignoredLearnedWords;
+  return Array.isArray(value) ? value.filter(word => typeof word === "string").slice(-256) : [];
+}
+
+function commitDictionary(dictionary: string[], removed?: string): VocabularyMutationResult {
+  const previous = state.appPreferences;
+  const key = removed?.toLocaleLowerCase();
+  state.appPreferences = { ...previous, vocabularyDictionary: dictionary };
+  if (key) {
+    state.appPreferences.learnedWords = getLearnedWords().filter(word => word.to.toLocaleLowerCase() !== key);
+    state.appPreferences.ignoredLearnedWords = [...new Set([...getIgnoredLearnedWords(), key])].slice(-256);
+  }
   if (saveAppPreferences(state.appPreferences)) {
     return { ok: true, dictionary: [...dictionary] };
   }
 
-  state.appPreferences.vocabularyDictionary = previous;
+  state.appPreferences = previous;
   return {
     ok: false,
     dictionary: getVocabularyDictionary(),
@@ -74,7 +91,7 @@ export function updateVocabularyEntry(
 
   const updated = [...dictionary];
   updated[index] = next;
-  return commitDictionary(updated);
+  return commitDictionary(updated, current);
 }
 
 export function removeVocabularyEntry(
@@ -86,5 +103,5 @@ export function removeVocabularyEntry(
     (word) => word.toLowerCase() !== entry.toLowerCase(),
   );
   if (updated.length === dictionary.length) return { ok: true, dictionary };
-  return commitDictionary(updated);
+  return commitDictionary(updated, entry);
 }

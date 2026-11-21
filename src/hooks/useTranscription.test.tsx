@@ -185,6 +185,7 @@ describe("useTranscription", () => {
 
   afterEach(() => {
     vi.clearAllTimers();
+    delete window.localContext;
   });
 
   it("starts idle", () => {
@@ -196,6 +197,27 @@ describe("useTranscription", () => {
     expect(result.current.processing).toBe(false);
     expect(result.current.text).toBe("");
     expect(result.current.error).toBe(null);
+  });
+
+  it("starts context without waiting and freezes it before transcription", async () => {
+    const calls: string[] = [];
+    window.localContext = {
+      begin: vi.fn(() => { calls.push("begin"); }),
+      freeze: vi.fn(() => { calls.push("freeze"); }),
+      end: vi.fn(() => { calls.push("end"); }),
+      getSettings: vi.fn(), setSettings: vi.fn(), requestScreenPermission: vi.fn(),
+    };
+    (window.stt.transcribeLocal as any).mockImplementation(async () => {
+      calls.push("transcribe");
+      return { text: "A local result", metrics: {} };
+    });
+    const { result } = renderHook(() => useTranscription());
+    await act(async () => { void result.current.start(); await emitPcmFrame([1, 2, 3, 4]); });
+    expect(window.localContext.begin).toHaveBeenCalledOnce();
+    const id = vi.mocked(window.localContext.begin).mock.calls[0][0];
+    await act(async () => { await result.current.stop(); });
+    expect(calls).toEqual(["begin", "freeze", "transcribe", "end"]);
+    expect(window.stt.transcribeLocal).toHaveBeenCalledWith("test-model", expect.anything(), expect.any(String), id);
   });
 
   it("keeps the hook return stable across unrelated renders", async () => {

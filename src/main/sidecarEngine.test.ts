@@ -252,6 +252,19 @@ describe("sidecarEngine", () => {
       });
     });
 
+    it("snapshots decoder terms before queueing, separately from the prompt", async () => {
+      const { proc, engine } = await startReadySidecar();
+      const terms = ["DFlash2", "NVFP4"];
+      const promise = engine.transcribeLocal(Buffer.from([1, 2]), undefined, { terms, strength: 4 });
+      terms.push("TooLate");
+      await Promise.resolve();
+      proc.stdout.emit("data", Buffer.from('{"type":"done","transcript":"DFlash2","metrics":{}}\n'));
+      await promise;
+      expect(JSON.parse(requestFrames(proc).metadataJsonBuf.toString("utf8"))).toEqual({
+        boost_terms: ["DFlash2", "NVFP4"], boost_strength: 4,
+      });
+    });
+
     it("rejects oversized requests before they reach the sidecar", async () => {
       const { engine } = await startReadySidecar();
       const thirtySecondsOfPcm16 = 30 * 16_000 * 2;

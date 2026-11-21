@@ -19,6 +19,11 @@ static void requireAX(void);
 static void cmdV(void);
 static void cmdC(void);
 static void cmdVToPid(pid_t pid);
+extern int SpokeContextDaemon(void);
+extern int SpokeContextBenchmark(BOOL debug);
+extern int SpokeContextAnalyzeText(void);
+extern void SpokeStopLearning(void);
+extern void SpokeWatchEdit(AXUIElementRef field, pid_t pid, NSString *baseline, CFRange range, NSString *inserted);
 
 // AX focus is optional metadata. Some apps (and focus transitions) do not
 // expose a focused AX application even though they can receive Command-V.
@@ -359,6 +364,8 @@ static AXUIElementRef pasteFocus = NULL;
 static pid_t pasteFocusPid = 0;
 static CFRange pasteRange;
 static bool pasteHasRange = false;
+static NSString *pasteBaseline = nil;
+static unsigned long baselineGeneration = 0;
 
 static bool paste_target_matches(pid_t pid) {
     if (pasteFocusPid != pid || !pasteFocus) return true;
@@ -433,6 +440,8 @@ static int inspect_text_core(int context_chars, bool probe_clipboard) {
     if (!probe_clipboard) {
         if (pasteFocus) CFRelease(pasteFocus);
         pasteFocus = NULL; pasteFocusPid = 0; pasteHasRange = false;
+        pasteBaseline = nil;
+        SpokeStopLearning();
     }
     AXUIElementRef appEl = ax_focused_app_element();
     if (!appEl) { puts("read:err:no-app"); fflush(stdout); return 2; }
@@ -498,6 +507,13 @@ static int inspect_text_core(int context_chars, bool probe_clipboard) {
         // Some editors expose Value but not StringForRange. Only read a
         // whole value when the reported document size is already bounded.
         if (len >= 0 && len <= 4096) value = ax_copy_value(el);
+        if (value && CFStringGetLength(value) <= 4096) {
+            pasteBaseline = [(__bridge NSString *)value copy];
+            unsigned long current = ++baselineGeneration;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                if (baselineGeneration == current) pasteBaseline = nil;
+            });
+        }
     }
 
     printf("read:ok\n");
@@ -799,6 +815,14 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, handle_signal);   // respond to normal shutdown
     signal(SIGINT,  handle_signal);
     watch_parent();                   // respond to crashes / force-quit
+    if (argc > 1 && strcmp(argv[1], "--mode=context-daemon") == 0) return SpokeContextDaemon();
+    if (argc > 1 && strcmp(argv[1], "--context-benchmark") == 0) return SpokeContextBenchmark(NO);
+    if (argc > 1 && strcmp(argv[1], "--context-debug-fixture") == 0) return SpokeContextBenchmark(YES);
+    if (argc > 1 && strcmp(argv[1], "--context-analyze-text") == 0) return SpokeContextAnalyzeText();
+    if (argc > 1 && strcmp(argv[1], "--ask-screen") == 0) {
+        puts(CGRequestScreenCaptureAccess() ? "screen-granted" : "screen-denied");
+        return 0;
+    }
     // Enable key debug tracing with env var
     const char *dbg = getenv("SF_NATIVE_DEBUG_KEYS");
     if (dbg && (strcmp(dbg, "1") == 0 || strcasecmp(dbg, "true") == 0 || strcasecmp(dbg, "yes") == 0)) {
@@ -895,9 +919,11 @@ int main(int argc, char *argv[]) {
             __block bool shouldExit = false;
             dispatch_sync(dispatch_get_main_queue(), ^{
             @autoreleasepool {
-            if (strncmp(command, "paste-text:", 11) == 0) {
+            if (strncmp(command, "paste-text:", 11) == 0 || strncmp(command, "paste-learn:", 12) == 0) {
+                bool learn = strncmp(command, "paste-learn:", 12) == 0;
                 char *separator = NULL;
-                pid_t expectedPid = (pid_t)strtol(command + 11, &separator, 10);
+                pid_t expectedPid = (pid_t)strtol(command + (learn ? 12 : 11), &separator, 10);
+                SpokeStopLearning();
                 uint64_t started = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
                 if (!separator || *separator != ':' || expectedPid <= 0 ||
                     !copy_encoded_text(separator + 1, &savedClipboard, &ownedChangeCount, &clipboardToken, true)) {
@@ -912,12 +938,22 @@ int main(int argc, char *argv[]) {
                         printf("clipboard-token:%lu\nclipboard-ms:%.3f\ndispatch-ms:%.3f\n",
                                clipboardToken, (copied - started) / 1e6, (posted - copied) / 1e6);
                         puts("paste-done");
+                        fflush(stdout);
+                        // Verification starts after ACK and uses the passive
+                        // inspection snapshot. No extra AX read on paste path.
+                        NSData *payload = [[NSData alloc] initWithBase64EncodedString:[NSString stringWithUTF8String:separator + 1] options:0];
+                        NSString *inserted = [[NSString alloc] initWithData:payload encoding:NSUTF8StringEncoding];
+                        if (learn && pasteHasRange) SpokeWatchEdit(pasteFocus, currentPid, pasteBaseline, pasteRange, inserted);
                     } else {
                         materialize_paste_provider();
                         puts("paste-target-changed");
                     }
                 }
+                pasteBaseline = nil;
                 fflush(stdout);
+            } else if (strcmp(command, "stop-learning") == 0) {
+                SpokeStopLearning();
+                pasteBaseline = nil;
             } else if (strncmp(command, "copy:", 5) == 0) {
                 if (copy_encoded_text(command + 5, &savedClipboard, &ownedChangeCount, &clipboardToken, false))
                     printf("clipboard-token:%lu\n", clipboardToken);

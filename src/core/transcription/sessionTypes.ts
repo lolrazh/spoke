@@ -13,6 +13,7 @@ export interface TranscriptionContext {
    * providers/engines that don't support prompt conditioning.
    */
   sttPrompt?: string;
+  screenContextId?: string;
 }
 
 export interface PrepareTranscriptionResult {

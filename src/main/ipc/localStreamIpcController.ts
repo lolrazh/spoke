@@ -12,6 +12,7 @@ type BeginLocalStream = (
   modelId: string,
   onPartial: (text: string) => void,
   signal: AbortSignal,
+  contextId?: string,
 ) => Promise<ManagedLocalStreamingSession>;
 
 type PcmPayload = Uint8Array | ArrayBuffer;
@@ -44,6 +45,7 @@ export class LocalStreamIpcController {
   async start(
     owner: WebContents,
     modelId: string,
+    contextId?: string,
   ): Promise<{ sessionId: string }> {
     if (this.current) {
       if (this.current.owner.id !== owner.id) {
@@ -80,6 +82,7 @@ export class LocalStreamIpcController {
           });
         },
         record.abortController.signal,
+        contextId,
       );
 
       if (this.current !== record || record.abortController.signal.aborted) {

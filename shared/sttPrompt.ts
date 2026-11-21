@@ -19,7 +19,7 @@ function sanitizeToken(token: string): string | null {
   const withoutControl = withoutTags.replace(/[\u0000-\u001f\u007f]+/g, " ");
   const withoutDelimiters = withoutControl.replace(/[,:<>]+/g, " ");
   const allowedOnly = withoutDelimiters.replace(
-    /[^A-Za-z0-9@._\-+'()" ]+/g,
+    /[^\p{L}\p{M}\p{N}@._\-+'’()" ]+/gu,
     "",
   );
   const collapsed = allowedOnly.replace(/\s+/g, " ").trim();

@@ -77,6 +77,177 @@ model does not.
 The app keeps transcript history on your Mac. Website analytics are separate from
 the app's local speech recognition.
 
+### Local screen context and edit learning
+
+The Dictionary view has two independent controls, enabled by default:
+
+- **Use names from the active window** uses a separate local helper to read
+  screen context when dictation starts. It reads Accessibility text first. A few names from an input
+  or sidebar do not prove that the main text was read. Unless a complete text
+  area covers at least 80% of the window, it supplements those terms with local
+  Apple Vision OCR. OCR needs the
+  optional screen recording permission; the app requests it only from the
+  **Allow local screen reading** button. It reads the visible portion of the
+  target window on the display with the largest overlap, at 1–1.5 pixels per
+  point, with an 8-million-pixel limit. An oversized window is
+  cropped around its centre; debug records show when that limit clipped it.
+  It does not reduce a full window to a small, unreadable image.
+- **Learn verified name corrections** first checks that the exact pasted text
+  appears in the same Accessibility field. It watches that field for up to
+  30 seconds, then accepts only a small name correction after 1.5 seconds
+  without further changes. The same correction must occur in two separate
+  dictations within 10 minutes before it enters the dictionary. Remove a
+  learned name to undo and prevent automatic learning of that name.
+
+Screen context uses local name tagging. It keeps at most 24 temporary terms;
+it does not save images or raw screen text. Whisper receives the terms as
+vocabulary hints, with no dictionary replacement after decoding. Parakeet uses
+post-transcription correction by default: sound-based matching (Double Metaphone),
+spelling distance, and guarded identifier/acronym rules. The opt-in Parakeet
+decoder trial below replaces that vocabulary path with upstream word boosting.
+Other current local adapters use the correction step. No context or edit text is sent
+to a server. Only accepted word pairs and removal preferences are saved.
+
+Context never waits on the decode or paste path. Whisper takes the available
+terms when its prompt is submitted. The Parakeet decoder trial also freezes the
+available terms before decoding. Other local modes take them when final
+dictionary correction starts, so in-flight OCR can finish during decode. Later
+results are skipped. A stalled capture is stopped after eight seconds; this
+background budget does not extend recording or delay paste. Idle preparation
+initializes AppKit, Vision, and name tagging with fixed synthetic input, without
+reading screen content. Window metadata lookup overlaps the bounded AX scan;
+screenshots are still taken only when AX coverage is incomplete. macOS 26 uses
+the screenshot-specific API; older systems retain the image-capture API.
+One prepared worker stays idle while this feature is enabled; it stops when the
+feature is disabled or the app quits. Each dictation still starts with no terms.
+An unexpected cold capture does not queue behind an extra synthetic OCR request.
+App/window changes and protected fields discard context. Moving focus within
+the same window keeps its context. Starting another dictation stops edit watching.
+
+### Test Parakeet decoder word boosting
+
+In a development checkout, select Parakeet and run:
+
+```sh
+npm run dev:parakeet-boost
+```
+
+This uses `parakeet-mlx` 0.7.0 locally with the existing model weights. It sends
+up to 24 deduplicated terms, current-window names first, to a two-candidate beam
+decoder. The phrase weight is `4 × min(1, character count / 7)`, so short terms
+such as M4 cannot receive the full long-name reward. Screen extraction is
+unchanged. No OCR wait or
+second encoder pass is added. Empty term lists use the fast greedy decoder.
+
+The trial disables all downstream dictionary replacement, including when no
+terms are ready. Existing non-dictionary text formatting remains. It does not
+force canonical case after decoding. Whisper now also uses its prompt without
+a second dictionary-replacement pass. Restart with `npm run dev` to return
+Parakeet to its existing post-transcription vocabulary mode.
+
+This is an opt-in accuracy/latency trial, not a default release setting. Larger
+term lists can cause false names; the earlier synthetic full-phrase comparison
+added about 104 ms. In **Dictionary → Context debugging**, model input shows the
+exact boost terms and vocabulary mode. Model output metrics confirm the decoder
+mode and term count. An old runtime that cannot acknowledge boosting causes an
+error instead of silently behaving as if boosting worked. Details and measured
+limits are in [the decoder report](docs/parakeet-word-boosting-2026-11-14.md).
+Learning skips protected fields, unsupported AX fields, and documents whose
+initial text exceeds 4096 characters. Paste still works without learning.
+OCR uses Vision's fast path; name coverage depends on the language and app.
+Name extraction combines Apple's person/place/organization tags with rules
+for product identifiers, including `DFlash2`. Identifiers take priority over
+generic name tags and plain acronyms when the 24-term limit is reached.
+Numbered identifiers match their complete spoken spelling (`D flash two`).
+One letter in an uppercase numbered acronym can be corrected (`NBFP4` to
+`NVFP4`) only if there is one matching candidate. Exact entries win; ambiguous
+matches stay unchanged. Matching cannot insert, remove, or change digits.
+For a separately spoken initial, a voiced/unvoiced pair such as D/T can match
+only when the rest of the complete numbered identifier is exact and unique.
+Verified edit learning uses the same full-spelling
+check for names with digits. It does not learn version changes.
+
+To check the native components without reading a real screen:
+
+```sh
+bash native/build-helper.sh
+'native/bin/Spoke Helper.app/Contents/MacOS/Spoke Helper' --context-benchmark
+clang -x objective-c -fobjc-arc -framework AppKit -framework ApplicationServices native/tests/edit-learning-test.m -o /tmp/spoke-learning-test
+/tmp/spoke-learning-test
+```
+
+The benchmark uses a synthetic image. Its time includes OCR and name tagging,
+but excludes screen capture and IPC. It is not an end-to-end latency guarantee.
+
+### Save and inspect context tests
+
+Open **Dictionary → Context debugging**, name a test set, and select **Start
+test set**. Switch to another app and dictate normally. Return to the Dictionary
+view, choose a run, and add the expected text and notes.
+
+The viewer shows Accessibility text, the exact OCR crop and its position in the
+window, OCR confidence, Apple's name tags, identifier-rule matches, selected
+terms, model input, raw speech output, and local correction decisions. A saved
+image exists only when the production path used OCR. The final-text field is
+the text sent toward insertion, not proof that another app displayed it.
+
+Test sets stay in `context-debug` under Electron's user-data directory. Use
+**Open set folder** to find the JSON records and PNG files. Optional audio is
+saved as 16 kHz mono PCM WAV clips, using the audio sent to speech recognition.
+Audio must be enabled when starting the set. Saving is off by default, stops
+after 50 runs, and does not resume after an app restart. **Stop saving** prevents
+new runs; an existing run can still finish. **Delete this run** removes its
+record, image, and audio files. Nothing is uploaded.
+
+For a development-only live test, a launch flag can start the same local set:
+
+```sh
+SPOKE_CONTEXT_TEST_SET="Virtual display live tests" SPOKE_CONTEXT_TEST_AUDIO=1 npm start
+```
+
+Omit the audio flag to save text and images only. Packaged apps ignore both
+flags. Restart without these flags when the test is complete.
+
+Debug mode does extra work, so use it to diagnose accuracy, not to measure
+normal-mode performance. File writes do not block on the dictation path. PNG
+encoding happens after the native worker sends the normal context result.
+
+Replay saved text with the current name extractor and correction code:
+
+```sh
+node scripts/replay-context-debug.mjs "/path/from/Open set folder"
+```
+
+This creates a `replay-*.json` comparison report in the same set. It does not
+re-decode audio, change the dictionary, or change the original test records.
+It reports new extracted terms separately; correction replay uses each run's
+saved dictionary to isolate changes in the correction algorithm.
+
+Run the offline image-to-text integration probe:
+
+```sh
+node scripts/test-context-pipeline.mjs /tmp/spoke-context-checks
+```
+
+This checks native name extraction, 12 light/dark OCR fixtures, session freeze,
+local text correction, edit-candidate filtering, and saved-set reload. It saves
+the failing cases too. Small dark text at 1 pixel per point can still be read
+incorrectly by Vision fast mode; the tested 1.5x fixtures pass. These fixtures
+do not verify live Accessibility capture, microphone input, or paste into an
+external app. Optional second and third arguments accept a local ASR report
+(`results[0].raw`) and its 16 kHz mono PCM16 WAV file.
+
+To test a screenshot with the production crop policy, save the raw transcript
+and expected result in two text files, then run:
+
+```sh
+node scripts/test-context-image.mjs image.png raw.txt expected.txt /tmp/context-result.json
+```
+
+This runs ten repeats at each of two display scales. The local report includes
+selected terms, correction decisions, and timing. It does not capture a live
+screen, decode audio, or paste text.
+
 ## Build and contribute
 
 The app uses Electron, TypeScript, React, native macOS helpers, and a local Python
@@ -110,3 +281,5 @@ See [the release notes guide](releases/README.md) for the release process.
 
 Spoke's application code is available under the [MIT License](LICENSE).
 Third-party dependencies and speech-model weights retain their own licenses.
+
+Live microphone, capture, and paste results: [14 November test report](docs/context-live-tests-2026-11-14.md).

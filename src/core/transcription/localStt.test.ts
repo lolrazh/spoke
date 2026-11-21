@@ -61,6 +61,7 @@ describe("localStt", () => {
       "test-model",
       expect.any(ArrayBuffer),
       undefined,
+      undefined,
     );
     expect(result).toEqual({
       text: "local transcript",
@@ -78,7 +79,7 @@ describe("localStt", () => {
 
     await localStt.transcribe({
       audio,
-      context: { mode: "dictation", sttPrompt },
+      context: { mode: "dictation", sttPrompt, screenContextId: "recording-123" },
       prepareResult: preparedLocalModel(),
     });
 
@@ -86,6 +87,7 @@ describe("localStt", () => {
       "test-model",
       expect.any(ArrayBuffer),
       sttPrompt,
+      "recording-123",
     );
   });
 

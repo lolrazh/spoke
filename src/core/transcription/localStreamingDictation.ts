@@ -2,6 +2,7 @@ import type { LocalTranscribeResult } from "../../types/shared";
 
 export interface LocalStreamingDictationOptions {
   modelId: string;
+  screenContextId?: string;
   sampleRateHz: number;
   batchMs?: number;
   maxDurationMs: number;
@@ -78,7 +79,9 @@ export class LocalStreamingDictation {
     let opening: Promise<{ sessionId: string }>;
     this.startPending = true;
     try {
-      opening = bridge.startLocalStream(this.options.modelId);
+      opening = this.options.screenContextId
+        ? bridge.startLocalStream(this.options.modelId, this.options.screenContextId)
+        : bridge.startLocalStream(this.options.modelId);
     } catch (error) {
       this.startPending = false;
       this.cleanupListener();
